@@ -1,13 +1,16 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import {
   Archive,
+  Calculator,
   BellRing,
   FileText,
+  Landmark,
   LayoutDashboard,
   LayoutTemplate,
   LineChart,
   type LucideIcon,
   Receipt,
+  ReceiptEuro,
   ReceiptText,
   Package,
   Repeat,
@@ -24,6 +27,9 @@ interface NavItem {
     | "/credit-notes"
     | "/reminders"
     | "/recurring"
+    | "/expenses"
+    | "/bank"
+    | "/tax"
     | "/clients"
     | "/articles"
     | "/templates"
@@ -48,6 +54,14 @@ const NAV: { title?: string; items: NavItem[] }[] = [
       { to: "/credit-notes", label: "Gutschriften", icon: ReceiptText },
       { to: "/reminders", label: "Mahnungen", icon: BellRing },
       { to: "/recurring", label: "Serienrechnungen", icon: Repeat },
+    ],
+  },
+  {
+    title: "Finanzen",
+    items: [
+      { to: "/expenses", label: "Ausgaben", icon: ReceiptEuro },
+      { to: "/bank", label: "Bank", icon: Landmark },
+      { to: "/tax", label: "Steuern", icon: Calculator },
     ],
   },
   {

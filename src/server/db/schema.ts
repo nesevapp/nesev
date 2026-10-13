@@ -58,6 +58,12 @@ export const settings = sqliteTable("settings", {
   taxNoteSmallBusiness: str("tax_note_small_business"),
   /** Mahnstufen config (JSON array, shape owned by the reminders feature); null → built-in defaults */
   reminderLevels: text("reminder_levels", { mode: "json" }).$type<unknown>(),
+  /** Umsatzsteuer: "accrual" = Sollbesteuerung (by invoice date), "cash" = Istbesteuerung (by payment date) */
+  vatBasis: text("vat_basis").$type<"accrual" | "cash">().notNull().default("accrual"),
+  /** UVA period */
+  vatPeriod: text("vat_period").$type<"monthly" | "quarterly">().notNull().default("quarterly"),
+  /** units offered in line-item dropdowns (JSON string[]); null → DEFAULT_UNITS */
+  units: text("units", { mode: "json" }).$type<string[]>(),
   ...timestamps,
 });
 
@@ -306,6 +312,144 @@ export const reminders = sqliteTable(
   ],
 );
 
+export const expenses = sqliteTable(
+  "expenses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** internal running receipt number, e.g. "ER-2026-0001" (assigned on create) */
+    number: text("number"),
+    supplierName: text("supplier_name").notNull(),
+    supplierUid: str("supplier_uid"),
+    /** ISO 3166-1 alpha-2 */
+    supplierCountry: text("supplier_country").notNull().default("AT"),
+    /** supplier's own invoice number */
+    supplierInvoiceNumber: str("supplier_invoice_number"),
+    issueDate: text("issue_date").notNull(),
+    dueDate: text("due_date"),
+    paidAt: text("paid_at"),
+    /** "domestic" | "reverse_charge" | "ig_acquisition" | "import" | "none" — shape owned by the expenses feature */
+    vatTreatment: text("vat_treatment").notNull().default("domestic"),
+    description: str("description"),
+    notes: str("notes"),
+    /** cached sums of expense_lines */
+    netCents: integer("net_cents").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    grossCents: integer("gross_cents").notNull().default(0),
+    /** uploaded receipt relative to data dir, e.g. "receipts/2026/ER-2026-0001.pdf" */
+    attachmentPath: text("attachment_path"),
+    attachmentName: str("attachment_name"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("expenses_number_uq").on(t.number),
+    index("expenses_issue_date_idx").on(t.issueDate),
+    index("expenses_supplier_idx").on(t.supplierName),
+    index("expenses_paid_idx").on(t.paidAt),
+  ],
+);
+
+export const expenseLines = sqliteTable(
+  "expense_lines",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    expenseId: integer("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    /** category key from the expenses feature's category list */
+    category: text("category").notNull(),
+    description: str("description"),
+    netCents: integer("net_cents").notNull().default(0),
+    taxRateBp: integer("tax_rate_bp").notNull().default(2000),
+    /** stored (not derived) so receipt rounding can be matched exactly */
+    taxCents: integer("tax_cents").notNull().default(0),
+    /** share of input VAT that is deductible (e.g. 5000 = 50 %), 10000 = fully */
+    deductibleBp: integer("deductible_bp").notNull().default(10000),
+  },
+  (t) => [index("expense_lines_expense_idx").on(t.expenseId, t.position), index("expense_lines_category_idx").on(t.category)],
+);
+
+export const bankAccounts = sqliteTable("bank_accounts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  iban: str("iban"),
+  bankName: str("bank_name"),
+  /** remembered CSV column mapping (JSON, shape owned by the bank feature) */
+  csvMapping: text("csv_mapping", { mode: "json" }).$type<unknown>(),
+  /** "off" | "safe" | "aggressive" — auto-apply level for payment matching */
+  autoMatch: text("auto_match").$type<"off" | "safe" | "aggressive">().notNull().default("safe"),
+  archivedAt: text("archived_at"),
+  ...timestamps,
+});
+
+export const bankImports = sqliteTable("bank_imports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => bankAccounts.id, { onDelete: "cascade" }),
+  fileName: str("file_name"),
+  /** "csv" | "camt053" | ... */
+  format: text("format").notNull(),
+  importedCount: integer("imported_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+  ...timestamps,
+});
+
+export const bankTransactions = sqliteTable(
+  "bank_transactions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => bankAccounts.id, { onDelete: "cascade" }),
+    importId: integer("import_id").references(() => bankImports.id, { onDelete: "set null" }),
+    bookingDate: text("booking_date").notNull(),
+    valueDate: text("value_date"),
+    /** signed: incoming > 0, outgoing < 0 */
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("EUR"),
+    counterpartyName: str("counterparty_name"),
+    counterpartyIban: str("counterparty_iban"),
+    /** Verwendungszweck */
+    purpose: str("purpose"),
+    /** bank/end-to-end reference if provided */
+    reference: str("reference"),
+    /** dedupe key across overlapping imports */
+    importHash: text("import_hash").notNull(),
+    /** "open" | "matched" | "ignored" — shape owned by the bank feature */
+    status: text("status").notNull().default("open"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("bank_transactions_hash_uq").on(t.accountId, t.importHash),
+    index("bank_transactions_date_idx").on(t.bookingDate),
+    index("bank_transactions_status_idx").on(t.status),
+  ],
+);
+
+/** Allocation of (part of) a bank transaction to an invoice/credit note or an expense. Supports split and partial payments. */
+export const bankMatches = sqliteTable(
+  "bank_matches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    transactionId: integer("transaction_id")
+      .notNull()
+      .references(() => bankTransactions.id, { onDelete: "cascade" }),
+    documentId: integer("document_id").references(() => documents.id, { onDelete: "cascade" }),
+    expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "cascade" }),
+    /** positive amount allocated */
+    amountCents: integer("amount_cents").notNull(),
+    /** "auto" | "manual" */
+    source: text("source").notNull().default("manual"),
+    ...timestamps,
+  },
+  (t) => [
+    index("bank_matches_tx_idx").on(t.transactionId),
+    index("bank_matches_document_idx").on(t.documentId),
+    index("bank_matches_expense_idx").on(t.expenseId),
+  ],
+);
+
 export const numberSequences = sqliteTable(
   "number_sequences",
   {
@@ -330,6 +474,14 @@ export type RecurringInvoice = typeof recurringInvoices.$inferSelect;
 export type NewRecurringInvoice = typeof recurringInvoices.$inferInsert;
 export type RecurringInvoiceItem = typeof recurringInvoiceItems.$inferSelect;
 export type Reminder = typeof reminders.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type NewExpense = typeof expenses.$inferInsert;
+export type ExpenseLine = typeof expenseLines.$inferSelect;
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type BankImport = typeof bankImports.$inferSelect;
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type NewBankTransaction = typeof bankTransactions.$inferInsert;
+export type BankMatch = typeof bankMatches.$inferSelect;
 export type NewReminder = typeof reminders.$inferInsert;
 export type NewPdfTemplate = typeof pdfTemplates.$inferInsert;
 

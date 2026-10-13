@@ -1,0 +1,22 @@
+[
+  {
+    "referenceNumber": "209912345678AT1",
+    "booking": "2026-03-12T00:00:00.000+0100",
+    "valuation": "2026-03-12T00:00:00.000+0100",
+    "partnerName": "Kunde Beta OG",
+    "partnerAccount": { "iban": "AT000000000000000000", "bic": "SPADATW1XXX", "number": "", "bankCode": "", "countryCode": "AT" },
+    "amount": { "value": 48000, "precision": 2, "currency": "EUR" },
+    "reference": "RE-2026-0005",
+    "receiverReference": "",
+    "note": null
+  },
+  {
+    "referenceNumber": "209912345679AT1",
+    "booking": "2026-03-13T00:00:00.000+0100",
+    "valuation": "2026-03-14T00:00:00.000+0100",
+    "partnerName": "Wiener Stadtwerke",
+    "partnerAccount": { "iban": "AT611100000123456789" },
+    "amount": { "value": -8850, "precision": 2, "currency": "EUR" },
+    "reference": "Strom Kd 4711"
+  }
+]

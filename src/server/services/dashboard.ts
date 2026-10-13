@@ -3,11 +3,13 @@ import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, settings } from "../db/schema";
+import { paidCentsSql } from "./bank";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
 // - Revenue = net of non-draft invoices minus net of non-draft credit notes (credit notes store
 //   positive amounts), bucketed by issueDate.
-// - Open invoices = final/sent invoices; overdue = those with dueDate < today (see isOverdue).
+// - Open invoices = final/sent invoices; overdue = those with dueDate < today (see isOverdue). Their sums
+//   are net of partial bank payments.
 // - Open offers = final/sent offers (neither accepted nor declined).
 
 export interface DashboardDocRow {
@@ -121,8 +123,15 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const fig = (where: ReturnType<typeof and>): Figure =>
     db.select({ count: figure, cents: sumOf(documents.grossCents) }).from(documents).where(where).get()!;
 
-  const openInvoices = fig(isOpenInvoice);
-  const overdueFig = fig(isOverdueInvoice);
+  // open/overdue amounts net of partial bank payments
+  const openFig = (where: ReturnType<typeof and>): Figure =>
+    db
+      .select({ count: figure, cents: sql<number>`coalesce(sum(${documents.grossCents} - ${paidCentsSql}), 0)` })
+      .from(documents)
+      .where(where)
+      .get()!;
+  const openInvoices = openFig(isOpenInvoice);
+  const overdueFig = openFig(isOverdueInvoice);
   const openOffersFig = fig(isOpenOffer);
   const paid = fig(
     and(eq(documents.type, "invoice"), eq(documents.status, "paid"), gte(documents.paidAt, yearFrom), lt(documents.paidAt, yearTo)),

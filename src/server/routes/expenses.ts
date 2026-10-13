@@ -1,0 +1,65 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import {
+  expenseCreateSchema,
+  expenseListQuerySchema,
+  expensePaidSchema,
+  expenseUpdateSchema,
+  supplierQuerySchema,
+} from "../../shared/schemas/expense";
+import { db } from "../db";
+import { validate } from "../lib/validate";
+import {
+  createDraftsFromFiles,
+  createExpense,
+  deleteExpense,
+  listExpenses,
+  removeExpenseAttachment,
+  requireExpense,
+  setExpenseAttachment,
+  setExpensePaid,
+  supplierSuggestions,
+  updateExpense,
+} from "../services/expenses";
+
+const idParam = validate("param", z.object({ id: z.coerce.number().int().positive() }));
+const fileForm = validate("form", z.object({ file: z.instanceof(File, { message: "Keine Datei hochgeladen" }) }));
+/** multipart field "files" (one or more) */
+const filesForm = validate(
+  "form",
+  z.object({
+    files: z
+      .union([z.instanceof(File), z.array(z.instanceof(File))], { message: "Keine Datei hochgeladen" })
+      .transform((f) => (Array.isArray(f) ? f : [f]))
+      .pipe(z.array(z.instanceof(File)).min(1).max(50)),
+  }),
+);
+
+const app = new Hono()
+  .get("/", validate("query", expenseListQuerySchema), (c) => c.json(listExpenses(db, c.req.valid("query"))))
+  /** Supplier autocomplete: distinct previous suppliers with their latest uid/country/treatment/category. */
+  .get("/suppliers", validate("query", supplierQuerySchema), (c) => {
+    const { q, limit } = c.req.valid("query");
+    return c.json(supplierSuggestions(db, q, limit));
+  })
+  .get("/:id", idParam, (c) => c.json(requireExpense(db, c.req.valid("param").id)))
+  .post("/", validate("json", expenseCreateSchema), (c) => c.json(createExpense(db, c.req.valid("json")), 201))
+  /** Quick capture: one draft per uploaded receipt (multipart, field "files"). */
+  .post("/drafts", filesForm, async (c) => c.json(await createDraftsFromFiles(db, c.req.valid("form").files), 201))
+  .put("/:id", idParam, validate("json", expenseUpdateSchema), (c) =>
+    c.json(updateExpense(db, c.req.valid("param").id, c.req.valid("json"))),
+  )
+  .post("/:id/paid", idParam, validate("json", expensePaidSchema), (c) =>
+    c.json(setExpensePaid(db, c.req.valid("param").id, c.req.valid("json").paidAt)),
+  )
+  /** Upload or replace the receipt (multipart, field "file"; PDF/JPG/PNG/WebP, max 20 MB). */
+  .post("/:id/attachment", idParam, fileForm, async (c) =>
+    c.json(await setExpenseAttachment(db, c.req.valid("param").id, c.req.valid("form").file)),
+  )
+  .delete("/:id/attachment", idParam, async (c) => c.json(await removeExpenseAttachment(db, c.req.valid("param").id)))
+  .delete("/:id", idParam, async (c) => {
+    await deleteExpense(db, c.req.valid("param").id);
+    return c.json({ ok: true });
+  });
+
+export default app;

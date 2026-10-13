@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InvoicePayments } from "@/features/bank/components/invoice-payments";
 import { CreateReminderButton, InvoiceReminders } from "@/features/reminders/components/invoice-reminders";
 import { settingsQuery } from "@/features/settings/api";
 import { apiErrorMessage } from "@/lib/api";
@@ -171,6 +172,7 @@ export function DocumentView({ doc }: { doc: DocumentDTO }) {
 
       {doc.closingText && <p className="border-t pt-6 text-sm whitespace-pre-line">{doc.closingText}</p>}
 
+      {doc.type === "invoice" && <InvoicePayments documentId={doc.id} />}
       {doc.type === "invoice" && <InvoiceReminders invoiceId={doc.id} />}
 
       <ActionBar

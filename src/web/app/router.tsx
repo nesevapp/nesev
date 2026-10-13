@@ -2,14 +2,17 @@ import { createRouter } from "@tanstack/react-router";
 import { queryClient } from "@/lib/query-client";
 import { rootRoute } from "./root-route";
 import { articlesRoutes } from "@/features/articles/routes";
+import { bankRoutes } from "@/features/bank/routes";
 import { clientsRoutes } from "@/features/clients/routes";
 import { dashboardRoutes } from "@/features/dashboard/routes";
 import { documentsRoutes } from "@/features/documents/routes";
+import { expensesRoutes } from "@/features/expenses/routes";
 import { exportRoutes } from "@/features/export/routes";
 import { forecastRoutes } from "@/features/forecast/routes";
 import { recurringRoutes } from "@/features/recurring/routes";
 import { remindersRoutes } from "@/features/reminders/routes";
 import { settingsRoutes } from "@/features/settings/routes";
+import { taxRoutes } from "@/features/tax/routes";
 import { templatesRoutes } from "@/features/templates/routes";
 
 // ── Feature route registry ──────────────────────────────────────────────────────
@@ -22,6 +25,9 @@ const routeTree = rootRoute.addChildren([
   ...remindersRoutes,
   ...recurringRoutes,
   ...forecastRoutes,
+  ...expensesRoutes,
+  ...bankRoutes,
+  ...taxRoutes,
   ...clientsRoutes,
   ...articlesRoutes,
   ...templatesRoutes,

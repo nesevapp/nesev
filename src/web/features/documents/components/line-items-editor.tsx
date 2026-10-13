@@ -6,8 +6,8 @@ import type { DocumentItemInput, documentItemSchema } from "@shared/schemas/docu
 import type { z } from "@shared/schemas/zod";
 import { AT_TAX_RATES_BP, DEFAULT_TAX_RATE_BP, type TaxMode } from "@shared/tax";
 import { calcLine } from "@shared/totals";
+import { UnitSelect } from "@/components/unit-select";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ArticleDTO } from "@/features/articles/api";
@@ -158,7 +158,7 @@ export function LineItemsEditor<T extends LineItemsFormValues, TTransformed = T>
                 control={control}
                 name={`items.${index}.unit`}
                 render={({ field: f }) => (
-                  <Input {...f} value={f.value ?? ""} placeholder="Stk." aria-label={`Position ${index + 1}: Einheit`} />
+                  <UnitSelect value={f.value} onChange={f.onChange} onBlur={f.onBlur} aria-label={`Position ${index + 1}: Einheit`} />
                 )}
               />
               <Controller

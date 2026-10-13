@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import articles from "./routes/articles";
+import bank from "./routes/bank";
 import clients from "./routes/clients";
 import dashboard from "./routes/dashboard";
 import documents from "./routes/documents";
+import expenses from "./routes/expenses";
 import exportRoutes from "./routes/export";
 import files from "./routes/files";
 import forecast from "./routes/forecast";
@@ -11,7 +13,9 @@ import recurring from "./routes/recurring";
 import reminders from "./routes/reminders";
 import settings from "./routes/settings";
 import pdf from "./routes/pdf";
+import tax from "./routes/tax";
 import templates from "./routes/templates";
+import units from "./routes/units";
 
 const base = new Hono();
 
@@ -34,7 +38,11 @@ export const app = base
   .route("/api/articles", articles)
   .route("/api/reminders", reminders)
   .route("/api/recurring", recurring)
-  .route("/api/forecast", forecast);
+  .route("/api/forecast", forecast)
+  .route("/api/expenses", expenses)
+  .route("/api/bank", bank)
+  .route("/api/tax", tax)
+  .route("/api/units", units);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 

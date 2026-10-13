@@ -32,6 +32,8 @@ export const settingsUpdateSchema = z.object({
   taxNoteReverseCharge: longText(),
   taxNoteThirdCountry: longText(),
   taxNoteSmallBusiness: longText(),
+  vatBasis: z.enum(["accrual", "cash"]),
+  vatPeriod: z.enum(["monthly", "quarterly"]),
 });
 
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;

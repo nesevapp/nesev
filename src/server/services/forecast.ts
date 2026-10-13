@@ -3,11 +3,13 @@ import { addDays, todayIso } from "../../shared/dates";
 import { addMonthsAnchored, runDatesUntil } from "../../shared/recurring";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, recurringInvoices, settings } from "../db/schema";
+import { paidCentsByDocument } from "./bank";
 
 // Payment forecast (GET /api/forecast): expected INCOMING money (gross) per week / month.
 // Sources:
 // - open invoices (final/sent): expected = dueDate + the client's average payment delay. Overdue ones
-//   (dueDate < today) land in the "overdue" bucket at today. Non-draft credit notes on an invoice reduce it.
+//   (dueDate < today) land in the "overdue" bucket at today. Non-draft credit notes and partial bank
+//   payments on an invoice reduce it.
 // - recurring invoices: every future run within the horizon (active, respecting endDate); expected =
 //   run date + payment terms + client delay. Drafts generated from a recurring invoice count here too.
 // - optional: other invoice drafts; open offers (final/sent, not expired) weighted by a probability,
@@ -216,10 +218,17 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
     creditByInvoice.set(c.parentId!, cur);
   }
 
+  const paidByInvoice = paidCentsByDocument(db, invoices.map((d) => d.id));
+
   for (const doc of [...invoices, ...recurringDrafts]) {
     const isDraft = doc.status === "draft";
     const source: ForecastSource = isDraft ? (doc.recurringInvoiceId ? "recurring" : "draft") : "invoice";
     const credit = creditByInvoice.get(doc.id) ?? { gross: 0, tax: 0 };
+    // partial bank payments reduce what is still expected (VAT part pro rata)
+    const owed = doc.grossCents - credit.gross;
+    const paid = Math.min(paidByInvoice.get(doc.id) ?? 0, Math.max(owed, 0));
+    const owedTax = doc.taxCents - credit.tax;
+    const openTax = owed > 0 ? Math.round((owedTax * (owed - paid)) / owed) : owedTax;
     const delay = delayFor(doc.clientId);
     const dueDate = doc.dueDate ?? addDays(doc.issueDate, termsFor(doc.clientId));
     const overdue = !isDraft && dueDate < today;
@@ -237,8 +246,8 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
       number: doc.number,
       recurringInvoiceId: doc.recurringInvoiceId,
       label: doc.title,
-      grossCents: doc.grossCents - credit.gross,
-      taxCents: doc.taxCents - credit.tax,
+      grossCents: owed - paid,
+      taxCents: openTax,
       fullGrossCents: doc.grossCents,
       probability: 100,
       delay,

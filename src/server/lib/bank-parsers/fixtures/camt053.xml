@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>STMT-2026-03</MsgId>
+      <CreDtTm>2026-03-31T18:00:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>2026-03-001</Id>
+      <CreDtTm>2026-03-31T18:00:00</CreDtTm>
+      <Acct>
+        <Id><IBAN>AT611904300234573201</IBAN></Id>
+        <Ccy>EUR</Ccy>
+        <Svcr><FinInstnId><BIC>GIBAATWWXXX</BIC></FinInstnId></Svcr>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">1000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-03-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">2405.40</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-03-31</Dt></Dt>
+      </Bal>
+      <!-- incoming payment with invoice number in unstructured remittance -->
+      <Ntry>
+        <NtryRef>1</NtryRef>
+        <Amt Ccy="EUR">1200.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-05</Dt></BookgDt>
+        <ValDt><Dt>2026-03-05</Dt></ValDt>
+        <AcctSvcrRef>2026030500001</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>RCDT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+            <RltdPties>
+              <Dbtr><Nm>Müller &amp; Söhne GmbH</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>DE89 3704 0044 0532 0130 00</IBAN></Id></DbtrAcct>
+              <Cdtr><Nm>Muster e.U.</Nm></Cdtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Rechnung RE 2026 0001</Ustrd>
+              <Ustrd>Danke</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <!-- outgoing SEPA transfer, camt v8 style party (Pty/Nm), structured creditor reference -->
+      <Ntry>
+        <Amt Ccy="EUR">94.60</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><DtTm>2026-03-10T09:15:00</DtTm></BookgDt>
+        <ValDt><Dt>2026-03-11</Dt></ValDt>
+        <AcctSvcrRef>2026031000007</AcctSvcrRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>E2E-A1-77</EndToEndId></Refs>
+            <RltdPties>
+              <Cdtr><Pty><Nm>A1 Telekom Austria AG</Nm></Pty></Cdtr>
+              <CdtrAcct><Id><IBAN>AT000000000000000000</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd><CdtrRefInf><Ref>RF18539007547034</Ref></CdtrRefInf></Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <!-- collective booking: two incoming payments in one entry -->
+      <Ntry>
+        <Amt Ccy="EUR">300.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-20</Dt></BookgDt>
+        <ValDt><Dt>2026-03-20</Dt></ValDt>
+        <NtryDtls>
+          <Btch><NbOfTxs>2</NbOfTxs></Btch>
+          <TxDtls>
+            <Refs><AcctSvcrRef>B-1</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="EUR">100.00</Amt></TxAmt></AmtDtls>
+            <RltdPties><Dbtr><Nm>Anna Beispiel</Nm></Dbtr><DbtrAcct><Id><IBAN>AT483200000012345864</IBAN></Id></DbtrAcct></RltdPties>
+            <RmtInf><Ustrd>RE-2026-0002 Teilzahlung</Ustrd></RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>B-2</AcctSvcrRef></Refs>
+            <AmtDtls><TxAmt><Amt Ccy="EUR">200.00</Amt></TxAmt></AmtDtls>
+            <RltdPties><Dbtr><Nm>Berta Beispiel</Nm></Dbtr></RltdPties>
+            <RmtInf><Ustrd>RE20260003</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <!-- pending entry: not imported -->
+      <Ntry>
+        <Amt Ccy="EUR">50.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>PDNG</Sts>
+        <BookgDt><Dt>2026-03-31</Dt></BookgDt>
+        <NtryDtls><TxDtls><RmtInf><Ustrd>vorgemerkt</Ustrd></RmtInf></TxDtls></NtryDtls>
+      </Ntry>
+      <!-- card payment without details -->
+      <Ntry>
+        <Amt Ccy="EUR">0.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-25</Dt></BookgDt>
+        <AddtlNtryInf>Kontoführung</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

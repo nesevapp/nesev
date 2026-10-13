@@ -15,6 +15,27 @@
       "when": 1791928389094,
       "tag": "0001_articles_reminders_recurring",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791930091778,
+      "tag": "0002_expenses_bank",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791930250691,
+      "tag": "0003_bank_account_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791930648958,
+      "tag": "0004_settings_units",
+      "breakpoints": true
     }
   ]
 }

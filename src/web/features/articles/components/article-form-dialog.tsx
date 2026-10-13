@@ -12,6 +12,7 @@ import {
 } from "@shared/schemas/article";
 import { AT_TAX_RATES_BP, DEFAULT_TAX_RATE_BP } from "@shared/tax";
 import { TextField, TextareaField } from "@/components/form-fields";
+import { UnitSelect } from "@/components/unit-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -146,7 +147,17 @@ export function ArticleFormDialog({
               className="[&_textarea]:min-h-16"
             />
             <div className="grid gap-4 sm:grid-cols-3">
-              <TextField control={form.control} name="unit" label="Einheit" placeholder="Stk., h, Monat…" />
+              <FormField
+                control={form.control}
+                name="unit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Einheit</FormLabel>
+                    <UnitSelect value={field.value} onChange={field.onChange} onBlur={field.onBlur} aria-label="Einheit" />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="unitPriceCents"

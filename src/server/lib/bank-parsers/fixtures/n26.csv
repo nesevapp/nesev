@@ -1,0 +1,4 @@
+"Booking Date","Value Date","Partner Name","Partner Iban",Type,"Payment Reference","Account Name","Amount (EUR)","Original Amount","Original Currency","Exchange Rate"
+2026-03-02,2026-03-02,"Müller GmbH",DE89370400440532013000,Credit Transfer,"RE-2026-0001","Main Account",1200.0,,,
+2026-03-03,2026-03-03,"SPAR DANKT 1234",,Presentment,"-","Main Account",-23.45,-23.45,EUR,1.0
+2026-03-03,2026-03-03,"SPAR DANKT 1234",,Presentment,"-","Main Account",-23.45,-23.45,EUR,1.0

@@ -31,14 +31,15 @@ export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
   paid: "Bezahlt",
 };
 
-/** Number sequences also cover reminders (Mahnungen, see ./reminders), which are not documents. */
-export type NumberedType = DocumentType | "reminder";
+/** Number sequences also cover reminders (Mahnungen, see ./reminders) and expenses (see ./expenses), which are not documents. */
+export type NumberedType = DocumentType | "reminder" | "expense";
 
 export const DOCUMENT_NUMBER_PREFIX: Record<NumberedType, string> = {
   offer: "AN",
   invoice: "RE",
   credit_note: "GS",
   reminder: "MA",
+  expense: "ER",
 };
 
 /** PDF templates exist per document type plus one type for reminders. */

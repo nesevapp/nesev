@@ -20,13 +20,15 @@ import {
 import type { DbOrTx } from "../db/client";
 import { clients, type Document, documents, type Reminder, reminders, settings } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
+import { paidCentsForDocument } from "./bank";
 import { clientSnapshot, getClient } from "./clients";
 import { getSettings, sellerSnapshot } from "./settings";
 
 // Payment reminders (Mahnungen), see src/shared/reminders.ts for the rules.
 // - Drafts are editable; finalize assigns MA-YYYY-NNNN (gapless, same sequence table as documents),
 //   freezes client + seller snapshots and locks the reminder. The frozen PDF is rendered by the route.
-// - openCents = invoice gross minus finalized credit notes for it, captured when the draft is created.
+// - openCents = invoice gross minus finalized credit notes and partial bank payments for it, captured when
+//   the draft is created.
 
 const notFound = () => new HTTPException(404, { message: "Mahnung nicht gefunden" });
 const unprocessable = (message: string) => new HTTPException(422, { message });
@@ -145,14 +147,14 @@ export function getReminder(db: DbOrTx, id: number): ReminderDetail {
   };
 }
 
-/** Invoice gross minus finalized credit notes issued for it. */
+/** Invoice gross minus finalized credit notes issued for it minus bank payments allocated to it. */
 export function openAmountCents(db: DbOrTx, invoice: Pick<Document, "id" | "grossCents">): number {
   const credited = db
     .select({ cents: sql<number>`coalesce(sum(${documents.grossCents}), 0)` })
     .from(documents)
     .where(and(eq(documents.parentId, invoice.id), eq(documents.type, "credit_note"), ne(documents.status, "draft")))
     .get();
-  return invoice.grossCents - (credited?.cents ?? 0);
+  return invoice.grossCents - (credited?.cents ?? 0) - paidCentsForDocument(db, invoice.id);
 }
 
 export interface DueInvoiceRow {

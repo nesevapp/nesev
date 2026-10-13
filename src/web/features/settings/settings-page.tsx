@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
+import { UnitSettingsSection } from "./unit-settings";
 import { apiErrorMessage, fileUrl } from "@/lib/api";
 import { type SettingsData, settingsQuery, useDeleteLogo, useUpdateSettings, useUploadLogo } from "./api";
 
@@ -120,6 +121,55 @@ export function SettingsPage() {
               label="Kleinunternehmerregelung"
               description="Alle neuen Belege ohne Umsatzsteuer (§ 6 Abs. 1 Z 27 UStG)."
             />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={control}
+                name="vatBasis"
+                render={({ field }) => (
+                  <FormItem className="content-start">
+                    <FormLabel>Besteuerungsart</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="accrual">Sollbesteuerung (nach Rechnungsdatum)</SelectItem>
+                        <SelectItem value="cash">Istbesteuerung (nach Zahlungseingang)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Wer sonstige Leistungen erbringt (z.B. Freiberufler, Dienstleister), ist in Österreich meist Ist-besteuert, sofern
+                      nicht zur Sollbesteuerung optiert wurde. Bestimmt, welches Datum in der UVA zählt.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="vatPeriod"
+                render={({ field }) => (
+                  <FormItem className="content-start">
+                    <FormLabel>UVA-Zeitraum</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="quarterly">Vierteljährlich</SelectItem>
+                        <SelectItem value="monthly">Monatlich</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Monatlich, wenn der Vorjahresumsatz 100.000 € überstiegen hat.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <TextareaField control={control} name="taxNoteReverseCharge" label="Hinweis Reverse Charge (EU)" rows={2} />
             <TextareaField control={control} name="taxNoteThirdCountry" label="Hinweis Drittland" rows={2} />
             <TextareaField control={control} name="taxNoteSmallBusiness" label="Hinweis Kleinunternehmer" rows={2} />
@@ -162,6 +212,7 @@ export function SettingsPage() {
           </div>
         </form>
       </Form>
+      <UnitSettingsSection />
       <ReminderSettingsSection />
     </Page>
   );
