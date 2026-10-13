@@ -22,6 +22,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
+import {
+  AnalysisStatusCell,
+  AnalysisToolbar,
+  ReceiptListScope,
+  SelectCell,
+  useReceiptListState,
+} from "@/features/receipts/analysis-list";
 import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +56,11 @@ const col = createColumnHelper<typeof features, ExpenseListRowDTO>();
 const money = (v: number) => <span className="tabular">{formatCents(v)}</span>;
 
 const COLUMNS = col.columns([
+  col.display({
+    id: "select",
+    header: "",
+    cell: ({ row }) => <SelectCell expense={row.original} />,
+  }),
   col.accessor((e) => e.number ?? "", {
     id: "number",
     header: "Nr.",
@@ -108,6 +120,11 @@ const COLUMNS = col.columns([
     header: "Beleg",
     sortFn: "basic",
     cell: ({ row }) => <ReceiptLink expense={row.original} />,
+  }),
+  col.display({
+    id: "analysis",
+    header: "Analyse",
+    cell: ({ row }) => <AnalysisStatusCell expense={row.original} />,
   }),
 ]);
 
@@ -177,7 +194,9 @@ export function ExpensesPage({
     if (debouncedQ !== (search.q ?? "")) setSearch((s) => ({ ...s, q: debouncedQ || undefined }));
   }, [debouncedQ, search.q, setSearch]);
 
-  const { data = EMPTY, isFetching } = useQuery(expensesQuery(search));
+  const { data: fetched = EMPTY, isFetching } = useQuery(expensesQuery(search));
+  const receiptList = useReceiptListState();
+  const data = receiptList.filter(fetched);
   const { data: drafts = EMPTY } = useQuery(expensesQuery({ status: "incomplete" }));
   const createDrafts = useCreateDrafts();
   const dragging = useWindowFileDrag();
@@ -190,7 +209,15 @@ export function ExpensesPage({
     enableSortingRemoval: false,
   });
 
-  const filtered = !!(search.q || search.status || search.category || search.attachment || search.from || search.to);
+  const filtered = !!(
+    search.q ||
+    search.status ||
+    search.category ||
+    search.attachment ||
+    search.from ||
+    search.to ||
+    receiptList.readyOnly
+  );
   const sum = (k: "netCents" | "taxCents" | "grossCents") => data.reduce((s, e) => s + e[k], 0);
   const open = (id: number) => navigate({ to: "/expenses/$id", params: { id } });
   const firstDraft = drafts.at(-1); // oldest
@@ -347,6 +374,7 @@ export function ExpensesPage({
             onClick={() => {
               setQ("");
               setSearch(() => ({}));
+              receiptList.setReadyOnly(false);
             }}
           >
             <X />
@@ -358,7 +386,8 @@ export function ExpensesPage({
         </span>
       </div>
 
-      <div className="rounded-lg border">
+      <AnalysisToolbar state={receiptList} rows={fetched} />
+      <ReceiptListScope value={receiptList} className="rounded-lg border">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
@@ -430,18 +459,18 @@ export function ExpensesPage({
           {data.length > 0 && (
             <TableFooter className="bg-transparent">
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={4} className="py-2.5 text-xs font-normal text-muted-foreground">
+                <TableCell colSpan={5} className="py-2.5 text-xs font-normal text-muted-foreground">
                   Summe{filtered ? " (gefiltert)" : ""}
                 </TableCell>
                 <TableCell className="tabular py-2.5 text-right">{formatCents(sum("netCents"))}</TableCell>
                 <TableCell className="tabular py-2.5 text-right">{formatCents(sum("taxCents"))}</TableCell>
                 <TableCell className="tabular py-2.5 text-right">{formatCents(sum("grossCents"))}</TableCell>
-                <TableCell colSpan={2} />
+                <TableCell colSpan={3} />
               </TableRow>
             </TableFooter>
           )}
         </Table>
-      </div>
+      </ReceiptListScope>
     </Page>
   );
 }

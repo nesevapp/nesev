@@ -85,7 +85,7 @@ export function ReceiptPane({
       </div>
       <div className="min-h-0 flex-1">
         {receipt.kind === "pdf" ? (
-          <iframe src={receipt.url} title="Beleg" className="size-full min-h-[70vh] bg-white" />
+          <iframe src={receipt.url} title="Beleg" className="size-full min-h-[70vh] bg-white lg:min-h-0" />
         ) : (
           <div className="size-full overflow-auto p-3">
             <img src={receipt.url} alt="Beleg" className="mx-auto max-w-full rounded shadow-sm" />

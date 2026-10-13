@@ -19,6 +19,7 @@ export function SupplierInput({
   inputRef,
   id,
   autoFocus,
+  className,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -27,6 +28,7 @@ export function SupplierInput({
   inputRef?: React.Ref<HTMLInputElement>;
   id?: string;
   autoFocus?: boolean;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -53,6 +55,7 @@ export function SupplierInput({
         value={value}
         autoComplete="off"
         placeholder="Name des Lieferanten"
+        className={className}
         role="combobox"
         aria-expanded={visible}
         aria-controls={listId}

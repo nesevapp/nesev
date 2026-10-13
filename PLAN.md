@@ -2,7 +2,7 @@
 
 Local single-user sevdesk clone for an Austrian sole trader: offers, invoices, credit notes, clients, PDF designer, plus expenses, bank and tax helpers. EUR only. Clients in AT, EU and CH. No auth, runs on localhost.
 
-Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092` (finance), receipt OCR in progress.
+Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092` (finance), receipt OCR (see git log).
 
 ---
 
@@ -23,7 +23,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 11 | Expenses with receipt upload | ✅ done | `/expenses` |
 | 12 | Taxes: UVA, ZM, EAR | ✅ done | `/tax` |
 | 13 | Bank import + payment matching | ✅ done | `/bank` |
-| 14 | On-demand local receipt OCR | 🚧 in progress | `/expenses`, Einstellungen → Belegerkennung |
+| 14 | On-demand local receipt OCR | ✅ done | `/expenses`, Einstellungen → Belegerkennung |
+| 15 | Frontend SDK (`src/web/sdk`) | 🚧 in progress | all features |
 
 ---
 
@@ -101,9 +102,11 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - Auto-apply per account: off, safe (default) or aggressive, and only when exactly one candidate qualifies. Everything else is a one-click suggestion.
   - Split and partial payments are supported. A covered invoice becomes paid with the booking date, and unmatching reverts that.
 
-### Receipt OCR (in progress)
+### Receipt OCR
 - Upload never analyses anything. The user queues an analysis per receipt or in bulk, and a background worker processes the queue one receipt at a time.
-- Pipeline: embedded ZUGFeRD/XRechnung XML → PDF text layer → Apple Vision OCR (Tesseract fallback) → local Ollama model (default `qwen2.5:7b`) with a JSON schema. The model is unloaded after a batch.
+- Pipeline: embedded ZUGFeRD/XRechnung XML (no model) → PDF text layer → Apple Vision OCR (Tesseract fallback) → rule-based extractor + local Ollama model (default `qwen3.5:4b` for text and vision mode, `think: false`, temperature 0). The model is unloaded after each batch.
+- Measured on samples: OCR ≈ 0.4 s, PDF text ≈ 30 ms, model ≈ 5–7 s in text mode and ≈ 9–10 s in vision mode. All 6 samples were extracted correctly.
+- Settings (Einstellungen → Belegerkennung): Ollama URL (local only), mode text/vision, models, OCR engine, unload after batch; the status shows helper/Ollama/model health.
 - The extracted fields are checked: amounts must add up, UID and IBAN must be valid, and known suppliers are recognised.
 - In the editor, "Erkennung" suggestions only fill empty fields and are saved only when the user saves.
 
@@ -124,16 +127,18 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 ---
 
 ## 4. Roadmap (in order)
-1. **Finish receipt OCR** – review the agent's results, test with real receipts, commit.
-2. **Verify bank presets with real exports** from the user's bank (George / ELBA / …) and fix the presets.
-3. **Close known gaps:**
+1. **Frontend SDK** – central `src/web/sdk` with per-resource typed clients, unified DTO types and query keys (fixes slow and false editor type errors). No OpenAPI for now.
+2. **Test receipt OCR with real receipts** (Ollama has to be running: `ollama serve` or `brew services start ollama`).
+3. **Verify bank presets with real exports** from the user's bank (George / ELBA / …) and fix the presets.
+4. **Close known gaps:**
    - Manual "Zahlung zurücksetzen" should handle bank allocations.
    - "teilbezahlt" badge in invoice lists and on the dashboard.
    - A credit note that fully covers an invoice should mark it paid.
    - Favicon.
-4. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
-5. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
-6. **Comfort:** dark mode, keyboard shortcuts overview, global search.
-7. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
+   - OCR: descriptions are sometimes too long, and category suggestions for trades (e.g. electrician → Instandhaltung) need tuning.
+5. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
+6. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
+7. **Comfort:** dark mode, keyboard shortcuts overview, global search.
+8. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
 
 Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking.

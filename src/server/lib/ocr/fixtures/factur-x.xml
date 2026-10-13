@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
+<rsm:ExchangedDocument><ram:ID>2026-118</ram:ID><ram:TypeCode>380</ram:TypeCode>
+<ram:IssueDateTime><udt:DateTimeString format="102">20260921</udt:DateTimeString></ram:IssueDateTime></rsm:ExchangedDocument>
+<rsm:SupplyChainTradeTransaction>
+<ram:ApplicableHeaderTradeAgreement>
+<ram:SellerTradeParty><ram:Name>Steuerberatung Huber &amp; Partner OG</ram:Name>
+<ram:PostalTradeAddress><ram:CountryID>AT</ram:CountryID></ram:PostalTradeAddress>
+<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">ATU00000000</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>
+</ram:ApplicableHeaderTradeAgreement>
+<ram:ApplicableHeaderTradeSettlement><ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
+<ram:SpecifiedTradeSettlementPaymentMeans><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>AT611904300234573201</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>
+<ram:ApplicableTradeTax><ram:CalculatedAmount>90.00</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>450.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20</ram:RateApplicablePercent></ram:ApplicableTradeTax>
+<ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">20261005</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>
+<ram:SpecifiedTradeSettlementHeaderMonetarySummation><ram:LineTotalAmount>450.00</ram:LineTotalAmount><ram:TaxBasisTotalAmount>450.00</ram:TaxBasisTotalAmount><ram:TaxTotalAmount currencyID="EUR">90.00</ram:TaxTotalAmount><ram:GrandTotalAmount>540.00</ram:GrandTotalAmount><ram:DuePayableAmount>540.00</ram:DuePayableAmount></ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+</ram:ApplicableHeaderTradeSettlement></rsm:SupplyChainTradeTransaction></rsm:CrossIndustryInvoice>

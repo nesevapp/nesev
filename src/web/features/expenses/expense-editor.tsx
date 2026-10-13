@@ -40,6 +40,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ActionBar } from "@/features/documents/components/action-bar";
+import { AnalysisPanel, APPLIED_CLASS, type ApplyKey } from "@/features/receipts/analysis-panel";
+import { useMarkApplied } from "@/features/receipts/api";
 import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -133,6 +135,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
   const remove = useDeleteExpense();
   const upload = useUploadReceipt();
   const removeReceipt = useRemoveReceipt();
+  const markApplied = useMarkApplied();
   const [grossMode, setGrossMode] = useGrossMode();
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** receipt dropped on a new, unsaved expense; uploaded on first save */
@@ -143,6 +146,9 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
   const [startedIncomplete] = useState(() => !!expense?.incomplete);
   /** an explicit choice (or a picked supplier) stops deriving the treatment from country + UID */
   const treatmentTouched = useRef(!!expense && !expense.incomplete);
+  /** fields filled from receipt-analysis suggestions, highlighted until saved */
+  const [applied, setApplied] = useState<{ analysisId: number; keys: Set<ApplyKey> } | null>(null);
+  const hl = (...keys: ApplyKey[]) => (keys.some((k) => applied?.keys.has(k)) ? APPLIED_CLASS : undefined);
 
   const form: Form = useForm<ExpenseFormValues, unknown, ExpenseFormData>({
     resolver: zodResolver(expenseFormSchema),
@@ -206,6 +212,10 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
               }
             }
             form.reset(toFormValues(saved));
+            if (applied) {
+              markApplied.mutate(applied.analysisId);
+              setApplied(null);
+            }
             resolve(saved);
           } catch (err) {
             toast.error(apiErrorMessage(err));
@@ -270,7 +280,14 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
     }
     upload.mutate(
       { id: expense.id, file: accepted[0] },
-      { onSuccess: () => toast.success("Beleg gespeichert"), onError: (err) => toast.error(apiErrorMessage(err)) },
+      {
+        onSuccess: () => {
+          toast.success("Beleg gespeichert");
+          // a replaced receipt invalidates earlier analysis results
+          void qc.invalidateQueries({ queryKey: ["receipts"] });
+        },
+        onError: (err) => toast.error(apiErrorMessage(err)),
+      },
     );
   };
 
@@ -317,13 +334,35 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
       }
     >
       <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <ReceiptPane
-          receipt={receipt}
-          onFile={onFile}
-          onRemove={onRemoveReceipt}
-          busy={upload.isPending || removeReceipt.isPending}
-          className="lg:sticky lg:top-6 lg:h-[calc(100vh-7rem)] lg:self-start"
-        />
+        <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-6 lg:h-[calc(100vh-7rem)] lg:self-start">
+          <ReceiptPane
+            receipt={receipt}
+            onFile={onFile}
+            onRemove={onRemoveReceipt}
+            busy={upload.isPending || removeReceipt.isPending}
+            className="min-h-0 flex-1"
+          />
+          {expense && (
+            <AnalysisPanel
+              expenseId={expense.id}
+              hasReceipt={!!expense.attachmentPath && !pendingFile}
+              className="max-h-[55%] shrink-0"
+              target={{
+                form,
+                applyTreatment: (t) => {
+                  treatmentTouched.current = true;
+                  applyTreatment(t);
+                },
+                draft: startedIncomplete,
+                onApplied: (keys, analysisId) =>
+                  setApplied((prev) => ({
+                    analysisId,
+                    keys: new Set([...(prev?.analysisId === analysisId ? prev.keys : []), ...keys]),
+                  })),
+              }}
+            />
+          )}
+        </div>
 
         <Form {...form}>
           <form
@@ -342,6 +381,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                     <FormLabel>Lieferant</FormLabel>
                     <SupplierInput
                       inputRef={field.ref}
+                      className={hl("supplierName")}
                       autoFocus={!expense || !expense.supplierName}
                       value={field.value ?? ""}
                       onChange={field.onChange}
@@ -366,7 +406,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                       }}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={cn("w-full", hl("supplierCountry"))}>
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
@@ -391,6 +431,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                       <Input
                         {...field}
                         placeholder="optional"
+                        className={hl("supplierUid")}
                         onBlur={() => {
                           field.onBlur();
                           deriveTreatment();
@@ -408,13 +449,13 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                   <FormItem>
                     <FormLabel>Rechnungsnummer (Lieferant)</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="optional" />
+                      <Input {...field} placeholder="optional" className={hl("supplierInvoiceNumber")} />
                     </FormControl>
                   </FormItem>
                 )}
               />
-              <DateInput form={form} name="issueDate" label="Rechnungsdatum" />
-              <DateInput form={form} name="dueDate" label="Fällig am" />
+              <DateInput form={form} name="issueDate" label="Rechnungsdatum" className={hl("issueDate")} />
+              <DateInput form={form} name="dueDate" label="Fällig am" className={hl("dueDate")} />
               <PaidField form={form} />
             </section>
 
@@ -433,7 +474,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                       }}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={cn("w-full", hl("vatTreatment"))}>
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
@@ -461,7 +502,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                   <FormItem>
                     <FormLabel>Beschreibung</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="z. B. Hosting Oktober" />
+                      <Input {...field} placeholder="z. B. Hosting Oktober" className={hl("description")} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -478,7 +519,9 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
                   </Label>
                 </div>
               </div>
-              <ExpenseLinesEditor form={form} treatment={treatment} grossMode={grossMode} />
+              <div className={cn("rounded-md", hl("lines", "category"))}>
+                <ExpenseLinesEditor form={form} treatment={treatment} grossMode={grossMode} />
+              </div>
               <div className="mt-6 flex justify-end">
                 <ExpenseTotals lines={lines ?? []} treatment={treatment} />
               </div>
@@ -575,7 +618,17 @@ function applySupplier(
   }
 }
 
-function DateInput({ form, name, label }: { form: Form; name: "issueDate" | "dueDate"; label: string }) {
+function DateInput({
+  form,
+  name,
+  label,
+  className,
+}: {
+  form: Form;
+  name: "issueDate" | "dueDate";
+  label: string;
+  className?: string;
+}) {
   return (
     <FormField
       control={form.control}
@@ -589,7 +642,7 @@ function DateInput({ form, name, label }: { form: Form; name: "issueDate" | "due
               {...field}
               value={field.value ?? ""}
               onChange={(e) => field.onChange(name === "issueDate" ? e.target.value : e.target.value || null)}
-              className="tabular"
+              className={cn("tabular", className)}
             />
           </FormControl>
           <FormMessage />

@@ -13,7 +13,8 @@ bun test                  # all *.test.ts (in-memory DBs via createTestDb)
 bun run build && bun start  # production: Hono serves SPA + API on PORT
 bun run db:generate       # after editing src/server/db/schema.ts → new migration file (commit it)
 ```
-Ports 3001/5173 are used by other projects on this machine, so always set `PORT`. Isolated test runs: `NESEV_DATA_DIR=/tmp/nesev-x PORT=39xx bun run dev`. Never use the real `data/` for experiments.
+Ports 3001/5173 are used by other projects on this machine, so always set `PORT`. The user's own instance runs on API 3998 / Vite 5174 with the real `data/`. Never touch it and never use `data/` for experiments.
+Isolated test runs: `NESEV_DATA_DIR=/tmp/nesev-x PORT=39xx bun run dev:api` plus `bunx vite --port 51xx --strictPort` (with `PORT` set the same). **Stop only processes you started, by PID.** Never `pkill`/`kill` by name, pattern or port range: that has killed the user's server before.
 
 ## Stack
 Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle · React + Vite + Tailwind v4 + shadcn/ui · TanStack Router (code-based) / Query / Table v9 · react-hook-form + zod 4 · pdfme 6 (PDF render + designer) · fflate (zip).
@@ -40,6 +41,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - bun:sqlite transactions are synchronous: no `await` inside `db.transaction`.
 - Hono route handlers must be chained on one `new Hono()` or the RPC types are lost.
 - The editor's TS server sometimes reports `never`-typed errors on `hc` clients; trust `bun run typecheck`.
+- Receipt OCR needs Ollama ≥ 0.19 for the default `qwen3.5:4b`. The Homebrew build lacks `libollama_xgrammar` for MLX models, so a JSON-schema `format` is rejected ("structured output is unavailable"). `receipt-ollama.ts` then retries with the schema in the prompt (and sends `think: false`). The Apple Vision helper is compiled on first use into `data/bin/`.
 - `src/server/lib/bank-parsers/fixtures/**` are byte-exact (CRLF, Windows-1252) via `.gitattributes`.
 
 ## Working style for this repo

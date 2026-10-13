@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
+import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
 import { UnitSettingsSection } from "./unit-settings";
 import { apiErrorMessage, fileUrl } from "@/lib/api";
 import { type SettingsData, settingsQuery, useDeleteLogo, useUpdateSettings, useUploadLogo } from "./api";
@@ -214,6 +215,7 @@ export function SettingsPage() {
       </Form>
       <UnitSettingsSection />
       <ReminderSettingsSection />
+      <ReceiptSettingsSection />
     </Page>
   );
 }

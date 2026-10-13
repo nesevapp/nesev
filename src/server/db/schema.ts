@@ -64,6 +64,8 @@ export const settings = sqliteTable("settings", {
   vatPeriod: text("vat_period").$type<"monthly" | "quarterly">().notNull().default("quarterly"),
   /** units offered in line-item dropdowns (JSON string[]); null → DEFAULT_UNITS */
   units: text("units", { mode: "json" }).$type<string[]>(),
+  /** receipt analysis config (JSON: Ollama URL, model, ...; shape owned by the receipt-ocr feature); null → defaults */
+  ocrSettings: text("ocr_settings", { mode: "json" }).$type<unknown>(),
   ...timestamps,
 });
 
@@ -369,6 +371,38 @@ export const expenseLines = sqliteTable(
   (t) => [index("expense_lines_expense_idx").on(t.expenseId, t.position), index("expense_lines_category_idx").on(t.category)],
 );
 
+/**
+ * On-demand receipt analysis (text extraction / OCR / field extraction) for an expense's attachment.
+ * Uploading never creates a run; the user queues analyses explicitly. One row per run, newest wins.
+ */
+export const receiptAnalyses = sqliteTable(
+  "receipt_analyses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    expenseId: integer("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    /** "queued" | "running" | "done" | "failed" | "cancelled" */
+    status: text("status").notNull().default("queued"),
+    /** attachment analysed (to detect a replaced receipt) */
+    attachmentPath: text("attachment_path"),
+    /** how the text was obtained: "xml" | "pdf_text" | "vision" | "tesseract" | ... */
+    textSource: text("text_source"),
+    text: str("text"),
+    /** extracted fields with confidences (JSON, shape owned by the receipt-ocr feature) */
+    result: text("result", { mode: "json" }).$type<unknown>(),
+    /** model used for field extraction, e.g. "qwen3.5:4b" */
+    model: str("model"),
+    error: str("error"),
+    /** set once the user applied the suggestions to the expense */
+    appliedAt: text("applied_at"),
+    startedAt: text("started_at"),
+    finishedAt: text("finished_at"),
+    ...timestamps,
+  },
+  (t) => [index("receipt_analyses_expense_idx").on(t.expenseId), index("receipt_analyses_status_idx").on(t.status)],
+);
+
 export const bankAccounts = sqliteTable("bank_accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -477,6 +511,7 @@ export type Reminder = typeof reminders.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type NewExpense = typeof expenses.$inferInsert;
 export type ExpenseLine = typeof expenseLines.$inferSelect;
+export type ReceiptAnalysis = typeof receiptAnalyses.$inferSelect;
 export type BankAccount = typeof bankAccounts.$inferSelect;
 export type BankImport = typeof bankImports.$inferSelect;
 export type BankTransaction = typeof bankTransactions.$inferSelect;

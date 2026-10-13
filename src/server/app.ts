@@ -13,6 +13,7 @@ import recurring from "./routes/recurring";
 import reminders from "./routes/reminders";
 import settings from "./routes/settings";
 import pdf from "./routes/pdf";
+import receipts from "./routes/receipts";
 import tax from "./routes/tax";
 import templates from "./routes/templates";
 import units from "./routes/units";
@@ -42,7 +43,8 @@ export const app = base
   .route("/api/expenses", expenses)
   .route("/api/bank", bank)
   .route("/api/tax", tax)
-  .route("/api/units", units);
+  .route("/api/units", units)
+  .route("/api/receipts", receipts);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
