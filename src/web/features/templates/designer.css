@@ -1,0 +1,19 @@
+/* pdfme Designer trimmed down for nesev templates (all scoped to the designer page). */
+
+/* Sidebar toggle and page add/remove menu: the right panel is always shown, templates have one page. */
+.nesev-designer .pdfme-designer-sidebar-toggle,
+.nesev-designer .pdfme-ui-context-menu,
+/* Palette: only static elements make sense there; bound fields (tables, logo, QR) come from "Variablen".
+   The plugins stay registered so existing templates still render. */
+.nesev-designer .pdfme-designer-plugin-multiVariableText,
+.nesev-designer .pdfme-designer-plugin-table,
+.nesev-designer .pdfme-designer-plugin-list,
+.nesev-designer .pdfme-designer-plugin-svg,
+.nesev-designer .pdfme-designer-plugin-ellipse {
+  display: none !important;
+}
+
+/* Properties: type, name and binding are managed by nesev (the name is the variable binding). */
+.nesev-designer .pdfme-designer-detail-view .ant-col:has(> .ant-form-item :is(#type, #name, #editable, #required)) {
+  display: none;
+}
