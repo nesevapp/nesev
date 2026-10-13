@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { StatusBadge } from "@/features/documents/components/status-badge";
+import { PartialLabel, StatusBadge } from "@/features/documents/components/status-badge";
 import { docLink } from "@/features/documents/config";
 import { RemindButton } from "@/features/reminders/components/invoice-reminders";
 import { cn } from "@/lib/utils";
@@ -329,12 +329,20 @@ function OverdueSection({ rows, total }: { rows: OverdueDocument[]; total: numbe
             {rows.map((row) => (
               <TableRow key={row.id} {...rowNav(row)}>
                 <TableCell className="py-2">
-                  <NumberCell number={row.number} />
+                  <span className="inline-flex items-center gap-1.5">
+                    <NumberCell number={row.number} />
+                    {row.partial && <PartialLabel />}
+                  </span>
                 </TableCell>
                 <TableCell className="max-w-64 truncate py-2">{row.clientName}</TableCell>
                 <TableCell className="py-2 tabular text-red-600">{formatDate(row.dueDate)}</TableCell>
                 <TableCell className="py-2 text-right tabular">{row.daysOverdue}</TableCell>
-                <TableCell className="py-2 text-right tabular">{formatCents(row.grossCents)}</TableCell>
+                <TableCell className="py-2 text-right tabular">
+                  {formatCents(row.grossCents)}
+                  {row.openCents !== row.grossCents && (
+                    <div className="text-xs text-muted-foreground">offen {formatCents(row.openCents)}</div>
+                  )}
+                </TableCell>
                 <TableCell className="py-1.5 text-right whitespace-nowrap">
                   <RemindButton invoiceId={row.id} className="mr-2" />
                   <Button

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { createTestDb, type Db } from "../db/client";
-import { bankTransactions, clients, documents, expenses, type NewBankTransaction } from "../db/schema";
+import { bankTransactions, clients, documentItems, documents, expenses, type NewBankTransaction } from "../db/schema";
 import {
   createAccount,
   documentPayments,
@@ -17,8 +17,8 @@ import {
   transactionSummary,
 } from "./bank";
 import { commitImport, previewImport, undoImport } from "./bank-import";
-import { applyMatch, autoMatch, findDocumentNumbers, nameSimilarity, searchCandidates, suggestFor, loadContext, unmatch, withSuggestions } from "./bank-matching";
-import { changeStatus, createCreditNote, createDocument, finalizeDocument, getDocument } from "./documents";
+import { applyMatch, autoMatch, findDocumentNumbers, nameSimilarity, removeDocumentAllocations, searchCandidates, suggestFor, loadContext, unmatch, withSuggestions } from "./bank-matching";
+import { changeStatus, createCreditNote, createDocument, finalizeDocument, getDocument, listDocuments } from "./documents";
 import { getDashboard } from "./dashboard";
 import { buildForecast } from "./forecast";
 import { createReminder, listDueInvoices } from "./reminders";
@@ -416,3 +416,92 @@ describe("partial payments in other features", () => {
   });
 });
 
+
+describe("payment status vs. allocations and credit notes", () => {
+  test("resetting a bank-paid invoice needs the allocations removed too", () => {
+    const { db, account, client } = setup();
+    const inv = invoice(db, client("X").id, 12000);
+    changeStatus(db, inv.id, { action: "sent" });
+    const t = tx(db, account.id, { amountCents: 12000 });
+    applyMatch(db, t.id, { allocations: [{ documentId: inv.id, amountCents: 12000 }] });
+    expect(getDocument(db, inv.id).status).toBe("paid");
+
+    expectHttp(() => changeStatus(db, inv.id, { action: "unpaid" }), 409);
+    expect(getDocument(db, inv.id).status).toBe("paid");
+
+    // what the route does with removeAllocations: true
+    db.transaction((t2) => {
+      removeDocumentAllocations(t2, inv.id);
+      changeStatus(t2, inv.id, { action: "unpaid" });
+    });
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "sent", paidAt: null });
+    expect(getTransaction(db, t.id)).toMatchObject({ status: "open", allocatedCents: 0 });
+    expect(paidCentsForDocument(db, inv.id)).toBe(0);
+
+    // manually paid without allocations: reset works as before
+    changeStatus(db, inv.id, { action: "paid", paidAt: "2026-03-30" });
+    expect(changeStatus(db, inv.id, { action: "unpaid" }).status).toBe("sent");
+  });
+
+  test("a finalized credit note that (with payments) covers the invoice marks it paid", () => {
+    const { db, account, client } = setup();
+    const c = client("X");
+    // full credit note → paid at its issue date
+    const a = invoice(db, c.id, 12000);
+    const cnA = createCreditNote(db, a.id);
+    db.update(documents).set({ issueDate: "2026-03-05" }).where(eq(documents.id, cnA.id)).run();
+    finalizeDocument(db, cnA.id);
+    expect(getDocument(db, a.id)).toMatchObject({ status: "paid", paidAt: "2026-03-05" });
+
+    // partial credit note alone → stays open
+    const b = invoice(db, c.id, 24000);
+    const cnB = createCreditNote(db, b.id);
+    db.update(documentItems).set({ unitPriceCents: 10000 }).where(eq(documentItems.documentId, cnB.id)).run();
+    db.update(documents).set({ issueDate: "2026-03-05" }).where(eq(documents.id, cnB.id)).run();
+    finalizeDocument(db, cnB.id); // 12000 gross
+    expect(getDocument(db, b.id)).toMatchObject({ status: "final", openCents: 12000, partial: false });
+    // the bank pays the rest later → paid at the payment date
+    const t = tx(db, account.id, { amountCents: 12000, bookingDate: "2026-03-28" });
+    applyMatch(db, t.id, { allocations: [{ documentId: b.id, amountCents: 12000 }] });
+    expect(getDocument(db, b.id)).toMatchObject({ status: "paid", paidAt: "2026-03-28" });
+    // removing that payment reverts it (paidAt came from the bank)
+    unmatch(db, { transactionId: t.id });
+    expect(getDocument(db, b.id)).toMatchObject({ status: "final", paidAt: null });
+
+    // dashboard: credit-settled invoices are neither open nor "received"
+    const dash = getDashboard(db, 2026, "2026-04-01");
+    expect(dash.kpis.openInvoices).toEqual({ count: 1, cents: 12000 });
+    expect(dash.kpis.paid).toEqual({ count: 0, cents: 0 });
+    // forecast/reminders skip it
+    expect(listDueInvoices(db, "2026-04-01").map((d) => d.invoiceId)).toEqual([b.id]);
+    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, today: "2026-04-01" });
+    expect(forecast.entries.map((e) => e.documentId)).toEqual([b.id]);
+  });
+
+  test("a manually set payment is not moved by a credit note", () => {
+    const { db, client } = setup();
+    const inv = invoice(db, client("X").id, 12000);
+    changeStatus(db, inv.id, { action: "paid", paidAt: "2026-03-02" });
+    finalizeDocument(db, createCreditNote(db, inv.id).id);
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "paid", paidAt: "2026-03-02" });
+  });
+
+  test("lists and dashboard show partially paid invoices", () => {
+    const { db, account, client } = setup();
+    const c = client("X");
+    const inv = invoice(db, c.id, 24000);
+    const other = invoice(db, c.id, 12000);
+    const t = tx(db, account.id, { amountCents: 6000 });
+    applyMatch(db, t.id, { allocations: [{ documentId: inv.id, amountCents: 6000 }] });
+
+    const rows = listDocuments(db, { type: "invoice" });
+    expect(rows.find((r) => r.id === inv.id)).toMatchObject({ partial: true, openCents: 18000 });
+    expect(rows.find((r) => r.id === other.id)).toMatchObject({ partial: false, openCents: 12000 });
+
+    const dash = getDashboard(db, 2026, "2026-04-01");
+    expect(dash.overdue.map((r) => [r.id, r.partial, r.openCents])).toEqual([
+      [inv.id, true, 18000],
+      [other.id, false, 12000],
+    ]);
+  });
+});

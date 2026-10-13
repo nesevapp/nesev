@@ -33,3 +33,8 @@ export function StatusBadge({
     </span>
   );
 }
+
+/** Subtle hint next to the status badge: bank payments cover part of the invoice. */
+export function PartialLabel({ className }: { className?: string }) {
+  return <span className={cn("text-xs whitespace-nowrap text-amber-700", className)}>teilbezahlt</span>;
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { parsePeriod, uvaDueDate, zmDueDate } from "../../shared/tax-report";
 import { calcTotals } from "../../shared/totals";
 import { createTestDb, type Db } from "../db/client";
@@ -13,8 +14,9 @@ import {
   expenses,
   type NewDocument,
 } from "../db/schema";
+import { createCreditNote, createDocument, finalizeDocument, getDocument } from "./documents";
 import { updateSettings } from "./settings";
-import { computeEar, computeUva, computeZm, earCsv, uvaCsv, uvaValues } from "./tax";
+import { computeEar, computeUva, computeZm, earCsv, revenueEvents, uvaCsv, uvaValues } from "./tax";
 
 const Q1 = parsePeriod("2026-Q1")!;
 const Q2 = parsePeriod("2026-Q2")!;
@@ -190,6 +192,34 @@ describe("UVA Kennzahlen", () => {
     const r = v(db);
     expect(r["022"]).toEqual({ amount: 80000, tax: 16000 });
     expect(r["029"]).toEqual({ amount: 50000, tax: 5000 });
+  });
+
+  test("cash basis: an invoice settled by a full credit note is no cash receipt", () => {
+    const { db, at, pay } = setup({ vatBasis: "cash" });
+    const item = { title: "Leistung", description: "", quantity: 1000, unit: "", unitPriceCents: 100000, taxRateBp: 2000, discountBp: 0 };
+    const inv = finalizeDocument(db, createDocument(db, { type: "invoice", clientId: at.id, issueDate: "2026-02-10", items: [item] }).id);
+    const cn = createCreditNote(db, inv.id);
+    db.update(documents).set({ issueDate: "2026-03-05" }).where(eq(documents.id, cn.id)).run();
+    finalizeDocument(db, cn.id);
+    // settled (status paid via the credit note), but no money came in
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "paid", paidAt: "2026-03-05" });
+    expect(revenueEvents(db, "cash")).toEqual([]);
+    const r = v(db);
+    expect(r["022"]).toBeUndefined();
+    expect(r["000"]).toBeUndefined();
+    expect(computeEar(db, 2026).incomeCents).toBe(0);
+
+    // half credited, the rest paid by bank: only the bank payment is a cash receipt
+    const inv2 = finalizeDocument(db, createDocument(db, { type: "invoice", clientId: at.id, issueDate: "2026-02-10", items: [item] }).id);
+    pay({ documentId: inv2.id }, "2026-03-20", 60000);
+    const cn2 = createCreditNote(db, inv2.id);
+    db.update(documentItems).set({ unitPriceCents: 50000 }).where(eq(documentItems.documentId, cn2.id)).run();
+    db.update(documents).set({ issueDate: "2026-03-15" }).where(eq(documents.id, cn2.id)).run();
+    finalizeDocument(db, cn2.id); // recomputes totals → 60000 gross
+    // paidAt = the later of the bank payment and the credit note
+    expect(getDocument(db, inv2.id)).toMatchObject({ status: "paid", paidAt: "2026-03-20" });
+    expect(v(db)["022"]).toEqual({ amount: 50000, tax: 10000 });
+    expect(computeEar(db, 2026).incomeCents).toBe(50000);
   });
 
   test("reverse charge expense → 057 / 066, domestic → 060, deductible share", () => {

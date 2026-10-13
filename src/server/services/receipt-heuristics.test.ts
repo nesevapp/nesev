@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
-import { amountsIn, extractWithRules } from "./receipt-heuristics";
+import { shortDescription } from "../../shared/receipts";
+import { amountsIn, extractWithRules, findCategory } from "./receipt-heuristics";
+import { mapLlmOutput } from "./receipt-ollama";
+import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
 
 // Texts as produced by the pipeline (Apple Vision OCR after line grouping / PDF text layer).
@@ -198,5 +201,59 @@ describe("observationsToText", () => {
       { text: "BILLA AG", confidence: 1, box: [0.27, 0.047, 0.2, 0.031] },
     ]);
     expect(text).toBe("BILLA AG\nSUMME EUR   17,11");
+  });
+});
+
+describe("category rules", () => {
+  const cases: [string, string][] = [
+    ["Elektrotechnik Huber GmbH\nElektroinstallation Büro, Austausch FI-Schalter\nArbeitszeit 2,5 Std.", "instandhaltung"],
+    ["Installateur Meier\nHeizungswartung Therme, Dichtungen", "instandhaltung"],
+    ["Rechnung Nr. 42\nReparatur Bürotür, Schloss getauscht", "instandhaltung"],
+    ["Klimaservice Wien\nWartung Klimaanlage Büro", "instandhaltung"],
+    ["Malermeister Gruber\nMalerarbeiten Besprechungsraum", "instandhaltung"],
+    ["Autohaus Wiesinger\nKFZ-Werkstätte: Reparatur Bremsen, Pickerl §57a", "kfz"],
+    ["Softwarewartung Jahreslizenz ERP", "software_abos"],
+    ["Mustermann Steuerberatung GmbH\nJahresabschluss 2025", "beratung"],
+    ["Gasthaus Zur Post\n2x Getränke", "bewirtung"],
+  ];
+  for (const [text, key] of cases) {
+    test(`${text.split("\n")[0]} → ${key}`, () => expect(findCategory(text)?.value).toBe(key as never));
+  }
+
+  test("trade keywords override an unsure model category, not a confident one", () => {
+    const text = "Elektro Gruber GmbH\nElektroinstallation, Störungsbehebung\nArbeitszeit 2 Std.";
+    const rules = extractWithRules(text).fields;
+    expect(rules.category).toMatchObject({ value: "instandhaltung", confidence: 0.7 });
+    const unsure = mapLlmOutput({ category: "hardware_gwg", confidence: { category: 0.4 } });
+    expect(mergeFields(unsure, rules).category?.value).toBe("instandhaltung");
+    const sure = mapLlmOutput({ category: "wareneinkauf", confidence: { category: 0.9 } });
+    expect(mergeFields(sure, rules).category?.value).toBe("wareneinkauf");
+    // generic keywords stay a weak hint
+    expect(findCategory("Lieferung Papier und Toner")?.confidence).toBe(0.45);
+  });
+});
+
+describe("shortDescription", () => {
+  const cases: [string, string][] = [
+    ["Hosting Oktober 2026", "Hosting Oktober 2026"],
+    ["Elektroinstallationsarbeiten im Büro inkl. Material und Anfahrt laut Regiebericht", "Elektroinstallationsarbeiten im Büro inkl. Material"],
+    ["Monatliches Abonnement für Google Workspace Business Starter (5 Benutzer)", "Monatliches Abonnement für Google Workspace Business"],
+    ["Reparatur der Heizungsanlage. Austausch des Ventils und Entlüftung", "Reparatur der Heizungsanlage"],
+    ["Beratungsleistung für die Erstellung der Steuererklärung und Beilagen", "Beratungsleistung für die Erstellung der Steuererklärung"],
+    ["Wartung - Klimaanlage Büro", "Wartung - Klimaanlage Büro"],
+    ["Toner,\nPapier", "Toner"],
+  ];
+  for (const [input, expected] of cases) {
+    test(input, () => {
+      const out = shortDescription(input);
+      expect(out).toBe(expected);
+      expect(out.length).toBeLessThanOrEqual(60);
+      expect(out.split(" ").length).toBeLessThanOrEqual(6);
+    });
+  }
+
+  test("model descriptions are shortened", () => {
+    const fields = mapLlmOutput({ description: "Lieferung und Montage einer neuen Beleuchtung im Büro inklusive Material" });
+    expect(fields.description?.value).toBe("Lieferung und Montage einer neuen Beleuchtung");
   });
 });

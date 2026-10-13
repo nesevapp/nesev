@@ -63,6 +63,21 @@ export function paidCentsByExpense(db: DbOrTx, expenseIds?: number[]): Map<numbe
 /** SQL expression: allocated cents of the document in the current row (for aggregate queries). */
 export const paidCentsSql = sql<number>`coalesce((select sum(${bankMatches.amountCents}) from ${bankMatches} where ${bankMatches.documentId} = ${documents.id}), 0)`;
 
+/** SQL expression: finalized credit notes for the invoice in the current row (for aggregate queries). */
+export const creditedCentsSql = sql<number>`coalesce((select sum(cn.gross_cents) from ${documents} cn where cn.parent_id = ${documents.id} and cn.type = 'credit_note' and cn.status <> 'draft'), 0)`;
+
+/** Latest booking date of the transactions allocated to a target. */
+export function lastPaymentDate(db: DbOrTx, target: { documentId?: number; expenseId?: number }): string | null {
+  return (
+    db
+      .select({ d: sql<string | null>`max(${bankTransactions.bookingDate})` })
+      .from(bankMatches)
+      .innerJoin(bankTransactions, eq(bankTransactions.id, bankMatches.transactionId))
+      .where(target.documentId ? eq(bankMatches.documentId, target.documentId) : eq(bankMatches.expenseId, target.expenseId!))
+      .get()?.d ?? null
+  );
+}
+
 /** document gross minus finalized credit notes for it (the amount the client owes before payments). */
 export function creditedCentsByInvoice(db: DbOrTx, invoiceIds?: number[]): Map<number, number> {
   if (invoiceIds && invoiceIds.length === 0) return new Map();
@@ -89,9 +104,7 @@ export interface PaymentRow {
   source: string;
 }
 
-export interface PaymentsInfo {
-  grossCents: number;
-  creditedCents: number;
+export interface PaymentState {
   /** what is owed before payments (gross − credited) */
   dueCents: number;
   paidCents: number;
@@ -99,7 +112,25 @@ export interface PaymentsInfo {
   openCents: number;
   /** 0 < paid < due */
   partial: boolean;
+}
+
+export interface PaymentsInfo extends PaymentState {
+  grossCents: number;
+  creditedCents: number;
   payments: PaymentRow[];
+}
+
+function paymentState(grossCents: number, creditedCents: number, paidCents: number): PaymentState {
+  const dueCents = grossCents - creditedCents;
+  return { dueCents, paidCents, openCents: dueCents - paidCents, partial: paidCents > 0 && paidCents < dueCents };
+}
+
+/** Payment state per invoice (lists, dashboard): invoiceId → due/paid/open/partial. */
+export function invoicePaymentStates(db: DbOrTx, invoices: { id: number; grossCents: number }[]): Map<number, PaymentState> {
+  const ids = invoices.map((d) => d.id);
+  const credited = creditedCentsByInvoice(db, ids);
+  const paid = paidCentsByDocument(db, ids);
+  return new Map(invoices.map((d) => [d.id, paymentState(d.grossCents, credited.get(d.id) ?? 0, paid.get(d.id) ?? 0)]));
 }
 
 function paymentRows(db: DbOrTx, where: SQL): PaymentRow[] {
@@ -124,17 +155,8 @@ function paymentRows(db: DbOrTx, where: SQL): PaymentRow[] {
 }
 
 function paymentsInfo(grossCents: number, creditedCents: number, payments: PaymentRow[]): PaymentsInfo {
-  const dueCents = grossCents - creditedCents;
   const paidCents = payments.reduce((s, p) => s + p.amountCents, 0);
-  return {
-    grossCents,
-    creditedCents,
-    dueCents,
-    paidCents,
-    openCents: dueCents - paidCents,
-    partial: paidCents > 0 && paidCents < dueCents,
-    payments,
-  };
+  return { grossCents, creditedCents, ...paymentState(grossCents, creditedCents, paidCents), payments };
 }
 
 /** Payments of an invoice (document view: "Zahlungen", "teilbezahlt X von Y"). */

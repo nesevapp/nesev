@@ -25,7 +25,7 @@ import { ClientPicker } from "@/features/clients/components/ClientPicker";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
 import { cn } from "@/lib/utils";
 import { type DocumentListItem, documentsQuery } from "@/sdk";
-import { StatusBadge } from "./components/status-badge";
+import { PartialLabel, StatusBadge } from "./components/status-badge";
 import { DOC_CONFIG, docLink } from "./config";
 
 export type DocumentListSearch = Omit<DocumentListQuery, "type">;
@@ -95,12 +95,27 @@ function buildColumns(type: DocumentType) {
     col.accessor("grossCents", {
       header: "Brutto",
       sortFn: "basic",
-      cell: (info) => <span className="tabular">{formatCents(info.getValue())}</span>,
+      cell: ({ row }) => {
+        const d = row.original;
+        // credit notes or partial payments reduce what is still owed
+        const open = (d.status === "final" || d.status === "sent") && d.openCents != null && d.openCents !== d.grossCents;
+        return (
+          <div className="tabular">
+            {formatCents(d.grossCents)}
+            {open && <div className="text-xs text-muted-foreground">offen {formatCents(d.openCents!)}</div>}
+          </div>
+        );
+      },
     }),
     col.accessor("status", {
       header: "Status",
       sortFn: "text",
-      cell: ({ row }) => <StatusBadge status={row.original.status} overdue={row.original.overdue} />,
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1.5">
+          <StatusBadge status={row.original.status} overdue={row.original.overdue} />
+          {row.original.partial && <PartialLabel />}
+        </span>
+      ),
     }),
   ]);
 }

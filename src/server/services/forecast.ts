@@ -3,7 +3,7 @@ import { addDays, todayIso } from "../../shared/dates";
 import { addMonthsAnchored, runDatesUntil } from "../../shared/recurring";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, recurringInvoices, settings } from "../db/schema";
-import { paidCentsByDocument } from "./bank";
+import { creditedCentsByInvoice, paidCentsByDocument } from "./bank";
 
 // Payment forecast (GET /api/forecast): expected INCOMING money (gross) per week / month.
 // Sources:
@@ -107,8 +107,8 @@ const emptySources = (): SourceCents => ({ invoice: 0, recurring: 0, offer: 0, d
 
 /** Average payment delay per client (paidAt − dueDate over paid invoices) plus the global fallback. */
 export function paymentDelays(db: DbOrTx): { byClient: Map<number, PaymentDelay>; global: PaymentDelay } {
-  const paid = db
-    .select({ clientId: documents.clientId, dueDate: documents.dueDate, paidAt: documents.paidAt })
+  const rows = db
+    .select({ id: documents.id, grossCents: documents.grossCents, clientId: documents.clientId, dueDate: documents.dueDate, paidAt: documents.paidAt })
     .from(documents)
     .where(
       and(
@@ -119,6 +119,9 @@ export function paymentDelays(db: DbOrTx): { byClient: Map<number, PaymentDelay>
       ),
     )
     .all();
+  // settled by credit note alone: nothing was paid, so it says nothing about the client's payment habits
+  const credited = creditedCentsByInvoice(db, rows.map((r) => r.id));
+  const paid = rows.filter((r) => (credited.get(r.id) ?? 0) < r.grossCents);
   const sums = new Map<number, { sum: number; n: number }>();
   let sum = 0;
   for (const p of paid) {

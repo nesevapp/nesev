@@ -3,8 +3,8 @@ import { HTTPException } from "hono/http-exception";
 import { type AutoMatchMode, type MatchInput, normalizeIban } from "../../shared/bank";
 import type { DbOrTx } from "../db/client";
 import { bankMatches, bankTransactions, type BankTransaction, clients, documents, expenses, reminders } from "../db/schema";
-import { creditedCentsByInvoice, getTransaction, paidCentsByDocument, paidCentsByExpense, type TransactionRow } from "./bank";
-import { changeStatus } from "./documents";
+import { creditedCentsByInvoice, getTransaction, lastPaymentDate, paidCentsByDocument, paidCentsByExpense, type TransactionRow } from "./bank";
+import { settleInvoice } from "./documents";
 
 // Payment matching: suggestions for open bank transactions, auto-apply, applying/reverting allocations.
 //
@@ -526,42 +526,6 @@ function refreshTxStatus(db: DbOrTx, transactionId: number): void {
   if (status !== tx.status) db.update(bankTransactions).set({ status }).where(eq(bankTransactions.id, transactionId)).run();
 }
 
-/** Latest booking date of the transactions allocated to a target. */
-function lastPaymentDate(db: DbOrTx, target: { documentId?: number; expenseId?: number }): string | null {
-  return (
-    db
-      .select({ d: sql<string | null>`max(${bankTransactions.bookingDate})` })
-      .from(bankMatches)
-      .innerJoin(bankTransactions, eq(bankTransactions.id, bankMatches.transactionId))
-      .where(target.documentId ? eq(bankMatches.documentId, target.documentId) : eq(bankMatches.expenseId, target.expenseId!))
-      .get()?.d ?? null
-  );
-}
-
-/**
- * Bring the invoice status in line with its allocations. Covered → "paid" (paidAt = last payment).
- * No longer covered → back to final/sent, but only if the payment status came from the bank
- * (`bankDates` = booking dates of its allocations before the change contain paidAt).
- */
-function settleDocument(db: DbOrTx, documentId: number, bankDates: Set<string>): void {
-  const doc = db.select().from(documents).where(eq(documents.id, documentId)).get();
-  if (!doc || doc.type !== "invoice") return;
-  const due = doc.grossCents - (creditedCentsByInvoice(db, [documentId]).get(documentId) ?? 0);
-  const paid = paidCentsByDocument(db, [documentId]).get(documentId) ?? 0;
-  const covered = paid > 0 && paid >= due;
-  const last = lastPaymentDate(db, { documentId });
-  const byBank = doc.paidAt != null && bankDates.has(doc.paidAt);
-  if (covered && (doc.status === "final" || doc.status === "sent")) {
-    changeStatus(db, documentId, { action: "paid", paidAt: last! });
-  } else if (doc.status === "paid" && byBank) {
-    if (!covered) changeStatus(db, documentId, { action: "unpaid" });
-    else if (last && last !== doc.paidAt) {
-      changeStatus(db, documentId, { action: "unpaid" });
-      changeStatus(db, documentId, { action: "paid", paidAt: last });
-    }
-  }
-}
-
 function settleExpense(db: DbOrTx, expenseId: number, bankDates: Set<string>): void {
   const exp = db.select().from(expenses).where(eq(expenses.id, expenseId)).get();
   if (!exp) return;
@@ -627,7 +591,7 @@ export function applyMatch(db: DbOrTx, transactionId: number, input: MatchInput,
     }
     refreshTxStatus(t, transactionId);
     for (const a of merged.values()) {
-      if (a.documentId) settleDocument(t, a.documentId, new Set());
+      if (a.documentId) settleInvoice(t, a.documentId, new Set());
       else settleExpense(t, a.expenseId!, new Set());
     }
   });
@@ -651,12 +615,25 @@ export function unmatch(db: DbOrTx, by: { transactionId: number } | { matchId: n
       .run();
     refreshTxStatus(t, txId);
     targets.forEach((tg, i) => {
-      if (tg.documentId) settleDocument(t, tg.documentId, before[i]!);
+      if (tg.documentId) settleInvoice(t, tg.documentId, before[i]!);
       else if (tg.expenseId) settleExpense(t, tg.expenseId, before[i]!);
     });
     return txId;
   });
   return getTransaction(db, transactionId);
+}
+
+/**
+ * Remove all bank allocations of a document ("Zahlung zurücksetzen" with removeAllocations): the transactions
+ * become open again. The document status is left to the caller (changeStatus "unpaid").
+ */
+export function removeDocumentAllocations(db: DbOrTx, documentId: number): void {
+  db.transaction((t) => {
+    const rows = t.select().from(bankMatches).where(eq(bankMatches.documentId, documentId)).all();
+    if (rows.length === 0) return;
+    t.delete(bankMatches).where(eq(bankMatches.documentId, documentId)).run();
+    for (const txId of new Set(rows.map((r) => r.transactionId))) refreshTxStatus(t, txId);
+  });
 }
 
 /**

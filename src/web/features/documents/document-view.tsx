@@ -27,7 +27,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InvoicePayments } from "@/features/bank/components/invoice-payments";
 import { CreateReminderButton, InvoiceReminders } from "@/features/reminders/components/invoice-reminders";
-import { apiErrorMessage, type Document, documentPdfUrl, settingsQuery, useChangeDocumentStatus } from "@/sdk";
+import {
+  apiErrorMessage,
+  type Document,
+  documentPaymentsQuery,
+  documentPdfUrl,
+  settingsQuery,
+  useChangeDocumentStatus,
+} from "@/sdk";
 import { ActionBar, useDeriveAndOpen } from "./components/action-bar";
 import { DocumentRelations } from "./components/document-relations";
 import { StatusBadge } from "./components/status-badge";
@@ -42,18 +49,21 @@ export function DocumentView({ doc }: { doc: Document }) {
   const derive = useDeriveAndOpen();
   const [paidOpen, setPaidOpen] = useState(false);
   const [paidAt, setPaidAt] = useState(todayIso());
+  const [resetOpen, setResetOpen] = useState(false);
+  const { data: payments } = useQuery({ ...documentPaymentsQuery(doc.id), enabled: doc.type === "invoice" });
 
   const client = doc.clientSnapshot;
   const actions = ALLOWED_STATUS_ACTIONS[doc.type][doc.status] ?? [];
   const taxNote = settings ? taxNoteFor(doc.taxMode, settings) : null;
   const busy = changeStatus.isPending || derive.isPending;
 
-  const runAction = (action: StatusAction, date?: string) =>
+  const runAction = (action: StatusAction, opts: { paidAt?: string; removeAllocations?: boolean } = {}) =>
     changeStatus.mutate(
-      { id: doc.id, json: { action, paidAt: date } },
+      { id: doc.id, json: { action, ...opts } },
       {
         onSuccess: () => {
           setPaidOpen(false);
+          setResetOpen(false);
           toast.success("Status aktualisiert");
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
@@ -64,6 +74,9 @@ export function DocumentView({ doc }: { doc: Document }) {
     if (action === "paid") {
       setPaidAt(todayIso());
       setPaidOpen(true);
+    } else if (action === "unpaid" && payments && payments.payments.length > 0) {
+      // bank allocations cover it: resetting only makes sense together with them
+      setResetOpen(true);
     } else runAction(action);
   };
 
@@ -236,7 +249,7 @@ export function DocumentView({ doc }: { doc: Document }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (paidAt) runAction("paid", paidAt);
+              if (paidAt) runAction("paid", { paidAt });
             }}
           >
             <DialogHeader>
@@ -265,6 +278,31 @@ export function DocumentView({ doc }: { doc: Document }) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Zahlung zurücksetzen</DialogTitle>
+            <DialogDescription>
+              Diese Rechnung ist durch Bankbuchungen bezahlt – Zuordnungen ebenfalls entfernen? Die Buchungen
+              {payments ? ` (${formatCents(payments.paidCents)})` : ""} werden wieder als offen markiert.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={changeStatus.isPending}
+              onClick={() => runAction("unpaid", { removeAllocations: true })}
+            >
+              Zuordnungen entfernen
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Page>

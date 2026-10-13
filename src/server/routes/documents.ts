@@ -23,6 +23,7 @@ import {
   setPdfPath,
   updateDocument,
 } from "../services/documents";
+import { removeDocumentAllocations } from "../services/bank-matching";
 import { freezeDocumentPdf } from "../services/pdf";
 
 const idParam = validate("param", z.object({ id: z.coerce.number().int().positive() }));
@@ -58,9 +59,16 @@ const app = new Hono()
     }
     return c.json(doc);
   })
-  .post("/:id/status", idParam, validate("json", documentStatusSchema), (c) =>
-    c.json(changeStatus(db, c.req.valid("param").id, c.req.valid("json"))),
-  )
+  /** `removeAllocations` with "unpaid": drop the bank allocations too (otherwise 409 while there are any). */
+  .post("/:id/status", idParam, validate("json", documentStatusSchema), (c) => {
+    const { id } = c.req.valid("param");
+    const { removeAllocations, ...input } = c.req.valid("json");
+    const doc = db.transaction((tx) => {
+      if (input.action === "unpaid" && removeAllocations) removeDocumentAllocations(tx, id);
+      return changeStatus(tx, id, input);
+    });
+    return c.json(doc);
+  })
   .post("/:id/convert-to-invoice", idParam, (c) => c.json(convertOfferToInvoice(db, c.req.valid("param").id), 201))
   .post("/:id/credit-note", idParam, (c) => c.json(createCreditNote(db, c.req.valid("param").id), 201))
   .post("/:id/duplicate", idParam, (c) => c.json(duplicateDocument(db, c.req.valid("param").id), 201));

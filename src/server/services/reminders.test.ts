@@ -134,7 +134,8 @@ describe("reminders", () => {
     const inv2 = invoice(db, client.id);
     const cn = createCreditNote(db, inv2.id);
     finalizeDocument(db, cn.id);
-    expectHttp(() => createReminder(db, { invoiceId: inv2.id }, TODAY), 422, "keinen offenen Betrag");
+    // a full credit note settles the invoice
+    expectHttp(() => createReminder(db, { invoiceId: inv2.id }, TODAY), 409, "bereits bezahlt");
   });
 
   test("only overdue, finalized, unpaid invoices can be reminded", () => {

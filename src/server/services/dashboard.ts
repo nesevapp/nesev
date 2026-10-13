@@ -3,13 +3,14 @@ import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, settings } from "../db/schema";
-import { paidCentsSql } from "./bank";
+import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
 // - Revenue = net of non-draft invoices minus net of non-draft credit notes (credit notes store
 //   positive amounts), bucketed by issueDate.
-// - Open invoices = final/sent invoices; overdue = those with dueDate < today (see isOverdue). Their sums
-//   are net of partial bank payments.
+// - Open invoices = final/sent invoices with something left to pay (gross − credit notes − bank payments > 0);
+//   overdue = those with dueDate < today (see isOverdue). Their sums are that open amount.
+// - Paid = invoices by paidAt, gross minus credit notes (an invoice settled by credit note brought in nothing).
 // - Open offers = final/sent offers (neither accepted nor declined).
 
 export interface DashboardDocRow {
@@ -28,6 +29,10 @@ export interface DashboardDocRow {
 
 export interface OverdueRow extends DashboardDocRow {
   daysOverdue: number;
+  /** gross − credit notes − bank payments */
+  openCents: number;
+  /** bank payments cover part of it ("teilbezahlt") */
+  partial: boolean;
 }
 
 export interface Figure {
@@ -113,29 +118,43 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
+/** gross − credit notes − bank payments of the invoice in the current row */
+const openCentsSql = sql<number>`(${documents.grossCents} - ${creditedCentsSql} - ${paidCentsSql})`;
+
 export function getDashboard(db: DbOrTx, year: number, today = todayIso()): DashboardData {
   const yearFrom = `${year}-01-01`;
   const yearTo = `${year + 1}-01-01`;
-  const isOpenInvoice = and(eq(documents.type, "invoice"), inArray(documents.status, OPEN_STATUSES));
+  const isOpenInvoice = and(eq(documents.type, "invoice"), inArray(documents.status, OPEN_STATUSES), sql`${openCentsSql} > 0`);
   const isOverdueInvoice = and(isOpenInvoice, lt(documents.dueDate, today));
   const isOpenOffer = and(eq(documents.type, "offer"), inArray(documents.status, OPEN_STATUSES));
 
   const fig = (where: ReturnType<typeof and>): Figure =>
     db.select({ count: figure, cents: sumOf(documents.grossCents) }).from(documents).where(where).get()!;
 
-  // open/overdue amounts net of partial bank payments
+  // open/overdue amounts net of credit notes and partial bank payments
   const openFig = (where: ReturnType<typeof and>): Figure =>
     db
-      .select({ count: figure, cents: sql<number>`coalesce(sum(${documents.grossCents} - ${paidCentsSql}), 0)` })
+      .select({ count: figure, cents: sql<number>`coalesce(sum(${openCentsSql}), 0)` })
       .from(documents)
       .where(where)
       .get()!;
   const openInvoices = openFig(isOpenInvoice);
   const overdueFig = openFig(isOverdueInvoice);
   const openOffersFig = fig(isOpenOffer);
-  const paid = fig(
-    and(eq(documents.type, "invoice"), eq(documents.status, "paid"), gte(documents.paidAt, yearFrom), lt(documents.paidAt, yearTo)),
-  );
+  const received = sql<number>`(${documents.grossCents} - ${creditedCentsSql})`;
+  const paid = db
+    .select({ count: figure, cents: sql<number>`coalesce(sum(${received}), 0)` })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.type, "invoice"),
+        eq(documents.status, "paid"),
+        gte(documents.paidAt, yearFrom),
+        lt(documents.paidAt, yearTo),
+        sql`${received} > 0`,
+      ),
+    )
+    .get()!;
 
   const monthlyByYear = monthlyRevenue(db, [year, year - 1]);
   const current = monthlyByYear.get(year)!;
@@ -144,12 +163,12 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
 
   const base = () => db.select(rowColumns).from(documents).leftJoin(clients, eq(clients.id, documents.clientId));
 
-  const overdue = base()
-    .where(isOverdueInvoice)
-    .orderBy(asc(documents.dueDate), asc(documents.id))
-    .limit(OVERDUE_LIMIT)
-    .all()
-    .map((r) => ({ ...r, daysOverdue: daysBetween(r.dueDate!, today) }));
+  const overdueRows = base().where(isOverdueInvoice).orderBy(asc(documents.dueDate), asc(documents.id)).limit(OVERDUE_LIMIT).all();
+  const states = invoicePaymentStates(db, overdueRows);
+  const overdue = overdueRows.map((r) => {
+    const state = states.get(r.id)!;
+    return { ...r, daysOverdue: daysBetween(r.dueDate!, today), openCents: state.openCents, partial: state.partial };
+  });
   const recent = base().orderBy(desc(documents.updatedAt), desc(documents.id)).limit(LIST_LIMIT).all();
   const openOffers = base()
     .where(isOpenOffer)

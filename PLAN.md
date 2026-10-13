@@ -101,6 +101,11 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - **Matching:** the invoice number in the payment text (in any spelling), exact amount, IBAN learned per client or supplier, name similarity.
   - Auto-apply per account: off, safe (default) or aggressive, and only when exactly one candidate qualifies. Everything else is a one-click suggestion.
   - Split and partial payments are supported. A covered invoice becomes paid with the booking date, and unmatching reverts that.
+- **Payment status of invoices** (`settleInvoice` in `services/documents.ts`):
+  - An invoice is paid once finalized credit notes plus bank allocations cover its gross. Finalizing a credit note checks this too: paidAt = the later of its issue date and the last payment. A payment marked by hand is never moved or reverted automatically.
+  - "Zahlung zurücksetzen" on an invoice with bank allocations returns 409 unless `removeAllocations: true` is sent; the UI asks "Zuordnungen ebenfalls entfernen?" and the transactions become open again.
+  - Lists show "teilbezahlt" next to the status and the open amount under the gross (invoice list, dashboard "Überfällig"). An invoice with nothing left to pay is never overdue or open (dashboard, reminders, forecast).
+  - Paid via credit note ≠ cash received: Istbesteuerung/EAR count no payment for it, the dashboard's "Bezahlt" uses gross − credit notes, and the forecast's payment-delay history skips it.
 
 ### Receipt OCR
 - Upload never analyses anything. The user queues an analysis per receipt or in bulk, and a background worker processes the queue one receipt at a time.
@@ -109,6 +114,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Settings (Einstellungen → Belegerkennung): Ollama URL (local only), mode text/vision, models, OCR engine, unload after batch; the status shows helper/Ollama/model health.
 - The extracted fields are checked: amounts must add up, UID and IBAN must be valid, and known suppliers are recognised.
 - In the editor, "Erkennung" suggestions only fill empty fields and are saved only when the user saves.
+- Post-processing: descriptions are cut to a short form (≤ 6 words / 60 chars, first sentence, no dangling words; `shortDescription` in `src/shared/receipts.ts`). Category keywords come in two tiers: unambiguous trades/suppliers (Elektriker, Installateur, Reparatur, Wartung → Instandhaltung; Werkstätte/Tankstelle → KFZ; Steuerberater → Beratung; SVS) at 0.7, which overrides an unsure model category (< 0.5); generic keywords stay a 0.45 hint.
 
 ### Frontend SDK
 - `src/web/sdk/`: one typed `hc` client per route module (typed only against that module, which keeps editor type checking light), `<resource>Api` functions, consistently named types (`Client`, `DocumentListItem`, `ExpenseInput`, …), query options + mutation hooks, a central query-key factory (`keys.ts`) and a cross-resource invalidation map (`invalidate.ts`). For example, a bank match refreshes bank, documents, expenses, dashboard, forecast, reminders and tax.
@@ -133,15 +139,9 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 ## 4. Roadmap (in order)
 1. **Test receipt OCR with real receipts** (Ollama has to be running: `ollama serve` or `brew services start ollama`).
 2. **Verify bank presets with real exports** from the user's bank (George / ELBA / …) and fix the presets.
-3. **Close known gaps:**
-   - Manual "Zahlung zurücksetzen" should handle bank allocations.
-   - "teilbezahlt" badge in invoice lists and on the dashboard.
-   - A credit note that fully covers an invoice should mark it paid.
-   - Favicon.
-   - OCR: descriptions are sometimes too long, and category suggestions for trades (e.g. electrician → Instandhaltung) need tuning.
-4. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
-5. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
-6. **Comfort:** dark mode, keyboard shortcuts overview, global search.
-7. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
+3. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
+4. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
+5. **Comfort:** dark mode, keyboard shortcuts overview, global search.
+6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
 
 Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking.

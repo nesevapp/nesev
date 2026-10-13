@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, type SQL } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { addDays, todayIso } from "../../shared/dates";
 import {
@@ -20,6 +20,7 @@ import type { DbOrTx } from "../db/client";
 import { type Client, type Document, type DocumentItem, clients, documentItems, documents } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
 import { bumpArticleUsage, existingArticleIds } from "./articles";
+import { creditedCentsByInvoice, invoicePaymentStates, lastPaymentDate, paidCentsForDocument } from "./bank";
 import { clientSnapshot, getClient } from "./clients";
 import { getSettings, sellerSnapshot } from "./settings";
 
@@ -29,6 +30,9 @@ import { getSettings, sellerSnapshot } from "./settings";
 // - Credit notes store POSITIVE amounts (items copied 1:1 from the invoice). Their meaning
 //   (amount owed to the client) comes from type = "credit_note"; reports must subtract them.
 // - Totals are cached on the document (net/tax/gross) whenever items or the tax mode change.
+// - An invoice is "paid" once finalized credit notes plus bank allocations cover its gross (settleInvoice);
+//   the user can also mark it paid by hand. Resetting a payment that bank allocations cover is refused (409)
+//   unless the allocations are removed with it (routes/documents.ts → removeDocumentAllocations).
 
 export interface DocumentRef {
   id: number;
@@ -37,7 +41,14 @@ export interface DocumentRef {
   status: DocumentStatus;
 }
 
-export type DocumentListRow = Document & { clientName: string; overdue: boolean };
+export type DocumentListRow = Document & {
+  clientName: string;
+  overdue: boolean;
+  /** finalized invoices: gross − credit notes − bank allocations; null otherwise */
+  openCents: number | null;
+  /** finalized, unpaid invoice with bank payments that don't cover it yet ("teilbezahlt") */
+  partial: boolean;
+};
 export type DocumentDetail = DocumentListRow & {
   items: DocumentItem[];
   parent: DocumentRef | null;
@@ -50,11 +61,22 @@ const conflict = (message: string) => new HTTPException(409, { message });
 
 // ── Reads ───────────────────────────────────────────────────────────────────────
 
-function withDerived(doc: Document, liveClientName: string | null, today: string): DocumentListRow {
+type PaymentStates = ReturnType<typeof invoicePaymentStates>;
+
+function paymentStates(db: DbOrTx, docs: Document[]): PaymentStates {
+  return invoicePaymentStates(db, docs.filter((d) => d.type === "invoice" && d.status !== "draft"));
+}
+
+function withDerived(doc: Document, liveClientName: string | null, today: string, states: PaymentStates): DocumentListRow {
+  const state = states.get(doc.id);
+  const unpaid = doc.status === "final" || doc.status === "sent";
   return {
     ...doc,
     clientName: doc.clientSnapshot?.name ?? liveClientName ?? "",
-    overdue: isOverdue(doc, today),
+    // nothing left to pay (e.g. fully credited) → not overdue
+    overdue: isOverdue(doc, today) && (!state || state.openCents > 0),
+    openCents: state?.openCents ?? null,
+    partial: unpaid && !!state?.partial,
   };
 }
 
@@ -68,14 +90,15 @@ export function listDocuments(db: DbOrTx, query: DocumentListQuery = {}): Docume
   if (query.status === "overdue") where.push(inArray(documents.status, ["final", "sent"]));
   else if (query.status) where.push(eq(documents.status, query.status));
 
-  const rows = db
+  const raw = db
     .select({ doc: documents, clientName: clients.name })
     .from(documents)
     .leftJoin(clients, eq(clients.id, documents.clientId))
     .where(and(...where))
     .orderBy(desc(documents.issueDate), desc(documents.id))
-    .all()
-    .map((r) => withDerived(r.doc, r.clientName, today));
+    .all();
+  const states = paymentStates(db, raw.map((r) => r.doc));
+  const rows = raw.map((r) => withDerived(r.doc, r.clientName, today, states));
 
   const q = query.q?.toLowerCase();
   return rows.filter(
@@ -112,7 +135,7 @@ export function getDocument(db: DbOrTx, id: number): DocumentDetail {
     ? (db.select(refColumns).from(documents).where(eq(documents.id, doc.parentId)).get() ?? null)
     : null;
   const children = db.select(refColumns).from(documents).where(eq(documents.parentId, id)).orderBy(asc(documents.id)).all();
-  return { ...withDerived(doc, client?.name ?? null, todayIso()), items: getItems(db, id), parent, children };
+  return { ...withDerived(doc, client?.name ?? null, todayIso(), paymentStates(db, [doc])), items: getItems(db, id), parent, children };
 }
 
 // ── Defaults ────────────────────────────────────────────────────────────────────
@@ -296,6 +319,8 @@ export function finalizeDocument(db: DbOrTx, id: number): DocumentDetail {
       .run();
     // catalog usage drives the line-item picker order; a credit note is a correction, not a use
     if (doc.type !== "credit_note") bumpArticleUsage(tx, items.map((i) => i.articleId));
+    // a credit note may settle its invoice (together with bank payments)
+    else if (doc.parentId) settleInvoice(tx, doc.parentId);
   });
   return getDocument(db, id);
 }
@@ -304,12 +329,19 @@ export function setPdfPath(db: DbOrTx, id: number, pdfPath: string | null): void
   db.update(documents).set({ pdfPath }).where(eq(documents.id, id)).run();
 }
 
-/** Status transitions on finalized documents, see ALLOWED_STATUS_ACTIONS. */
-export function changeStatus(db: DbOrTx, id: number, { action, paidAt }: DocumentStatusInput): DocumentDetail {
+export const PAID_BY_BANK_MESSAGE =
+  "Diese Rechnung ist durch Bankbuchungen bezahlt. Bitte die Zuordnungen ebenfalls entfernen, um die Zahlung zurückzusetzen.";
+
+/**
+ * Status transitions on finalized documents, see ALLOWED_STATUS_ACTIONS. "unpaid" is refused (409) while bank
+ * allocations cover part of the invoice: the route removes them first when `removeAllocations` is set.
+ */
+export function changeStatus(db: DbOrTx, id: number, { action, paidAt }: Omit<DocumentStatusInput, "removeAllocations">): DocumentDetail {
   const doc = getRow(db, id);
   if (doc.status === "draft") throw conflict("Beleg muss zuerst finalisiert werden");
   const allowed = ALLOWED_STATUS_ACTIONS[doc.type][doc.status] ?? [];
   if (!allowed.includes(action)) throw conflict("Dieser Statuswechsel ist nicht möglich");
+  if (action === "unpaid" && paidCentsForDocument(db, id) > 0) throw conflict(PAID_BY_BANK_MESSAGE);
 
   const set: Partial<Document> = (() => {
     switch (action) {
@@ -327,6 +359,39 @@ export function changeStatus(db: DbOrTx, id: number, { action, paidAt }: Documen
   })();
   db.update(documents).set(set).where(eq(documents.id, id)).run();
   return getDocument(db, id);
+}
+
+/** Set or clear an invoice's payment without the user-facing checks (automatic settlement). */
+function setPaidAt(db: DbOrTx, doc: Document, paidAt: string | null): void {
+  const set: Partial<Document> = paidAt ? { status: "paid", paidAt } : { status: doc.sentAt ? "sent" : "final", paidAt: null };
+  db.update(documents).set(set).where(eq(documents.id, doc.id)).run();
+}
+
+/**
+ * Bring an invoice's paid status in line with what settles it: finalized credit notes plus bank allocations.
+ * Covered → "paid" with paidAt = the latest payment or credit note date. No longer covered (or a later date) →
+ * reverted/moved, but only if paidAt was set automatically: `autoDates` (booking dates of its allocations
+ * before the change) or a credit note's date. A payment marked by hand stays untouched.
+ */
+export function settleInvoice(db: DbOrTx, invoiceId: number, autoDates: Set<string> = new Set()): void {
+  const doc = db.select().from(documents).where(eq(documents.id, invoiceId)).get();
+  if (!doc || doc.type !== "invoice" || doc.status === "draft") return;
+  const creditDates = db
+    .select({ issueDate: documents.issueDate })
+    .from(documents)
+    .where(and(eq(documents.parentId, invoiceId), eq(documents.type, "credit_note"), ne(documents.status, "draft")))
+    .all()
+    .map((c) => c.issueDate);
+  const settled = (creditedCentsByInvoice(db, [invoiceId]).get(invoiceId) ?? 0) + paidCentsForDocument(db, invoiceId);
+  const covered = settled > 0 && settled >= doc.grossCents;
+  const dates = [lastPaymentDate(db, { documentId: invoiceId }), ...creditDates].filter((d): d is string => !!d).sort();
+  const last = dates.at(-1) ?? null;
+  const auto = doc.paidAt != null && (autoDates.has(doc.paidAt) || creditDates.includes(doc.paidAt));
+  if (covered && (doc.status === "final" || doc.status === "sent")) setPaidAt(db, doc, last ?? todayIso());
+  else if (doc.status === "paid" && auto) {
+    if (!covered) setPaidAt(db, doc, null);
+    else if (last && last !== doc.paidAt) setPaidAt(db, doc, last);
+  }
 }
 
 /**

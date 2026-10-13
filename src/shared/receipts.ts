@@ -166,6 +166,30 @@ export function isCategoryKey(key: unknown): key is ExpenseCategoryKey {
   return typeof key === "string" && (EXPENSE_CATEGORY_KEYS as readonly string[]).includes(key);
 }
 
+export const DESCRIPTION_MAX_WORDS = 6;
+export const DESCRIPTION_MAX_CHARS = 60;
+
+/** words that make no sense at the end of a shortened description */
+const DANGLING_WORDS = new Set(["und", "oder", "für", "fuer", "mit", "von", "vom", "zu", "zur", "zum", "im", "in", "an", "am", "auf", "bei", "aus", "der", "die", "das", "des", "dem", "den", "ein", "eine", "einer", "inkl", "inkl.", "zzgl", "zzgl.", "lt", "lt.", "gem", "gem.", "&", "-", "–", "/", "+"]);
+
+/**
+ * Short form of a receipt description for the expense line (models like to write sentences):
+ * first sentence/line, at most DESCRIPTION_MAX_WORDS words and DESCRIPTION_MAX_CHARS characters,
+ * cut at word boundaries, without trailing connectors or punctuation.
+ */
+export function shortDescription(text: string): string {
+  // first line / sentence / clause, without a parenthetical; "." after numbers or short abbreviations ("inkl.") is no sentence end
+  const firstLine = text.trim().split(/\r?\n/)[0]!.replace(/\s+/g, " ");
+  const s = firstLine.split(/(?<=[a-zäöüß]{5})\.\s|[;:]\s|\s\(/i)[0]!.trim();
+  let words = s.split(" ").filter(Boolean).slice(0, DESCRIPTION_MAX_WORDS);
+  while (words.length > 1 && words.join(" ").length > DESCRIPTION_MAX_CHARS) words.pop();
+  const strip = (w: string) => w.replace(/[,.;:!?)\]–—-]+$/, "");
+  while (words.length > 1 && (DANGLING_WORDS.has(words.at(-1)!.toLowerCase()) || !strip(words.at(-1)!))) words.pop();
+  let out = words.map((w, i) => (i === words.length - 1 ? strip(w) : w)).join(" ").replace(/,$/, "");
+  if (out.length > DESCRIPTION_MAX_CHARS) out = out.slice(0, DESCRIPTION_MAX_CHARS).trim();
+  return out;
+}
+
 export type ConfidenceLevel = "high" | "medium" | "low";
 
 export function confidenceLevel(confidence: number): ConfidenceLevel {

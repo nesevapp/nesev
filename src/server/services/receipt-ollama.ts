@@ -1,5 +1,5 @@
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS, VAT_TREATMENTS, type VatTreatment } from "../../shared/expenses";
-import { type FieldSuggestion, isCategoryKey, type ReceiptFields, type TaxLineSuggestion } from "../../shared/receipts";
+import { type FieldSuggestion, isCategoryKey, type ReceiptFields, shortDescription, type TaxLineSuggestion } from "../../shared/receipts";
 import { eurToCents, parseDate } from "./receipt-parse";
 
 // Local field extraction via Ollama's HTTP API (structured outputs: `format` = JSON schema, temperature 0).
@@ -236,7 +236,8 @@ export function mapLlmOutput(out: LlmOutput): ReceiptFields {
   const iban = str(out.iban);
   if (iban) fields.iban = llm(iban.toUpperCase().replace(/\s+/g, ""), "iban");
   const description = str(out.description);
-  if (description) fields.description = { value: description.slice(0, 120), confidence: 0.6, source: "llm" };
+  const short = description && shortDescription(description);
+  if (short) fields.description = { value: short, confidence: 0.6, source: "llm" };
   if (isCategoryKey(out.category)) fields.category = llm(out.category, "category");
   if (out.vatTreatment && (VAT_TREATMENTS as readonly string[]).includes(out.vatTreatment)) {
     fields.vatTreatment = llm(out.vatTreatment as VatTreatment, "vatTreatment");

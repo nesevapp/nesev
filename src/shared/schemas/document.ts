@@ -70,6 +70,8 @@ export const documentStatusSchema = z.object({
   action: z.enum(STATUS_ACTIONS),
   /** for action "paid"; defaults to today */
   paidAt: isoDate().optional(),
+  /** for action "unpaid": also remove the invoice's bank allocations (the transactions become open again) */
+  removeAllocations: z.boolean().optional(),
 });
 
 export type DocumentItemInput = z.infer<typeof documentItemSchema>;
