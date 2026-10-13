@@ -2,7 +2,7 @@ import { createRoute } from "@tanstack/react-router";
 import { z } from "@shared/schemas/zod";
 import { PERIOD_KEY_RE } from "@shared/tax-report";
 import { rootRoute } from "@/app/root-route";
-import { earQuery, uvaQuery, zmQuery } from "./api";
+import { earQuery, uvaQuery, zmQuery } from "@/sdk";
 import { TaxPage } from "./tax-page";
 
 const taxSearch = z.object({

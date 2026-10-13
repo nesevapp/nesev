@@ -1,8 +1,7 @@
 import { createRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { rootRoute } from "@/app/root-route";
 import { Page } from "@/components/page";
-import { apiErrorMessage } from "@/lib/api";
-import { templateQuery, templatesQuery } from "./api";
+import { apiErrorMessage, templateQuery, templatesQuery } from "@/sdk";
 import { TemplatesPage } from "./templates-page";
 
 const listRoute = createRoute({

@@ -5,9 +5,8 @@ import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { Button } from "@/components/ui/button";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { remindersQuery, useCreateReminder } from "../api";
+import { apiErrorMessage, remindersQuery, useCreateReminder } from "@/sdk";
 import { LevelBadge, ReminderStatusBadge } from "./reminder-status-badge";
 
 /** Create the next reminder for an invoice (or reopen its existing draft) and open it. */

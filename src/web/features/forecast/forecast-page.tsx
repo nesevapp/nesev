@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { docLink } from "@/features/documents/config";
 import { cn } from "@/lib/utils";
-import { type ForecastDTO, type ForecastEntryDTO, type ForecastParams, forecastQuery, type ForecastSource } from "./api";
+import { type Forecast, type ForecastEntry, type ForecastParams, forecastQuery, type ForecastSource } from "@/sdk";
 import { type ChartColumn, ForecastChart, SOURCE_META, SOURCE_ORDER, SourceLegend } from "./forecast-chart";
 
 export interface ForecastSearch {
@@ -39,7 +39,7 @@ function isoWeek(iso: string): number {
   return 1 + Math.round(((date.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
 }
 
-function toColumns(data: ForecastDTO, view: "month" | "week"): ChartColumn[] {
+function toColumns(data: Forecast, view: "month" | "week"): ChartColumn[] {
   const cols: ChartColumn[] = [];
   if (data.overdueBucket.totalCents > 0) {
     cols.push({
@@ -176,7 +176,7 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
 
 // ── KPIs ────────────────────────────────────────────────────────────────────────
 
-function Kpis({ data }: { data: ForecastDTO }) {
+function Kpis({ data }: { data: Forecast }) {
   const { kpis } = data;
   const until = (days: number) => {
     const end = addDays(data.today, days);
@@ -223,7 +223,7 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub: 
 
 // ── Table ───────────────────────────────────────────────────────────────────────
 
-function delayHint(e: ForecastEntryDTO): string {
+function delayHint(e: ForecastEntry): string {
   const { days, basis, samples } = e.delay;
   if (basis === "none") return "Keine Zahlungshistorie – Zahlung zur Fälligkeit angenommen";
   const amount = days === 0 ? "pünktlich" : `${Math.abs(days)} ${Math.abs(days) === 1 ? "Tag" : "Tage"} ${days > 0 ? "nach" : "vor"} Fälligkeit`;
@@ -231,7 +231,7 @@ function delayHint(e: ForecastEntryDTO): string {
   return `Kunde zahlt im Schnitt ${amount} (${samples} ${samples === 1 ? "Rechnung" : "Rechnungen"})`;
 }
 
-function EntryHint({ e }: { e: ForecastEntryDTO }) {
+function EntryHint({ e }: { e: ForecastEntry }) {
   const lines: ReactNode[] = [];
   if (e.overdue) lines.push(<span className="text-red-700">Seit {e.daysOverdue} {e.daysOverdue === 1 ? "Tag" : "Tagen"} überfällig</span>);
   if (e.source === "recurring" && !e.documentId) lines.push(`Rechnung am ${formatDate(e.issueDate)}, fällig ${formatDate(e.dueDate)}`);
@@ -248,7 +248,7 @@ function EntryHint({ e }: { e: ForecastEntryDTO }) {
   );
 }
 
-function EntryLink({ e }: { e: ForecastEntryDTO }) {
+function EntryLink({ e }: { e: ForecastEntry }) {
   if (e.documentId && e.documentType) {
     return (
       <Link {...docLink(e.documentType, e.documentId)} className="font-medium underline-offset-4 hover:underline">
@@ -266,7 +266,7 @@ function EntryLink({ e }: { e: ForecastEntryDTO }) {
   return null;
 }
 
-function EntriesTable({ rows, today }: { rows: ForecastEntryDTO[]; today: string }) {
+function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string }) {
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
@@ -412,7 +412,7 @@ function ProbabilityInput({ value, onChange }: { value: number; onChange: (v: nu
   );
 }
 
-function Method({ data }: { data: ForecastDTO }) {
+function Method({ data }: { data: Forecast }) {
   const g = data.globalDelay;
   return (
     <section className="rounded-lg bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">

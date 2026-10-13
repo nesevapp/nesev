@@ -24,20 +24,20 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { clientQuery } from "@/features/clients/api";
 import { ClientPicker } from "@/features/clients/components/ClientPicker";
-import { settingsQuery } from "@/features/settings/api";
-import { templatesQuery } from "@/features/templates/api";
-import { apiErrorMessage } from "@/lib/api";
 import {
-  type DocumentDTO,
-  fetchDocumentDefaults,
-  pdfUrl,
+  apiErrorMessage,
+  clientQuery,
+  type Document,
+  documentPdfUrl,
+  documentsApi,
+  settingsQuery,
+  templatesQuery,
   useCreateDocument,
   useDeleteDocument,
   useFinalizeDocument,
   useUpdateDocument,
-} from "./api";
+} from "@/sdk";
 import { ActionBar, useDeriveAndOpen } from "./components/action-bar";
 import { DocumentRelations } from "./components/document-relations";
 import { LineItemsEditor } from "./components/line-items-editor";
@@ -45,7 +45,7 @@ import { StatusBadge } from "./components/status-badge";
 import { TotalsPanel } from "./components/totals-panel";
 import { cityLine, DOC_CONFIG, docLink } from "./config";
 
-export function toFormValues(doc: DocumentDTO): DocumentFormValues {
+export function toFormValues(doc: Document): DocumentFormValues {
   return {
     clientId: doc.clientId,
     issueDate: doc.issueDate,
@@ -81,7 +81,7 @@ export function DocumentEditor({
   initialValues,
 }: {
   type: DocumentType;
-  doc?: DocumentDTO;
+  doc?: Document;
   initialValues: DocumentFormValues;
 }) {
   const config = DOC_CONFIG[type];
@@ -116,7 +116,7 @@ export function DocumentEditor({
   const busy = create.isPending || update.isPending || finalize.isPending || remove.isPending;
 
   /** Save if new or dirty. Resolves to the saved document, or null on validation/API error. */
-  const save = (): Promise<DocumentDTO | null> => {
+  const save = (): Promise<Document | null> => {
     if (doc && !formState.isDirty) return Promise.resolve(doc);
     return new Promise((resolve) => {
       void form.handleSubmit(
@@ -140,7 +140,7 @@ export function DocumentEditor({
     });
   };
 
-  const openDetail = (saved: DocumentDTO) => {
+  const openDetail = (saved: Document) => {
     if (doc?.id === saved.id) return;
     leaving.current = true;
     void navigate({ ...docLink(type, saved.id), replace: true });
@@ -177,8 +177,8 @@ export function DocumentEditor({
       win?.close();
       return;
     }
-    if (win) win.location.href = pdfUrl(saved.id);
-    else window.location.assign(pdfUrl(saved.id, true));
+    if (win) win.location.href = documentPdfUrl(saved.id);
+    else window.location.assign(documentPdfUrl(saved.id, true));
     openDetail(saved);
   };
 
@@ -211,7 +211,7 @@ export function DocumentEditor({
   /** Re-derive tax mode (on client change) and due/valid-until dates from client + settings. */
   const applyDefaults = async (opts: { clientId: number; issueDate: string; taxMode: boolean }) => {
     try {
-      const d = await fetchDocumentDefaults(type, opts.clientId || undefined, opts.issueDate);
+      const d = await documentsApi.defaults(type, opts.clientId || undefined, opts.issueDate);
       if (opts.taxMode) form.setValue("taxMode", d.taxMode, { shouldDirty: true });
       if (type === "invoice") form.setValue("dueDate", d.dueDate, { shouldDirty: true });
       if (type === "offer") form.setValue("validUntil", d.validUntil, { shouldDirty: true });

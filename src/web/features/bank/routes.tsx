@@ -2,7 +2,7 @@ import { createRoute } from "@tanstack/react-router";
 import { BANK_TX_STATUSES } from "@shared/bank";
 import { z } from "@shared/schemas/zod";
 import { rootRoute } from "@/app/root-route";
-import { bankAccountsQuery } from "./api";
+import { bankAccountsQuery } from "@/sdk";
 import { BankPage } from "./bank-page";
 import { PERIODS } from "./format";
 

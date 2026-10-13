@@ -22,9 +22,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { type DueInvoiceDTO, dueInvoicesQuery, type ReminderListRowDTO, remindersQuery, useCreateReminders } from "./api";
+import {
+  apiErrorMessage,
+  type DueInvoice,
+  dueInvoicesQuery,
+  type ReminderListItem,
+  remindersQuery,
+  useCreateReminders,
+} from "@/sdk";
 import { useRemindAndOpen } from "./components/invoice-reminders";
 import { LevelBadge, ReminderStatusBadge } from "./components/reminder-status-badge";
 
@@ -85,7 +91,7 @@ export function RemindersPage({
 
 // ── Fällig zum Mahnen ───────────────────────────────────────────────────────────
 
-function dunningState(row: DueInvoiceDTO) {
+function dunningState(row: DueInvoice) {
   if (row.draftId) return <span className="text-muted-foreground">Entwurf vorhanden</span>;
   if (!row.lastReminder) return <span className="text-muted-foreground">Noch nicht gemahnt</span>;
   const last = row.lastReminder;
@@ -99,7 +105,7 @@ function dunningState(row: DueInvoiceDTO) {
   );
 }
 
-function DueTab({ rows }: { rows: DueInvoiceDTO[] | undefined }) {
+function DueTab({ rows }: { rows: DueInvoice[] | undefined }) {
   const navigate = useNavigate();
   const remind = useRemindAndOpen();
   const bulk = useCreateReminders();
@@ -248,7 +254,7 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, basic: sortFn_basic },
 });
-const col = createColumnHelper<typeof features, ReminderListRowDTO>();
+const col = createColumnHelper<typeof features, ReminderListItem>();
 const RIGHT = new Set(["totalCents"]);
 
 const columns = col.columns([
@@ -398,4 +404,4 @@ function AllTab({ status, setStatus }: { status?: ReminderStatus; setStatus: (s:
   );
 }
 
-const EMPTY: ReminderListRowDTO[] = [];
+const EMPTY: ReminderListItem[] = [];

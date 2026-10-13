@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { unitsQuery } from "@/features/settings/units";
 import { cn } from "@/lib/utils";
+import { unitsQuery } from "@/sdk";
 
 // Radix Select can't use "" as an item value.
 const NONE = "__none__";

@@ -21,19 +21,19 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  apiErrorMessage,
   bankAccountsQuery,
-  type SuggestionDTO,
-  summaryQuery,
-  type TransactionDTO,
-  transactionsQuery,
+  bankSummaryQuery,
+  type BankTransaction,
+  bankTransactionsQuery,
+  type MatchSuggestion,
   useApplyMatch,
   useAutoMatch,
-  useSetIgnored,
+  useSetTransactionIgnored,
   useUnmatch,
-} from "./api";
+} from "@/sdk";
 import { AccountForm, AccountsDialog } from "./components/account-form";
 import { ImportDialog } from "./components/import-dialog";
 import { ImportsDialog } from "./components/imports-dialog";
@@ -182,7 +182,7 @@ export function BankPage({ search, setSearch }: { search: BankSearch; setSearch:
 
 function Summary({ search, setSearch }: { search: BankSearch; setSearch: (patch: Partial<BankSearch>) => void }) {
   const period = search.period ?? "all";
-  const { data: s } = useQuery(summaryQuery({ accountId: search.account, ...periodRange(period) }));
+  const { data: s } = useQuery(bankSummaryQuery({ accountId: search.account, ...periodRange(period) }));
   const stat = (label: string, value: React.ReactNode, onClick?: () => void) => (
     <button
       type="button"
@@ -260,7 +260,7 @@ function Transactions({
   useEffect(() => setQ(search.q ?? ""), [search.q]);
 
   const { data, isLoading } = useQuery(
-    transactionsQuery({
+    bankTransactionsQuery({
       accountId: search.account,
       status: status === "all" ? undefined : status,
       direction: search.dir,
@@ -269,10 +269,10 @@ function Transactions({
     }),
   );
   const rows = data ?? [];
-  const [matching, setMatching] = useState<TransactionDTO | null>(null);
+  const [matching, setMatching] = useState<BankTransaction | null>(null);
   const apply = useApplyMatch();
   const unmatch = useUnmatch();
-  const ignore = useSetIgnored();
+  const ignore = useSetTransactionIgnored();
   const searchRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLTableSectionElement>(null);
 
@@ -288,7 +288,7 @@ function Transactions({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const applySuggestion = (tx: TransactionDTO, s: SuggestionDTO) =>
+  const applySuggestion = (tx: BankTransaction, s: MatchSuggestion) =>
     apply.mutate(
       {
         transactionId: tx.id,
@@ -299,12 +299,12 @@ function Transactions({
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
-  const toggleIgnore = (tx: TransactionDTO) =>
+  const toggleIgnore = (tx: BankTransaction) =>
     ignore.mutate(
       { id: tx.id, ignored: tx.status !== "ignored" },
       { onError: (err) => toast.error(apiErrorMessage(err)) },
     );
-  const unmatchAll = (tx: TransactionDTO) =>
+  const unmatchAll = (tx: BankTransaction) =>
     unmatch.mutate({ transactionId: tx.id }, { onSuccess: () => toast.success("Zuordnung gelöst"), onError: (err) => toast.error(apiErrorMessage(err)) });
 
   const focusRow = (from: HTMLElement, delta: number) => {
@@ -313,7 +313,7 @@ function Transactions({
     next?.focus();
   };
 
-  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, tx: TransactionDTO) => {
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, tx: BankTransaction) => {
     if (e.target !== e.currentTarget || e.metaKey || e.ctrlKey || e.altKey) return;
     const top = tx.suggestions[0];
     const key = e.key.toLowerCase();
@@ -448,7 +448,7 @@ function Transactions({
   );
 }
 
-function MatchChip({ m }: { m: TransactionDTO["matches"][number] }) {
+function MatchChip({ m }: { m: BankTransaction["matches"][number] }) {
   const label = m.documentId ? m.documentNumber || "Beleg" : m.expenseNumber || m.supplierName || "Ausgabe";
   const sub = m.documentId ? m.clientName : m.supplierName;
   const cls = "inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs hover:bg-muted";
@@ -474,7 +474,7 @@ function MatchChip({ m }: { m: TransactionDTO["matches"][number] }) {
   );
 }
 
-const CONFIDENCE_DOT: Record<SuggestionDTO["confidence"], string> = {
+const CONFIDENCE_DOT: Record<MatchSuggestion["confidence"], string> = {
   high: "bg-emerald-500",
   medium: "bg-amber-400",
   low: "bg-zinc-300",
@@ -486,9 +486,9 @@ function Assignment({
   onApply,
   onManual,
 }: {
-  tx: TransactionDTO;
+  tx: BankTransaction;
   busy: boolean;
-  onApply: (s: SuggestionDTO) => void;
+  onApply: (s: MatchSuggestion) => void;
   onManual: () => void;
 }) {
   if (tx.status === "ignored") return <span className="text-xs">Ignoriert</span>;
@@ -530,11 +530,11 @@ function Suggestion({
   onApply,
   onMore,
 }: {
-  s: SuggestionDTO;
+  s: MatchSuggestion;
   remaining: number;
   more: number;
   busy: boolean;
-  onApply: (s: SuggestionDTO) => void;
+  onApply: (s: MatchSuggestion) => void;
   onMore: () => void;
 }) {
   const reasons = s.reasons.filter((r) => r.code !== "overpaid" && r.code !== "partial").map((r) => r.label);
@@ -592,7 +592,7 @@ function RowMenu({
   onIgnore,
   onUnmatch,
 }: {
-  tx: TransactionDTO;
+  tx: BankTransaction;
   onManual: () => void;
   onIgnore: () => void;
   onUnmatch: () => void;

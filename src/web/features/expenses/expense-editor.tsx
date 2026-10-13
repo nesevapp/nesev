@@ -41,19 +41,19 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ActionBar } from "@/features/documents/components/action-bar";
 import { AnalysisPanel, APPLIED_CLASS, type ApplyKey } from "@/features/receipts/analysis-panel";
-import { useMarkApplied } from "@/features/receipts/api";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  type ExpenseDTO,
+  apiErrorMessage,
+  type Expense,
   expensesQuery,
   receiptUrl,
   useCreateExpense,
   useDeleteExpense,
+  useMarkAnalysisApplied,
   useRemoveReceipt,
   useUpdateExpense,
   useUploadReceipt,
-} from "./api";
+} from "@/sdk";
 import { ExpenseBadges } from "./components/expense-badges";
 import { ExpenseLinesEditor, newLine } from "./components/expense-lines-editor";
 import { type ReceiptSource, ReceiptPane, receiptKind } from "./components/receipt-pane";
@@ -62,7 +62,7 @@ import { SupplierInput } from "./components/supplier-input";
 
 type Form = UseFormReturn<ExpenseFormValues, unknown, ExpenseFormData>;
 
-export function toFormValues(e: ExpenseDTO): ExpenseFormValues {
+export function toFormValues(e: Expense): ExpenseFormValues {
   return {
     supplierName: e.supplierName,
     supplierUid: e.supplierUid,
@@ -127,7 +127,7 @@ function useGrossMode(): [boolean, (v: boolean) => void] {
  * ⌘/Ctrl+S saves, ⌘/Ctrl+Enter saves and opens the next one (next incomplete draft when editing a
  * draft, otherwise a new expense).
  */
-export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; onSavedNext: () => void }) {
+export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onSavedNext: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const create = useCreateExpense();
@@ -135,7 +135,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
   const remove = useDeleteExpense();
   const upload = useUploadReceipt();
   const removeReceipt = useRemoveReceipt();
-  const markApplied = useMarkApplied();
+  const markApplied = useMarkAnalysisApplied();
   const [grossMode, setGrossMode] = useGrossMode();
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** receipt dropped on a new, unsaved expense; uploaded on first save */
@@ -195,7 +195,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
     applyTreatment(defaultVatTreatment(form.getValues("supplierCountry"), form.getValues("supplierUid")));
   };
 
-  const save = (): Promise<ExpenseDTO | null> =>
+  const save = (): Promise<Expense | null> =>
     new Promise((resolve) => {
       void form.handleSubmit(
         async (values) => {
@@ -281,11 +281,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: ExpenseDTO; 
     upload.mutate(
       { id: expense.id, file: accepted[0] },
       {
-        onSuccess: () => {
-          toast.success("Beleg gespeichert");
-          // a replaced receipt invalidates earlier analysis results
-          void qc.invalidateQueries({ queryKey: ["receipts"] });
-        },
+        onSuccess: () => toast.success("Beleg gespeichert"),
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );

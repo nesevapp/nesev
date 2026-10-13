@@ -37,11 +37,12 @@ src/web/
   components/ui/*      shadcn primitives (add more: `bunx --bun shadcn@latest add <name>`, then fix the `cn` import to "@/lib/utils" if the CLI breaks it)
   components/page.tsx  <Page title actions> wrapper, PlaceholderPage
   components/form-fields.tsx  TextField/NumberField/TextareaField/SwitchField/FormSection for RHF
-  lib/api.ts           typed client `api`, parseResponse, apiErrorMessage, fileUrl
-  features/<feature>/  routes.tsx, pages, api.ts (query options + mutations), components
+  sdk/                 the only API access: per-module hc clients, <resource>.ts (functions, types, queries, hooks),
+                       keys.ts (query keys), invalidate.ts (cross-resource invalidation). See "Calling the API".
+  features/<feature>/  routes.tsx, pages, components (API access via @/sdk only)
 data/                  nesev.db, assets/, pdfs/ (gitignored)
 ```
-Import aliases: `@/*` → src/web, `@shared/*` → src/shared, `@server/*` → src/server (web may only `import type` from it). Server code imports shared modules by relative path.
+Import aliases: `@/*` → src/web, `@shared/*` → src/shared, `@server/*` → src/server (web may only `import type` from it, and only in `sdk/client.ts`). Server code imports shared modules by relative path.
 
 ## Ownership (parallel agents)
 - clients: `server/routes/clients.ts`, `services/clients.ts`, `web/features/clients/`, `shared/schemas/client.ts`
@@ -63,12 +64,36 @@ export default app;
 - Files: `data/assets/x.png` is served at `/api/files/assets/x.png` and `data/pdfs/y.pdf` at `/api/files/pdfs/y.pdf`. Store paths in the DB relative to data/ (`"assets/x.png"`).
 
 ## Calling the API (web)
-```ts
-import { api, parseResponse, apiErrorMessage } from "@/lib/api";
-export const clientsQuery = queryOptions({ queryKey: ["clients"], queryFn: () => parseResponse(api.clients.$get()) });
-await parseResponse(api.clients[":id"].$put({ param: { id: String(id) }, json }));
+**Features call the API only through `@/sdk` (`src/web/sdk/`). Add new endpoints there, never `hc`/`fetch`/query keys in a feature.**
 ```
-Use React Query for everything. Keep query options and mutations in `features/<x>/api.ts`. Other features may import them (e.g. `settingsQuery` from `@/features/settings/api`). Show errors with `toast.error(apiErrorMessage(err))` from sonner.
+sdk/client.ts       one hc client per route module, typed against that module only (`import type` from @server/routes/<x>),
+                    plus parseResponse, apiErrorMessage, idParam. Only sdk/ modules import it.
+sdk/keys.ts         every query key, hierarchical: keys.documents.all ⊃ keys.documents.list(filter), keys.documents.detail(id)
+sdk/invalidate.ts   cross-resource invalidation map: useInvalidate()(change, except?) — e.g. "bankMatches" refreshes
+                    bank, documents, expenses, dashboard, forecast, reminders, tax
+sdk/<resource>.ts   per resource: `<resource>Api` (plain async functions), response/input types, queryOptions, mutation hooks
+sdk/files.ts, pdf.ts  URL helpers (fileUrl, documentPdfUrl, reminderPdfUrl, pdfFontUrl); export/tax CSV URLs live in export.ts/tax.ts
+sdk/index.ts        barrel: import { clientQuery, useUpdateClient, type Client, apiErrorMessage } from "@/sdk"
+```
+Adding an endpoint (e.g. to clients):
+```ts
+// sdk/clients.ts – a module's root route ("/") is `.index` on its client
+export const clientsApi = {
+  get: (id: number) => parseResponse(clients[":id"].$get({ param: idParam(id) })),
+  create: (json: ClientCreateInput) => parseResponse(clients.index.$post({ json })),
+};
+export type Client = Awaited<ReturnType<typeof clientsApi.get>>;           // response types derive from the functions
+export const clientQuery = (id: number) => queryOptions({ queryKey: keys.clients.detail(id), queryFn: () => clientsApi.get(id) });
+export function useCreateClient() {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: (json: ClientCreateInput) => clientsApi.create(json), onSuccess: () => invalidate("clients") });
+}
+```
+- Naming: `<resource>Api.list/get/create/update/remove/…`; types `Client`, `ClientListItem`, `ClientCreateInput`, `ClientUpdateInput`, `ClientListFilter` (inputs alias the zod types in `@shared`); queries `clientsQuery(filter)`, `clientQuery(id)`; hooks `useCreateClient()` etc. Names must be unique across the barrel.
+- New query key → `keys.ts`. A mutation whose result shows up in other views → add/extend an entry in `invalidate.ts` instead of invalidating ad hoc in the hook or component.
+- A mutation that returns the saved entity writes it to the detail cache (`setQueryData`) and passes that key as `except` so it isn't refetched.
+- Use React Query for everything (`ensureQueryData(xQuery)` in route loaders). Show errors with `toast.error(apiErrorMessage(err))` from sonner.
+- The web may only `import type` from `@server/*`, and only in `sdk/client.ts`. Don't type a client against the merged `AppType`: that's what made the editor's TS server slow and report `never`.
 
 ## Pages and routes
 Code-based TanStack Router, chosen over file-based so there's no codegen step and each feature registers its own routes. In `features/<x>/routes.tsx`:
@@ -103,4 +128,4 @@ Client numbers are integers shown as `K-0001` (`formatClientNumber`/`parseClient
 | `POST /api/clients`, `POST /api/clients/:id/archive`, `.../unarchive` | |
 
 Server: `getClient(db, id)`, `requireClient(db, id)` (404) and `clientSnapshot(client)` (→ `ClientSnapshot` for finalize) in `services/clients.ts`.
-Web: `ClientDTO`, `clientQuery(id)`, `clientsQuery(filter)` and `clientPickerQuery(q)` in `features/clients/api.ts`. Use `<ClientPicker value={clientId} onChange={(client) => ...} />` from `features/clients/components/ClientPicker.tsx` (`client` is a `ClientDTO` or `null`). It also takes `placeholder`, `disabled`, `className`, `id` and `aria-invalid`. The "Dokumente" section on the client detail page renders `features/clients/components/client-documents.tsx`. The documents feature owns that component's body.
+Web: `Client`, `clientQuery(id)`, `clientsQuery(filter)` and `clientPickerQuery(q)` in `sdk/clients.ts` (import from `@/sdk`). Use `<ClientPicker value={clientId} onChange={(client) => ...} />` from `features/clients/components/ClientPicker.tsx` (`client` is a `Client` or `null`). It also takes `placeholder`, `disabled`, `className`, `id` and `aria-invalid`. The "Dokumente" section on the client detail page renders `features/clients/components/client-documents.tsx`. The documents feature owns that component's body.

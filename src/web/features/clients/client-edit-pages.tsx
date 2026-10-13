@@ -2,8 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Page } from "@/components/page";
-import { apiErrorMessage } from "@/lib/api";
-import { clientQuery, useCreateClient, useUpdateClient } from "./api";
+import { apiErrorMessage, clientQuery, useCreateClient, useUpdateClient } from "@/sdk";
 import { ClientForm, clientToFormValues, EMPTY_CLIENT } from "./components/client-form";
 
 export function NewClientPage() {

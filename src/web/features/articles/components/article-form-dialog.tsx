@@ -26,8 +26,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CODECS, NumericInput } from "@/features/documents/components/numeric-input";
-import { apiErrorMessage } from "@/lib/api";
-import { type ArticleDTO, nextArticleNumberQuery, useCreateArticle, useUpdateArticle } from "../api";
+import { apiErrorMessage, type Article, nextArticleNumberQuery, useCreateArticle, useUpdateArticle } from "@/sdk";
 
 export const EMPTY_ARTICLE: ArticleFormValues = {
   title: "",
@@ -38,7 +37,7 @@ export const EMPTY_ARTICLE: ArticleFormValues = {
   notes: "",
 };
 
-export function articleToFormValues(a: ArticleDTO): ArticleFormValues {
+export function articleToFormValues(a: Article): ArticleFormValues {
   const { number, title, description, unit, unitPriceCents, taxRateBp, notes } = a;
   return { number, title, description, unit, unitPriceCents, taxRateBp, notes };
 }
@@ -57,10 +56,10 @@ export function ArticleFormDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  article?: ArticleDTO | null;
+  article?: Article | null;
   defaults?: Partial<ArticleFormValues>;
   title?: string;
-  onSaved?: (article: ArticleDTO) => void;
+  onSaved?: (article: Article) => void;
 }) {
   const isEdit = !!article;
   const form = useForm<ArticleFormValues, unknown, ArticleCreate>({
@@ -82,7 +81,7 @@ export function ArticleFormDialog({
 
   const onSubmit = (values: ArticleCreate) => {
     const done = {
-      onSuccess: (saved: ArticleDTO) => {
+      onSuccess: (saved: Article) => {
         toast.success(isEdit ? "Artikel gespeichert" : `Artikel ${formatArticleNumber(saved.number)} angelegt`);
         onSaved?.(saved);
         onOpenChange(false);

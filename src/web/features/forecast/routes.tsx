@@ -1,7 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { z } from "@shared/schemas/zod";
 import { rootRoute } from "@/app/root-route";
-import { forecastQuery } from "./api";
+import { forecastQuery } from "@/sdk";
 import { ForecastPage } from "./forecast-page";
 
 const forecastSearch = z.object({

@@ -6,7 +6,7 @@ import { formatCents } from "@shared/money";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { taxCsvUrls, zmQuery } from "./api";
+import { taxCsvUrls, zmQuery } from "@/sdk";
 import { CopyButton, dueLabel, PeriodNav, SectionHeader, SourcesTable, th, Warnings } from "./components";
 
 export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (key: string) => void }) {

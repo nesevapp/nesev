@@ -49,9 +49,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { type ArticleDTO, articlesQuery, useDeleteArticle, useSetArticleArchived } from "./api";
+import { apiErrorMessage, type Article, articlesQuery, useDeleteArticle, useSetArticleArchived } from "@/sdk";
 import { ArticleFormDialog } from "./components/article-form-dialog";
 
 const route = getRouteApi("/articles");
@@ -62,14 +61,14 @@ const ARCHIVED_LABELS: Record<typeof ARTICLE_ARCHIVED_FILTERS[number], string> =
   all: "Alle",
 };
 
-type Dialog = { kind: "edit"; article: ArticleDTO | null } | { kind: "delete"; article: ArticleDTO } | null;
+type Dialog = { kind: "edit"; article: Article | null } | { kind: "delete"; article: Article } | null;
 
 const features = tableFeatures({
   rowSortingFeature,
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, basic: sortFn_basic },
 });
-const col = createColumnHelper<typeof features, ArticleDTO>();
+const col = createColumnHelper<typeof features, Article>();
 
 const NUMERIC_COLUMNS = new Set(["unitPriceCents", "usageCount"]);
 
@@ -89,7 +88,7 @@ export function ArticlesPage() {
 
   const { mutate: setArchived } = archive;
   const columns = useMemo(() => {
-    const toggleArchived = (a: ArticleDTO) =>
+    const toggleArchived = (a: Article) =>
       setArchived(
         { id: a.id, archived: !a.archivedAt },
         {
@@ -358,7 +357,7 @@ export function ArticlesPage() {
   );
 }
 
-function DeleteArticleDialog({ article, onClose }: { article: ArticleDTO | null; onClose: () => void }) {
+function DeleteArticleDialog({ article, onClose }: { article: Article | null; onClose: () => void }) {
   const del = useDeleteArticle();
   return (
     <AlertDialog open={!!article} onOpenChange={(open) => !open && onClose()}>
@@ -395,4 +394,4 @@ function DeleteArticleDialog({ article, onClose }: { article: ArticleDTO | null;
   );
 }
 
-const EMPTY: ArticleDTO[] = [];
+const EMPTY: Article[] = [];

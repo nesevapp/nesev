@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { taxCsvUrls, type UvaDTO, type UvaLineDTO, uvaQuery } from "./api";
+import { taxCsvUrls, type UvaLine, uvaQuery, type UvaReport } from "@/sdk";
 import { CopyButton, dueLabel, PeriodNav, SectionHeader, SourcesTable, th, Warnings } from "./components";
 
 export function UvaSection({
@@ -79,7 +79,7 @@ export function UvaSection({
   );
 }
 
-function Summary({ data }: { data: UvaDTO }) {
+function Summary({ data }: { data: UvaReport }) {
   const due = dueLabel(data.dueDate, data.today);
   const payable = data.resultCents >= 0;
   return (
@@ -121,7 +121,7 @@ function Summary({ data }: { data: UvaDTO }) {
   );
 }
 
-function KzTable({ data }: { data: UvaDTO }) {
+function KzTable({ data }: { data: UvaReport }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (kz: string) =>
@@ -184,7 +184,7 @@ function KzTable({ data }: { data: UvaDTO }) {
   );
 }
 
-function KzRow({ line, open, onToggle }: { line: UvaLineDTO; open: boolean; onToggle: () => void }) {
+function KzRow({ line, open, onToggle }: { line: UvaLine; open: boolean; onToggle: () => void }) {
   const expandable = line.sources.length > 0;
   const result = line.kz === "095";
   return (
@@ -223,7 +223,7 @@ function KzRow({ line, open, onToggle }: { line: UvaLineDTO; open: boolean; onTo
   );
 }
 
-function NotTaxable({ data, euIn021, setEu }: { data: UvaDTO; euIn021: boolean; setEu: (v: boolean) => void }) {
+function NotTaxable({ data, euIn021, setEu }: { data: UvaReport; euIn021: boolean; setEu: (v: boolean) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const rows = data.info.filter((i) => i.sources.length > 0);
   return (

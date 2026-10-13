@@ -17,10 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { settingsQuery } from "@/features/settings/api";
 import { cn } from "@/lib/utils";
-import type { ClientDTO } from "../api";
-import { nextClientNumberQuery } from "../api";
+import { type Client, nextClientNumberQuery, settingsQuery } from "@/sdk";
 
 export const EMPTY_CLIENT: ClientFormValues = {
   type: "company",
@@ -39,7 +37,7 @@ export const EMPTY_CLIENT: ClientFormValues = {
   notes: "",
 };
 
-export function clientToFormValues(c: ClientDTO): ClientFormValues {
+export function clientToFormValues(c: Client): ClientFormValues {
   const { id: _id, archivedAt: _a, createdAt: _c, updatedAt: _u, ...values } = c;
   return values;
 }

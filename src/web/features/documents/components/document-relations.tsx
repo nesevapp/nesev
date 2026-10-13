@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { DOCUMENT_TYPE_LABELS } from "@shared/documents";
-import type { DocumentDTO } from "../api";
+import { type Document } from "@/sdk";
 import { docLink } from "../config";
 
-type Ref = DocumentDTO["children"][number];
+type Ref = Document["children"][number];
 
 function RefLink({ doc }: { doc: Ref }) {
   return (
@@ -14,7 +14,7 @@ function RefLink({ doc }: { doc: Ref }) {
 }
 
 /** "Aus Angebot AN-2026-0001 · Rechnung RE-2026-0004" — the offer → invoice → credit note chain. */
-export function DocumentRelations({ doc }: { doc: DocumentDTO }) {
+export function DocumentRelations({ doc }: { doc: Document }) {
   if (!doc.parent && doc.children.length === 0 && !doc.recurringInvoiceId) return null;
   return (
     <span className="flex flex-wrap items-center gap-x-1.5">

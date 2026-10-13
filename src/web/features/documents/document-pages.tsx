@@ -3,7 +3,7 @@ import { Navigate } from "@tanstack/react-router";
 import type { DocumentType } from "@shared/documents";
 import type { DocumentFormValues } from "@shared/schemas/document";
 import { Skeleton } from "@/components/ui/skeleton";
-import { documentQuery, fetchDocumentDefaults } from "./api";
+import { documentDraftDefaultsQuery, documentQuery } from "@/sdk";
 import { newItem } from "./components/line-items-editor";
 import { docLink } from "./config";
 import { DocumentEditor, toFormValues } from "./document-editor";
@@ -21,12 +21,7 @@ export function DocumentDetailPage({ type, id }: { type: DocumentType; id: numbe
 
 /** /offers/new etc. (optional ?clientId=): unsaved draft prefilled from settings/client defaults. */
 export function NewDocumentPage({ type, clientId }: { type: DocumentType; clientId?: number }) {
-  const defaults = useQuery({
-    queryKey: ["document-defaults", type, clientId ?? null],
-    queryFn: () => fetchDocumentDefaults(type, clientId),
-    staleTime: 0,
-    gcTime: 0,
-  });
+  const defaults = useQuery(documentDraftDefaultsQuery(type, clientId));
   if (!defaults.data) {
     return (
       <div className="mx-auto max-w-6xl space-y-4 px-8 py-8">

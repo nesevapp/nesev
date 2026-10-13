@@ -5,8 +5,7 @@ import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { Button } from "@/components/ui/button";
-import { apiErrorMessage } from "@/lib/api";
-import { documentPaymentsQuery, useUnmatch } from "../api";
+import { apiErrorMessage, documentPaymentsQuery, useUnmatch } from "@/sdk";
 
 /** "teilbezahlt € 100,00 von € 240,00" / "Überzahlung" — null when nothing is paid or due. */
 export function paymentStateLabel(p: { dueCents: number; paidCents: number; openCents: number; partial: boolean }): string | null {

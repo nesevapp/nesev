@@ -16,16 +16,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { candidatesQuery, type SuggestionDTO, type TransactionDTO, useApplyMatch } from "../api";
+import {
+  apiErrorMessage,
+  type BankTransaction,
+  matchCandidatesQuery,
+  type MatchSuggestion,
+  useApplyMatch,
+} from "@/sdk";
 import { Amount } from "../format";
 
-type Selected = { s: SuggestionDTO; input: string };
-const keyOf = (s: Pick<SuggestionDTO, "kind" | "id">) => `${s.kind}-${s.id}`;
+type Selected = { s: MatchSuggestion; input: string };
+const keyOf = (s: Pick<MatchSuggestion, "kind" | "id">) => `${s.kind}-${s.id}`;
 
 /** Manual matching: search open invoices (incoming) or expenses (outgoing), split the amount across several. */
-export function MatchDialog({ tx, onClose }: { tx: TransactionDTO | null; onClose: () => void }) {
+export function MatchDialog({ tx, onClose }: { tx: BankTransaction | null; onClose: () => void }) {
   return (
     <Dialog open={!!tx} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] grid-rows-[auto_auto_minmax(0,1fr)_auto] sm:max-w-3xl">
@@ -35,12 +40,12 @@ export function MatchDialog({ tx, onClose }: { tx: TransactionDTO | null; onClos
   );
 }
 
-function MatchForm({ tx, onClose }: { tx: TransactionDTO; onClose: () => void }) {
+function MatchForm({ tx, onClose }: { tx: BankTransaction; onClose: () => void }) {
   const incoming = tx.amountCents > 0;
   const [q, setQ] = useState("");
   const debounced = useDebouncedValue(q, 200);
   const { data: candidates = [], isFetching } = useQuery(
-    candidatesQuery({ direction: incoming ? "in" : "out", q: debounced, transactionId: tx.id }),
+    matchCandidatesQuery({ direction: incoming ? "in" : "out", q: debounced, transactionId: tx.id }),
   );
   const [selected, setSelected] = useState<Map<string, Selected>>(new Map());
   const apply = useApplyMatch();
@@ -50,7 +55,7 @@ function MatchForm({ tx, onClose }: { tx: TransactionDTO; onClose: () => void })
   const total = amounts.reduce<number>((s, a) => s + (a ?? 0), 0);
   const rest = tx.remainingCents - total;
 
-  const toggle = (s: SuggestionDTO) =>
+  const toggle = (s: MatchSuggestion) =>
     setSelected((cur) => {
       const next = new Map(cur);
       if (next.has(keyOf(s))) next.delete(keyOf(s));

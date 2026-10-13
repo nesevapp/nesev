@@ -10,10 +10,9 @@ import { FormSection, SwitchField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, ocrSettingsQuery, receiptStatusQuery, useBuildOcrHelper, useUpdateOcrSettings } from "@/sdk";
 import { CodeText } from "./code-text";
-import { ocrSettingsQuery, receiptStatusQuery, useBuildHelper, useUpdateOcrSettings } from "./api";
 
 /** "Belegerkennung" section on the settings page (own form, saved via PUT /api/receipts/settings). */
 export function ReceiptSettingsSection() {
@@ -189,7 +188,7 @@ function ComponentStatus({ ollamaUrl, model, visionModel, mode }: { ollamaUrl: s
   // "Verbindung testen" probes the URL currently in the form (saved or not)
   const [probeUrl, setProbeUrl] = useState<string | undefined>(undefined);
   const status = useQuery(receiptStatusQuery(probeUrl));
-  const build = useBuildHelper();
+  const build = useBuildOcrHelper();
   const s = status.data;
   const has = (name: string) => {
     const want = name.includes(":") ? name : `${name}:latest`;

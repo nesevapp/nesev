@@ -3,7 +3,7 @@ import { createRoute, useNavigate } from "@tanstack/react-router";
 import { expenseListQuerySchema } from "@shared/schemas/expense";
 import { z } from "@shared/schemas/zod";
 import { rootRoute } from "@/app/root-route";
-import { expenseQuery } from "./api";
+import { expenseQuery } from "@/sdk";
 import { ExpenseEditor } from "./expense-editor";
 import { ExpensesPage } from "./expenses-page";
 

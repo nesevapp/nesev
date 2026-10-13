@@ -35,14 +35,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiErrorMessage } from "@/lib/api";
 import {
-  type TemplateSummary,
+  apiErrorMessage,
+  type TemplateListItem,
   templatesQuery,
   useCreateTemplate,
   useDeleteTemplate,
   useSetDefaultTemplate,
-} from "./api";
+} from "@/sdk";
 
 const SECTION_TITLES: Record<TemplateDocType, string> = {
   offer: "Angebote",
@@ -56,11 +56,11 @@ const dateFormatter = new Intl.DateTimeFormat("de-AT", { dateStyle: "medium" });
 export function TemplatesPage() {
   const { data: templates } = useSuspenseQuery(templatesQuery);
   const [createOpen, setCreateOpen] = useState<{ docType: TemplateDocType; sourceId?: number; name: string } | null>(null);
-  const [toDelete, setToDelete] = useState<TemplateSummary | null>(null);
+  const [toDelete, setToDelete] = useState<TemplateListItem | null>(null);
   const setDefault = useSetDefaultTemplate();
   const remove = useDeleteTemplate();
 
-  const onSetDefault = (t: TemplateSummary) =>
+  const onSetDefault = (t: TemplateListItem) =>
     setDefault.mutate(t.id, {
       onSuccess: () => toast.success(`„${t.name}“ ist jetzt Standard für ${SECTION_TITLES[t.docType]}`),
       onError: (err) => toast.error(apiErrorMessage(err)),
@@ -138,7 +138,7 @@ function TemplateCard({
   onSetDefault,
   onDelete,
 }: {
-  template: TemplateSummary;
+  template: TemplateListItem;
   onDuplicate: () => void;
   onSetDefault: () => void;
   onDelete: () => void;
@@ -235,7 +235,7 @@ function CreateTemplateDialog({
   onClose,
 }: {
   initial: { docType: TemplateDocType; sourceId?: number; name: string };
-  templates: TemplateSummary[];
+  templates: TemplateListItem[];
   onClose: () => void;
 }) {
   const navigate = useNavigate();

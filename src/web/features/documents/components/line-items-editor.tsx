@@ -10,10 +10,10 @@ import { UnitSelect } from "@/components/unit-select";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ArticleDTO } from "@/features/articles/api";
 import { ArticleAutocompleteInput } from "@/features/articles/components/article-autocomplete";
 import { ArticleFormDialog } from "@/features/articles/components/article-form-dialog";
 import { cn } from "@/lib/utils";
+import { type Article } from "@/sdk";
 import { CODECS, NumericInput } from "./numeric-input";
 
 /** Any form with an `items` array of document lines (documents, recurring invoices, ...). */
@@ -302,7 +302,7 @@ function TitleField({
   const rate = useController({ control, name: `${name}.taxRateBp` });
   const articleId = useController({ control, name: `${name}.articleId` });
 
-  const pick = (a: ArticleDTO) => {
+  const pick = (a: Article) => {
     title.field.onChange(a.title);
     description.field.onChange(a.description);
     unit.field.onChange(a.unit);

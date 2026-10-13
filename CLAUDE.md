@@ -22,7 +22,8 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 ## Layout (short)
 - `src/shared/` – logic used by server and web: money, `calcTotals`, tax modes, schemas, expenses/bank/tax-report definitions. No server- or DOM-only imports.
 - `src/server/routes/<x>.ts` → mounted at `/api/<x>` in `app.ts`; `services/<x>.ts` hold DB logic plus tests; `lib/` holds numbering, paths, pdf, bank parsers and OCR.
-- `src/web/features/<x>/` – `routes.tsx`, pages, `api.ts` (query options + mutations), components. Routes are registered in `src/web/app/router.tsx`, nav in `app-shell.tsx`.
+- `src/web/sdk/` – the only API access: typed per-module hc clients, per-resource functions/types/queries/hooks, query keys (`keys.ts`) and cross-resource invalidation (`invalidate.ts`). Features call the API only through `@/sdk`; add new endpoints there.
+- `src/web/features/<x>/` – `routes.tsx`, pages, components. Routes are registered in `src/web/app/router.tsx`, nav in `app-shell.tsx`.
 - `data/` (gitignored): `nesev.db`, `assets/`, `pdfs/` (frozen PDFs), `receipts/`, `backups/`, `bin/` (compiled helpers).
 
 ## Invariants – don't break these
@@ -40,7 +41,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - **drizzle-kit drops `ON DELETE …` when it `ALTER TABLE … ADD` a column with a FK.** Prefer new tables for new relations, or fix the generated SQL by hand. The user's DB has two such columns (`document_items.article_id`, `documents.recurring_invoice_id`) without SET NULL; services null them explicitly before deleting.
 - bun:sqlite transactions are synchronous: no `await` inside `db.transaction`.
 - Hono route handlers must be chained on one `new Hono()` or the RPC types are lost.
-- The editor's TS server sometimes reports `never`-typed errors on `hc` clients; trust `bun run typecheck`.
+- Never type an `hc` client against the merged `AppType` in web code (the editor's TS server degrades to `never`); `sdk/client.ts` types each client against its route module. If the editor still shows `never` errors, trust `bun run typecheck`.
 - Receipt OCR needs Ollama ≥ 0.19 for the default `qwen3.5:4b`. The Homebrew build lacks `libollama_xgrammar` for MLX models, so a JSON-schema `format` is rejected ("structured output is unavailable"). `receipt-ollama.ts` then retries with the schema in the prompt (and sends `think: false`). The Apple Vision helper is compiled on first use into `data/bin/`.
 - `src/server/lib/bank-parsers/fixtures/**` are byte-exact (CRLF, Windows-1252) via `.gitattributes`.
 

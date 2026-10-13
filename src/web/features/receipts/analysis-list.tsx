@@ -10,9 +10,8 @@ import {
 } from "@shared/receipts";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { receiptQueueQuery, useAnalyzeReceipts, useCancelAnalysis } from "./api";
+import { apiErrorMessage, receiptQueueQuery, useAnalyzeReceipts, useCancelAnalysis } from "@/sdk";
 
 // Receipt analysis on the expenses list: status column, row selection, bulk actions, progress.
 

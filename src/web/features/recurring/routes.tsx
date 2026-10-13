@@ -3,8 +3,7 @@ import { createRoute } from "@tanstack/react-router";
 import { z } from "@shared/schemas/zod";
 import { rootRoute } from "@/app/root-route";
 import { Page } from "@/components/page";
-import { fetchDocumentDefaults } from "@/features/documents/api";
-import { recurringListQuery, recurringQuery } from "./api";
+import { invoiceDefaultsQuery, recurringListQuery, recurringQuery } from "@/sdk";
 import { newRecurringValues, RecurringEditor, toFormValues } from "./recurring-editor";
 import { RecurringListPage } from "./recurring-list-page";
 
@@ -25,11 +24,7 @@ const newRoute = createRoute({
   component: function NewRecurring() {
     const { clientId } = newRoute.useSearch();
     // invoice defaults (texts, tax mode) for the optional preselected client
-    const { data } = useQuery({
-      queryKey: ["documents", "defaults", "invoice", clientId ?? null],
-      queryFn: () => fetchDocumentDefaults("invoice", clientId),
-      staleTime: Infinity,
-    });
+    const { data } = useQuery(invoiceDefaultsQuery(clientId));
     if (!data) return <Page title="Neue Serienrechnung" />;
     return <RecurringEditor initialValues={newRecurringValues(data, clientId)} />;
   },

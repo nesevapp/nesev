@@ -9,16 +9,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  accountSuggestionQuery,
-  type BankAccountDTO,
+  apiErrorMessage,
+  type BankAccount,
   bankAccountsQuery,
-  useArchiveAccount,
-  useDeleteAccount,
-  useSaveAccount,
-} from "../api";
+  bankAccountSuggestionQuery,
+  useDeleteBankAccount,
+  useSaveBankAccount,
+  useSetBankAccountArchived,
+} from "@/sdk";
 
 interface Values {
   name: string;
@@ -34,13 +34,13 @@ export function AccountForm({
   onCancel,
   submitLabel = "Speichern",
 }: {
-  account?: BankAccountDTO;
+  account?: BankAccount;
   onSaved?: (a: { id: number }) => void;
   onCancel?: () => void;
   submitLabel?: string;
 }) {
-  const suggestion = useQuery({ ...accountSuggestionQuery, enabled: !account });
-  const save = useSaveAccount();
+  const suggestion = useQuery({ ...bankAccountSuggestionQuery, enabled: !account });
+  const save = useSaveBankAccount();
   const [values, setValues] = useState<Values | null>(
     account ? { name: account.name, iban: account.iban, bankName: account.bankName, autoMatch: account.autoMatch } : null,
   );
@@ -126,9 +126,9 @@ export function AccountForm({
 /** "Konten verwalten": list with edit / archive / delete, plus "Neues Konto". */
 export function AccountsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: accounts = [] } = useQuery(bankAccountsQuery);
-  const [editing, setEditing] = useState<BankAccountDTO | "new" | null>(null);
-  const archive = useArchiveAccount();
-  const remove = useDeleteAccount();
+  const [editing, setEditing] = useState<BankAccount | "new" | null>(null);
+  const archive = useSetBankAccountArchived();
+  const remove = useDeleteBankAccount();
 
   return (
     <Dialog

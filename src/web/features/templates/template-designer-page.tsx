@@ -21,8 +21,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiErrorMessage, fileUrl } from "@/lib/api";
-import { templateQuery, templateSampleQuery, useRemoveBasePdf, useUpdateTemplate, useUploadBasePdf } from "./api";
+import {
+  apiErrorMessage,
+  fileUrl,
+  templateQuery,
+  templateSampleQuery,
+  useRemoveBasePdf,
+  useUpdateTemplate,
+  useUploadBasePdf,
+} from "@/sdk";
 import { DesignerPanel } from "./designer-panel";
 import { loadFonts, openPreview } from "./pdf-runtime";
 import "./designer.css";

@@ -3,7 +3,7 @@ import { z } from "@shared/schemas/zod";
 import { documentListQuerySchema } from "@shared/schemas/document";
 import type { DocumentType } from "@shared/documents";
 import { rootRoute } from "@/app/root-route";
-import { documentQuery } from "./api";
+import { documentQuery } from "@/sdk";
 import { DocumentListPage } from "./document-list-page";
 import { DocumentDetailPage, NewDocumentPage } from "./document-pages";
 

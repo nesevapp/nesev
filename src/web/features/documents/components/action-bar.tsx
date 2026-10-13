@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { apiErrorMessage } from "@/lib/api";
-import { type DeriveKind, type DocumentDTO, useDeriveDocument } from "../api";
+import { apiErrorMessage, type DeriveKind, type Document, useDeriveDocument } from "@/sdk";
 import { docLink } from "../config";
 
 /** Sticky bottom bar (same look as the settings page save bar). */
@@ -27,7 +26,7 @@ export function useDeriveAndOpen() {
   const navigate = useNavigate();
   return {
     isPending: derive.isPending,
-    run: (doc: Pick<DocumentDTO, "id">, kind: DeriveKind) =>
+    run: (doc: Pick<Document, "id">, kind: DeriveKind) =>
       derive.mutate(
         { id: doc.id, kind },
         {

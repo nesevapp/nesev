@@ -1,7 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { z } from "@shared/schemas/zod";
 import { rootRoute } from "@/app/root-route";
-import { dashboardQuery } from "./api";
+import { dashboardQuery } from "@/sdk";
 import { DashboardPage } from "./dashboard-page";
 
 const dashboardSearch = z.object({

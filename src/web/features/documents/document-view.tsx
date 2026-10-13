@@ -27,9 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InvoicePayments } from "@/features/bank/components/invoice-payments";
 import { CreateReminderButton, InvoiceReminders } from "@/features/reminders/components/invoice-reminders";
-import { settingsQuery } from "@/features/settings/api";
-import { apiErrorMessage } from "@/lib/api";
-import { type DocumentDTO, pdfUrl, useChangeStatus } from "./api";
+import { apiErrorMessage, type Document, documentPdfUrl, settingsQuery, useChangeDocumentStatus } from "@/sdk";
 import { ActionBar, useDeriveAndOpen } from "./components/action-bar";
 import { DocumentRelations } from "./components/document-relations";
 import { StatusBadge } from "./components/status-badge";
@@ -37,10 +35,10 @@ import { TotalsPanel } from "./components/totals-panel";
 import { cityLine, DOC_CONFIG } from "./config";
 
 /** Read-only view of a finalized document (data from its snapshots) with status/follow-up actions. */
-export function DocumentView({ doc }: { doc: DocumentDTO }) {
+export function DocumentView({ doc }: { doc: Document }) {
   const config = DOC_CONFIG[doc.type];
   const { data: settings } = useQuery(settingsQuery);
-  const changeStatus = useChangeStatus();
+  const changeStatus = useChangeDocumentStatus();
   const derive = useDeriveAndOpen();
   const [paidOpen, setPaidOpen] = useState(false);
   const [paidAt, setPaidAt] = useState(todayIso());
@@ -199,13 +197,13 @@ export function DocumentView({ doc }: { doc: DocumentDTO }) {
         }
       >
         <Button variant="outline" size="sm" asChild>
-          <a href={pdfUrl(doc.id)} target="_blank" rel="noreferrer">
+          <a href={documentPdfUrl(doc.id)} target="_blank" rel="noreferrer">
             <Eye />
             Vorschau
           </a>
         </Button>
         <Button variant="outline" size="sm" asChild>
-          <a href={pdfUrl(doc.id, true)} download>
+          <a href={documentPdfUrl(doc.id, true)} download>
             <Download />
             PDF herunterladen
           </a>

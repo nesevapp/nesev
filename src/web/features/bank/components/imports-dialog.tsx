@@ -4,8 +4,7 @@ import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { apiErrorMessage } from "@/lib/api";
-import { importsQuery, useUndoImport } from "../api";
+import { apiErrorMessage, bankImportsQuery, useUndoBankImport } from "@/sdk";
 
 const FORMAT: Record<string, string> = { camt053: "camt.053", csv: "CSV", "george-json": "George JSON" };
 
@@ -19,8 +18,8 @@ export function ImportsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { data = [] } = useQuery({ ...importsQuery(accountId), enabled: open });
-  const undo = useUndoImport();
+  const { data = [] } = useQuery({ ...bankImportsQuery(accountId), enabled: open });
+  const undo = useUndoBankImport();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">

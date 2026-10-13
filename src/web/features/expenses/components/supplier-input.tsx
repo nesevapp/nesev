@@ -5,7 +5,7 @@ import { categoryLabel, VAT_TREATMENT_SHORT_LABELS } from "@shared/expenses";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
 import { cn } from "@/lib/utils";
-import { type SupplierSuggestionDTO, supplierSuggestionsQuery } from "../api";
+import { type SupplierSuggestion, supplierSuggestionsQuery } from "@/sdk";
 
 /**
  * Free-text supplier name with suggestions from previous expenses.
@@ -23,7 +23,7 @@ export function SupplierInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  onPick: (s: SupplierSuggestionDTO) => void;
+  onPick: (s: SupplierSuggestion) => void;
   onBlur?: () => void;
   inputRef?: React.Ref<HTMLInputElement>;
   id?: string;
@@ -41,7 +41,7 @@ export function SupplierInput({
 
   useEffect(() => setActive(0), [q]);
 
-  const pick = (s: SupplierSuggestionDTO) => {
+  const pick = (s: SupplierSuggestion) => {
     onPick(s);
     setOpen(false);
   };

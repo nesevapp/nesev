@@ -9,9 +9,14 @@ import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { type RecurringListRowDTO, recurringListQuery, useRunRecurring, useUpdateRecurring } from "./api";
+import {
+  apiErrorMessage,
+  type RecurringListItem,
+  recurringListQuery,
+  useRunRecurring,
+  useUpdateRecurring,
+} from "@/sdk";
 
 /** Toast summary for a generation run. */
 export function reportGenerated(created: { finalized: boolean; error?: string }[]) {
@@ -26,7 +31,7 @@ export function reportGenerated(created: { finalized: boolean; error?: string }[
   for (const c of created) if (c.error) toast.warning(`Nicht finalisiert: ${c.error}`);
 }
 
-export function scheduleState(r: Pick<RecurringListRowDTO, "active" | "endDate" | "nextRunDate">, today: string) {
+export function scheduleState(r: Pick<RecurringListItem, "active" | "endDate" | "nextRunDate">, today: string) {
   if (r.endDate && r.nextRunDate > r.endDate) return "ended" as const;
   if (!r.active) return "paused" as const;
   return r.nextRunDate <= today ? ("due" as const) : ("scheduled" as const);

@@ -6,16 +6,14 @@ import { formatClientNumber } from "@shared/schemas/client";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { type ClientDTO, clientPickerQuery, clientQuery } from "../api";
+import { type Client, clientPickerQuery, clientQuery } from "@/sdk";
 import { useDebouncedValue } from "../use-debounced-value";
-
-export type { ClientDTO };
 
 export interface ClientPickerProps {
   /** selected client id */
   value?: number;
   /** called with the full client on select, null when cleared */
-  onChange: (client: ClientDTO | null) => void;
+  onChange: (client: Client | null) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -53,7 +51,7 @@ export function ClientPicker({
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  const select = (client: ClientDTO | null) => {
+  const select = (client: Client | null) => {
     if (client) qc.setQueryData(clientQuery(client.id).queryKey, client);
     onChange(client);
     setOpen(false);

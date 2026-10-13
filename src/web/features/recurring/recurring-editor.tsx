@@ -27,29 +27,29 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { clientQuery } from "@/features/clients/api";
 import { ClientPicker } from "@/features/clients/components/ClientPicker";
-import { fetchDocumentDefaults } from "@/features/documents/api";
 import { ActionBar } from "@/features/documents/components/action-bar";
 import { LineItemsEditor } from "@/features/documents/components/line-items-editor";
 import { StatusBadge } from "@/features/documents/components/status-badge";
 import { TotalsPanel } from "@/features/documents/components/totals-panel";
 import { docLink } from "@/features/documents/config";
-import { settingsQuery } from "@/features/settings/api";
-import { templatesQuery } from "@/features/templates/api";
-import { apiErrorMessage } from "@/lib/api";
 import {
-  type RecurringDTO,
+  apiErrorMessage,
+  clientQuery,
+  documentsApi,
+  type Recurring,
+  settingsQuery,
+  templatesQuery,
   useCreateRecurring,
   useDeleteRecurring,
-  useGenerateNow,
+  useGenerateRecurringNow,
   useUpdateRecurring,
-} from "./api";
+} from "@/sdk";
 import { reportGenerated, scheduleState } from "./recurring-list-page";
 
 type FormControl_ = Control<RecurringFormValues, unknown, RecurringFormData>;
 
-export function toFormValues(r: RecurringDTO): RecurringFormValues {
+export function toFormValues(r: Recurring): RecurringFormValues {
   return {
     name: r.name,
     clientId: r.clientId,
@@ -70,12 +70,12 @@ export function toFormValues(r: RecurringDTO): RecurringFormValues {
   };
 }
 
-export function RecurringEditor({ recurring, initialValues }: { recurring?: RecurringDTO; initialValues: RecurringFormValues }) {
+export function RecurringEditor({ recurring, initialValues }: { recurring?: Recurring; initialValues: RecurringFormValues }) {
   const navigate = useNavigate();
   const create = useCreateRecurring();
   const update = useUpdateRecurring();
   const remove = useDeleteRecurring();
-  const generate = useGenerateNow();
+  const generate = useGenerateRecurringNow();
   const { data: settings } = useQuery(settingsQuery);
   const { data: allTemplates } = useQuery(templatesQuery);
   const templates = (allTemplates ?? []).filter((t) => t.docType === "invoice");
@@ -99,7 +99,7 @@ export function RecurringEditor({ recurring, initialValues }: { recurring?: Recu
 
   const busy = create.isPending || update.isPending || remove.isPending || generate.isPending;
 
-  const save = (): Promise<RecurringDTO | null> => {
+  const save = (): Promise<Recurring | null> => {
     if (recurring && !formState.isDirty) return Promise.resolve(recurring);
     return new Promise((resolve) => {
       void form.handleSubmit(
@@ -182,7 +182,7 @@ export function RecurringEditor({ recurring, initialValues }: { recurring?: Recu
   const onClientPicked = async (picked: { id: number; name: string }) => {
     if (!form.getValues("name").trim()) form.setValue("name", picked.name, { shouldDirty: true });
     try {
-      const d = await fetchDocumentDefaults("invoice", picked.id);
+      const d = await documentsApi.defaults("invoice", picked.id);
       form.setValue("taxMode", d.taxMode, { shouldDirty: true });
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -540,7 +540,7 @@ function SchedulePreview({ values, today }: { values: RecurringFormValues; today
   );
 }
 
-function GeneratedInvoices({ recurring }: { recurring: RecurringDTO }) {
+function GeneratedInvoices({ recurring }: { recurring: Recurring }) {
   return (
     <section className="border-t py-8">
       <h2 className="mb-3 text-sm font-medium">

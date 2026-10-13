@@ -18,16 +18,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  type BankAccountDTO,
+  apiErrorMessage,
+  type BankAccount,
+  type BankImportPreview,
   csvPresetsQuery,
-  type ImportPreviewDTO,
-  useCommitImport,
-  usePreviewImport,
-  useUndoImport,
-} from "../api";
+  useCommitBankImport,
+  usePreviewBankImport,
+  useUndoBankImport,
+} from "@/sdk";
 import { Amount } from "../format";
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -48,7 +48,7 @@ const ENCODING_LABELS: Record<(typeof CSV_ENCODINGS)[number], string> = {
   "utf-16le": "UTF-16",
 };
 
-const STATUS: Record<ImportPreviewDTO["rows"][number]["status"], { label: string; className: string }> = {
+const STATUS: Record<BankImportPreview["rows"][number]["status"], { label: string; className: string }> = {
   new: { label: "Neu", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   duplicate: { label: "Bereits importiert", className: "border-border text-muted-foreground" },
   foreign_currency: { label: "Fremdwährung", className: "border-amber-200 bg-amber-50 text-amber-700" },
@@ -67,13 +67,13 @@ export function ImportDialog({
   onClose,
 }: {
   file: File | null;
-  account: BankAccountDTO | undefined;
+  account: BankAccount | undefined;
   onClose: () => void;
 }) {
-  const previewMut = usePreviewImport();
-  const commit = useCommitImport();
-  const undo = useUndoImport();
-  const [preview, setPreview] = useState<ImportPreviewDTO | null>(null);
+  const previewMut = usePreviewBankImport();
+  const commit = useCommitBankImport();
+  const undo = useUndoBankImport();
+  const [preview, setPreview] = useState<BankImportPreview | null>(null);
   const [mapping, setMapping] = useState<CsvMapping | null>(null);
   const [mappingOpen, setMappingOpen] = useState(false);
   const run = useRef(0);
@@ -252,7 +252,7 @@ export function ImportDialog({
   );
 }
 
-function Counts({ preview: p }: { preview: ImportPreviewDTO }) {
+function Counts({ preview: p }: { preview: BankImportPreview }) {
   const items: [string, React.ReactNode][] = [
     ["Neu", <span className="tabular font-medium">{p.counts.new}</span>],
     ["Bereits importiert", <span className="tabular">{p.counts.duplicate}</span>],
@@ -272,7 +272,7 @@ function Counts({ preview: p }: { preview: ImportPreviewDTO }) {
   );
 }
 
-function PreviewTable({ preview: p }: { preview: ImportPreviewDTO }) {
+function PreviewTable({ preview: p }: { preview: BankImportPreview }) {
   const rows = p.rows.slice(0, PREVIEW_LIMIT);
   const more = p.counts.total - rows.length;
   return (
@@ -334,7 +334,7 @@ function MappingEditor({
   onChange,
   onPreset,
 }: {
-  preview: ImportPreviewDTO;
+  preview: BankImportPreview;
   mapping: CsvMapping;
   open: boolean;
   onToggle: () => void;

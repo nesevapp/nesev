@@ -1,6 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import { rootRoute } from "@/app/root-route";
-import { settingsQuery } from "./api";
+import { settingsQuery } from "@/sdk";
 import { SettingsPage } from "./settings-page";
 
 const settingsRoute = createRoute({

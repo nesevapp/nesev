@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MONTHS } from "@/features/dashboard/revenue-chart";
 import { cn } from "@/lib/utils";
-import { type EarDTO, earQuery, taxCsvUrls } from "./api";
+import { earQuery, type EarReport, taxCsvUrls } from "@/sdk";
 import { CopyButton, SectionHeader, Segmented, SourceLink, SourcesTable, th, Warnings } from "./components";
 import { EarChart, EarLegend } from "./ear-chart";
 
@@ -73,7 +73,7 @@ function Tile({ label, cents, strong }: { label: string; cents: number; strong?:
   );
 }
 
-function MonthlySection({ data }: { data: EarDTO }) {
+function MonthlySection({ data }: { data: EarReport }) {
   const [view, setView] = useState<"chart" | "table">("chart");
   return (
     <section>
@@ -128,7 +128,7 @@ function MonthlySection({ data }: { data: EarDTO }) {
   );
 }
 
-function Breakdown({ data }: { data: EarDTO }) {
+function Breakdown({ data }: { data: EarReport }) {
   const [openIncome, setOpenIncome] = useState(false);
   const income = data.income[0]!;
   return (
@@ -196,7 +196,7 @@ function Breakdown({ data }: { data: EarDTO }) {
   );
 }
 
-function E1a({ data }: { data: EarDTO }) {
+function E1a({ data }: { data: EarReport }) {
   return (
     <section className="min-w-0">
       <SectionHeader title="Zuordnung E1a (Vorschlag)" hint="Kennzahlen der Beilage zur Einkommensteuererklärung — Zuordnung je Kategorie, mit Steuerberatung prüfen." />
@@ -236,7 +236,7 @@ function E1a({ data }: { data: EarDTO }) {
   );
 }
 
-function Unpaid({ data }: { data: EarDTO }) {
+function Unpaid({ data }: { data: EarReport }) {
   return (
     <section>
       <SectionHeader title="Offene Posten zum Jahresende" hint={`Belege aus ${data.year}, die bis 31.12. nicht (vollständig) bezahlt wurden — nicht in der EAR ${data.year} enthalten.`} />

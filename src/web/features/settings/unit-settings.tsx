@@ -6,8 +6,7 @@ import { DEFAULT_UNITS, unitsSchema } from "@shared/units";
 import { FormSection } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { apiErrorMessage } from "@/lib/api";
-import { unitsQuery, useUpdateUnits } from "./units";
+import { apiErrorMessage, unitsQuery, useUpdateUnits } from "@/sdk";
 
 /** "Einheiten" section on the settings page: the list offered in the line-item "Einheit" dropdown. */
 export function UnitSettingsSection() {

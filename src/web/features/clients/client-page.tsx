@@ -26,9 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { settingsQuery } from "@/features/settings/api";
-import { apiErrorMessage } from "@/lib/api";
-import { type ClientDTO, clientQuery, useDeleteClient, useSetClientArchived } from "./api";
+import { apiErrorMessage, type Client, clientQuery, settingsQuery, useDeleteClient, useSetClientArchived } from "@/sdk";
 import { ClientDocuments } from "./components/client-documents";
 
 const route = getRouteApi("/clients/$id");
@@ -113,7 +111,7 @@ export function ClientPage() {
   );
 }
 
-function ClientActions({ client, onToggleArchived }: { client: ClientDTO; onToggleArchived: () => void }) {
+function ClientActions({ client, onToggleArchived }: { client: Client; onToggleArchived: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const del = useDeleteClient(client.id);
   const navigate = useNavigate();
@@ -196,7 +194,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function AddressLines({ client }: { client: ClientDTO }) {
+function AddressLines({ client }: { client: Client }) {
   const lines = [
     client.name,
     client.type === "company" && client.contactPerson ? `z. Hd. ${client.contactPerson}` : "",
@@ -214,7 +212,7 @@ function AddressLines({ client }: { client: ClientDTO }) {
   );
 }
 
-function Conditions({ client }: { client: ClientDTO }) {
+function Conditions({ client }: { client: Client }) {
   const settings = useQuery(settingsQuery);
   const derived = defaultTaxMode({ ...client, defaultTaxMode: null }, { smallBusiness: false });
   const taxMode = client.defaultTaxMode ? (

@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, Building2, Check, ChevronLeft, ChevronRight, FileText, Receipt, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -11,13 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useChangeStatus } from "@/features/documents/api";
 import { StatusBadge } from "@/features/documents/components/status-badge";
 import { docLink } from "@/features/documents/config";
 import { RemindButton } from "@/features/reminders/components/invoice-reminders";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { type DashboardDocDTO, type DashboardDTO, dashboardQuery, type OverdueDocDTO } from "./api";
+import {
+  apiErrorMessage,
+  type Dashboard,
+  type DashboardDocument,
+  dashboardQuery,
+  type OverdueDocument,
+  useChangeDocumentStatus,
+} from "@/sdk";
 import { ChartLegend, MONTHS, RevenueChart } from "./revenue-chart";
 
 interface DashboardSearch {
@@ -86,7 +91,7 @@ function YearSwitcher({ year, years, onChange }: { year: number; years: number[]
 
 // ── KPIs ────────────────────────────────────────────────────────────────────────
 
-function Kpis({ data }: { data: DashboardDTO }) {
+function Kpis({ data }: { data: Dashboard }) {
   const { kpis, year, today, monthly } = data;
   const isCurrentYear = year === Number(today.slice(0, 4));
   // Current year: compare with the same months of the previous year, not the whole year.
@@ -161,7 +166,7 @@ function Tile({
 
 // ── Revenue chart ───────────────────────────────────────────────────────────────
 
-function RevenueSection({ data, compare, setCompare }: { data: DashboardDTO; compare: boolean; setCompare: (c: boolean) => void }) {
+function RevenueSection({ data, compare, setCompare }: { data: Dashboard; compare: boolean; setCompare: (c: boolean) => void }) {
   const [view, setView] = useState<"chart" | "table">("chart");
   const isCurrentYear = data.year === Number(data.today.slice(0, 4));
   const lastMonth = isCurrentYear ? Number(data.today.slice(5, 7)) - 1 : 11;
@@ -262,7 +267,7 @@ const th = "h-9 text-xs font-medium text-muted-foreground";
 
 function useRowNav() {
   const navigate = useNavigate();
-  return (row: { type: DashboardDocDTO["type"]; id: number }) => ({
+  return (row: { type: DashboardDocument["type"]; id: number }) => ({
     tabIndex: 0,
     onClick: () => navigate(docLink(row.type, row.id)),
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -276,18 +281,14 @@ function NumberCell({ number }: { number: string | null }) {
   return number ? <span className="tabular font-medium">{number}</span> : <span className="text-muted-foreground">Entwurf</span>;
 }
 
-function OverdueSection({ rows, total }: { rows: OverdueDocDTO[]; total: number }) {
+function OverdueSection({ rows, total }: { rows: OverdueDocument[]; total: number }) {
   const rowNav = useRowNav();
-  const qc = useQueryClient();
-  const changeStatus = useChangeStatus();
-  const markPaid = (row: OverdueDocDTO) =>
+  const changeStatus = useChangeDocumentStatus();
+  const markPaid = (row: OverdueDocument) =>
     changeStatus.mutate(
       { id: row.id, json: { action: "paid" } },
       {
-        onSuccess: () => {
-          toast.success(`${row.number} als bezahlt markiert`);
-          return qc.invalidateQueries({ queryKey: ["dashboard"] });
-        },
+        onSuccess: () => toast.success(`${row.number} als bezahlt markiert`),
         onError: (err) => toast.error(apiErrorMessage(err)),
       },
     );
@@ -360,7 +361,7 @@ function OverdueSection({ rows, total }: { rows: OverdueDocDTO[]; total: number 
   );
 }
 
-function RecentSection({ rows, today }: { rows: DashboardDocDTO[]; today: string }) {
+function RecentSection({ rows, today }: { rows: DashboardDocument[]; today: string }) {
   const rowNav = useRowNav();
   return (
     <section className="min-w-0">
@@ -399,7 +400,7 @@ function RecentSection({ rows, today }: { rows: DashboardDocDTO[]; today: string
   );
 }
 
-function OpenOffersSection({ rows, total, today }: { rows: DashboardDocDTO[]; total: number; today: string }) {
+function OpenOffersSection({ rows, total, today }: { rows: DashboardDocument[]; total: number; today: string }) {
   const rowNav = useRowNav();
   return (
     <section className="min-w-0">
@@ -457,7 +458,7 @@ function CompanyBanner() {
   );
 }
 
-function Onboarding({ setup }: { setup: DashboardDTO["setup"] }) {
+function Onboarding({ setup }: { setup: Dashboard["setup"] }) {
   const steps = [
     {
       done: !setup.companyMissing,

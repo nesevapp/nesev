@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
 import { cn } from "@/lib/utils";
-import { type ArticleDTO, articlePickerQuery } from "../api";
+import { type Article, articlePickerQuery } from "@/sdk";
 
 /**
  * Text input with article suggestions (free text stays possible). Typing shows matching active
@@ -24,7 +24,7 @@ export function ArticleAutocompleteInput({
 }: {
   value: string;
   onChange: (value: string) => void;
-  onPick: (article: ArticleDTO) => void;
+  onPick: (article: Article) => void;
   /** show the article's tax rate (hide in tax modes without VAT) */
   showTax?: boolean;
 } & Omit<React.ComponentProps<typeof Input>, "value" | "onChange">) {
@@ -44,7 +44,7 @@ export function ArticleAutocompleteInput({
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  const pick = (article: ArticleDTO) => {
+  const pick = (article: Article) => {
     setOpen(false);
     onPick(article);
   };

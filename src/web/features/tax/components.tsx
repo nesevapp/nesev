@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { docLink } from "@/features/documents/config";
 import { cn } from "@/lib/utils";
-import type { UvaSourceDTO } from "./api";
+import { type UvaSource } from "@/sdk";
 
 export const th = "h-9 text-xs font-medium text-muted-foreground";
 
@@ -126,7 +126,7 @@ export function PeriodNav({
   );
 }
 
-export function SourceLink({ s }: { s: Pick<UvaSourceDTO, "kind" | "id" | "docType" | "number" | "party"> }) {
+export function SourceLink({ s }: { s: Pick<UvaSource, "kind" | "id" | "docType" | "number" | "party"> }) {
   const text = s.number || s.party || "–";
   if (s.kind === "document" && s.docType) {
     return (
@@ -146,7 +146,7 @@ export function SourceLink({ s }: { s: Pick<UvaSourceDTO, "kind" | "id" | "docTy
 }
 
 /** Drill-down table of the documents/expenses behind a value. */
-export function SourcesTable({ sources, showTax = true }: { sources: UvaSourceDTO[]; showTax?: boolean }) {
+export function SourcesTable({ sources, showTax = true }: { sources: UvaSource[]; showTax?: boolean }) {
   if (sources.length === 0) return <p className="px-3 py-2 text-xs text-muted-foreground">Keine Belege.</p>;
   return (
     <Table className="text-xs">

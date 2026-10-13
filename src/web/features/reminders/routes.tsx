@@ -2,7 +2,7 @@ import { createRoute } from "@tanstack/react-router";
 import { z } from "@shared/schemas/zod";
 import { REMINDER_STATUSES } from "@shared/reminders";
 import { rootRoute } from "@/app/root-route";
-import { reminderQuery, reminderSettingsQuery } from "./api";
+import { reminderQuery, reminderSettingsQuery } from "@/sdk";
 import { ReminderPage } from "./reminder-page";
 import { RemindersPage } from "./reminders-page";
 

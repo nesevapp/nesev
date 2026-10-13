@@ -1,7 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { ARTICLE_ARCHIVED_FILTERS } from "@shared/schemas/article";
 import { rootRoute } from "@/app/root-route";
-import { articlesQuery } from "./api";
+import { articlesQuery } from "@/sdk";
 import { ArticlesPage } from "./articles-page";
 
 export interface ArticlesSearch {

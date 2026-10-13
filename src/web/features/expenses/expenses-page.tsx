@@ -29,16 +29,16 @@ import {
   SelectCell,
   useReceiptListState,
 } from "@/features/receipts/analysis-list";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  type ExpenseListRowDTO,
-  type ExpenseListSearch,
+  apiErrorMessage,
+  type ExpenseListFilter,
+  type ExpenseListItem,
   expensesQuery,
   receiptUrl,
-  useCreateDrafts,
+  useCreateExpenseDrafts,
   useSetExpensePaid,
-} from "./api";
+} from "@/sdk";
 import { CategoryOptions } from "./components/category-select";
 import { IncompleteBadge } from "./components/expense-badges";
 import { DropOverlay, pickReceiptFiles, splitReceiptFiles, useWindowFileDrag } from "./components/file-drop";
@@ -51,7 +51,7 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, basic: sortFn_basic },
 });
-const col = createColumnHelper<typeof features, ExpenseListRowDTO>();
+const col = createColumnHelper<typeof features, ExpenseListItem>();
 
 const money = (v: number) => <span className="tabular">{formatCents(v)}</span>;
 
@@ -128,7 +128,7 @@ const COLUMNS = col.columns([
   }),
 ]);
 
-function PaidToggle({ expense }: { expense: ExpenseListRowDTO }) {
+function PaidToggle({ expense }: { expense: ExpenseListItem }) {
   const setPaid = useSetExpensePaid();
   const overdue = !expense.paidAt && !!expense.dueDate && expense.dueDate < todayIso();
   const toggle = (e: React.MouseEvent) => {
@@ -162,7 +162,7 @@ function PaidToggle({ expense }: { expense: ExpenseListRowDTO }) {
   );
 }
 
-function ReceiptLink({ expense }: { expense: ExpenseListRowDTO }) {
+function ReceiptLink({ expense }: { expense: ExpenseListItem }) {
   const url = receiptUrl(expense);
   if (!url) return <span className="text-muted-foreground/50">–</span>;
   const Icon = expense.attachmentPath?.endsWith(".pdf") ? FileText : Image;
@@ -184,8 +184,8 @@ export function ExpensesPage({
   search,
   setSearch,
 }: {
-  search: ExpenseListSearch;
-  setSearch: (update: (s: ExpenseListSearch) => ExpenseListSearch) => void;
+  search: ExpenseListFilter;
+  setSearch: (update: (s: ExpenseListFilter) => ExpenseListFilter) => void;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState(search.q ?? "");
@@ -198,7 +198,7 @@ export function ExpensesPage({
   const receiptList = useReceiptListState();
   const data = receiptList.filter(fetched);
   const { data: drafts = EMPTY } = useQuery(expensesQuery({ status: "incomplete" }));
-  const createDrafts = useCreateDrafts();
+  const createDrafts = useCreateExpenseDrafts();
   const dragging = useWindowFileDrag();
 
   const table = useTable({
@@ -306,7 +306,7 @@ export function ExpensesPage({
         </div>
         <Select
           value={search.status ?? ALL}
-          onValueChange={(v) => setSearch((s) => ({ ...s, status: v === ALL ? undefined : (v as ExpenseListSearch["status"]) }))}
+          onValueChange={(v) => setSearch((s) => ({ ...s, status: v === ALL ? undefined : (v as ExpenseListFilter["status"]) }))}
         >
           <SelectTrigger size="sm" className="w-40" aria-label="Status">
             <SelectValue />
@@ -322,7 +322,7 @@ export function ExpensesPage({
         <Select
           value={search.category ?? ALL}
           onValueChange={(v) =>
-            setSearch((s) => ({ ...s, category: v === ALL ? undefined : (v as ExpenseListSearch["category"]) }))
+            setSearch((s) => ({ ...s, category: v === ALL ? undefined : (v as ExpenseListFilter["category"]) }))
           }
         >
           <SelectTrigger size="sm" className="w-48" aria-label="Kategorie">
@@ -337,7 +337,7 @@ export function ExpensesPage({
         <Select
           value={search.attachment ?? ALL}
           onValueChange={(v) =>
-            setSearch((s) => ({ ...s, attachment: v === ALL ? undefined : (v as ExpenseListSearch["attachment"]) }))
+            setSearch((s) => ({ ...s, attachment: v === ALL ? undefined : (v as ExpenseListFilter["attachment"]) }))
           }
         >
           <SelectTrigger size="sm" className="w-36" aria-label="Beleg">
@@ -475,4 +475,4 @@ export function ExpensesPage({
   );
 }
 
-const EMPTY: ExpenseListRowDTO[] = [];
+const EMPTY: ExpenseListItem[] = [];

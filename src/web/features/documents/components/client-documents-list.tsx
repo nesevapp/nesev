@@ -6,7 +6,7 @@ import { DOCUMENT_TYPE_LABELS } from "@shared/documents";
 import { formatCents } from "@shared/money";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { documentsQuery } from "../api";
+import { documentsQuery } from "@/sdk";
 import { DOC_CONFIG, docLink } from "../config";
 import { StatusBadge } from "./status-badge";
 

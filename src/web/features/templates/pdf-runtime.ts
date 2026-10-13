@@ -2,7 +2,7 @@ import type { Font, Template } from "@pdfme/common";
 import { FONT_FILES, FONT_REGULAR } from "@shared/pdf/plugins";
 import { renderPdf } from "@shared/pdf/render";
 import type { PdfInput } from "@shared/pdf/variables";
-import { fileUrl } from "@/lib/api";
+import { fileUrl, pdfFontUrl } from "@/sdk";
 
 let fontsPromise: Promise<Font> | null = null;
 
@@ -10,7 +10,7 @@ let fontsPromise: Promise<Font> | null = null;
 export function loadFonts(): Promise<Font> {
   fontsPromise ??= Promise.all(
     Object.entries(FONT_FILES).map(async ([name, file]) => {
-      const res = await fetch(`/api/pdf/fonts/${file}`);
+      const res = await fetch(pdfFontUrl(file));
       if (!res.ok) throw new Error(`Schrift ${file} konnte nicht geladen werden`);
       return [name, { data: await res.arrayBuffer(), fallback: name === FONT_REGULAR, subset: true }] as const;
     }),

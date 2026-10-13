@@ -14,11 +14,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
 import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
+import {
+  apiErrorMessage,
+  fileUrl,
+  type Settings,
+  settingsQuery,
+  useDeleteLogo,
+  useUpdateSettings,
+  useUploadLogo,
+} from "@/sdk";
 import { UnitSettingsSection } from "./unit-settings";
-import { apiErrorMessage, fileUrl } from "@/lib/api";
-import { type SettingsData, settingsQuery, useDeleteLogo, useUpdateSettings, useUploadLogo } from "./api";
 
-function toFormValues(s: SettingsData): SettingsFormValues {
+function toFormValues(s: Settings): SettingsFormValues {
   const { id: _id, logoPath: _logo, createdAt: _c, updatedAt: _u, ...values } = s;
   return values;
 }

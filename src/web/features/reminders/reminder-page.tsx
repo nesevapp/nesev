@@ -37,24 +37,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ActionBar } from "@/features/documents/components/action-bar";
 import { CODECS, NumericInput } from "@/features/documents/components/numeric-input";
-import { templatesQuery } from "@/features/templates/api";
-import { apiErrorMessage } from "@/lib/api";
 import {
-  type ReminderDTO,
+  apiErrorMessage,
+  type Reminder,
   reminderPdfUrl,
   reminderQuery,
   reminderSettingsQuery,
+  templatesQuery,
   useDeleteReminder,
   useFinalizeReminder,
   useMarkReminderSent,
   useUpdateReminder,
-} from "./api";
+} from "@/sdk";
 import { LevelBadge, ReminderStatusBadge } from "./components/reminder-status-badge";
 
 type FormValues = z.input<typeof reminderUpdateSchema>;
 const DEFAULT_TEMPLATE = "default";
 
-function toFormValues(r: ReminderDTO): FormValues {
+function toFormValues(r: Reminder): FormValues {
   return {
     level: r.level,
     issueDate: r.issueDate,
@@ -74,7 +74,7 @@ export function ReminderPage({ id }: { id: number }) {
   return reminder.status === "draft" ? <ReminderEditor key={reminder.id} reminder={reminder} /> : <ReminderView reminder={reminder} />;
 }
 
-function Title({ reminder }: { reminder: ReminderDTO }) {
+function Title({ reminder }: { reminder: Reminder }) {
   return (
     <span className="flex items-center gap-3">
       {reminder.title || "Mahnung"} <span className="tabular">{reminder.number ?? ""}</span>
@@ -83,7 +83,7 @@ function Title({ reminder }: { reminder: ReminderDTO }) {
   );
 }
 
-function Description({ reminder }: { reminder: ReminderDTO }) {
+function Description({ reminder }: { reminder: Reminder }) {
   const { invoice } = reminder;
   return (
     <span>
@@ -110,7 +110,7 @@ function Description({ reminder }: { reminder: ReminderDTO }) {
   );
 }
 
-function SettledNotice({ reminder }: { reminder: ReminderDTO }) {
+function SettledNotice({ reminder }: { reminder: Reminder }) {
   if (!reminder.settled) return null;
   return (
     <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -128,7 +128,7 @@ function AmountPanel({
   interestCents,
   issueDate,
 }: {
-  reminder: ReminderDTO;
+  reminder: Reminder;
   feeCents: number;
   interestCents: number;
   issueDate: string;
@@ -178,7 +178,7 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
 
 // ── Read-only view ──────────────────────────────────────────────────────────────
 
-function ReminderView({ reminder }: { reminder: ReminderDTO }) {
+function ReminderView({ reminder }: { reminder: Reminder }) {
   const markSent = useMarkReminderSent();
   const values = reminderPlaceholderValues(reminder, reminder.invoice, reminder.clientName);
   return (
@@ -246,7 +246,7 @@ function ReminderView({ reminder }: { reminder: ReminderDTO }) {
 
 // ── Draft editor ────────────────────────────────────────────────────────────────
 
-function ReminderEditor({ reminder }: { reminder: ReminderDTO }) {
+function ReminderEditor({ reminder }: { reminder: Reminder }) {
   const navigate = useNavigate();
   const update = useUpdateReminder();
   const finalize = useFinalizeReminder();
@@ -272,7 +272,7 @@ function ReminderEditor({ reminder }: { reminder: ReminderDTO }) {
 
   const busy = update.isPending || finalize.isPending || remove.isPending;
 
-  const save = (): Promise<ReminderDTO | null> => {
+  const save = (): Promise<Reminder | null> => {
     if (!formState.isDirty) return Promise.resolve(reminder);
     return new Promise((resolve) => {
       void form.handleSubmit(

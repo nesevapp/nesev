@@ -24,7 +24,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { ClientPicker } from "@/features/clients/components/ClientPicker";
 import { useDebouncedValue } from "@/features/clients/use-debounced-value";
 import { cn } from "@/lib/utils";
-import { type DocumentListRowDTO, documentsQuery } from "./api";
+import { type DocumentListItem, documentsQuery } from "@/sdk";
 import { StatusBadge } from "./components/status-badge";
 import { DOC_CONFIG, docLink } from "./config";
 
@@ -37,7 +37,7 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, basic: sortFn_basic },
 });
-const col = createColumnHelper<typeof features, DocumentListRowDTO>();
+const col = createColumnHelper<typeof features, DocumentListItem>();
 
 function dueCell(value: string | null, overdue: boolean) {
   return value ? (
@@ -314,4 +314,4 @@ export function DocumentListPage({
   );
 }
 
-const EMPTY: DocumentListRowDTO[] = [];
+const EMPTY: DocumentListItem[] = [];

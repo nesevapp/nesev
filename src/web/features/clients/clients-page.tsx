@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { type ClientDTO, clientsQuery } from "./api";
+import { type Client, clientsQuery } from "@/sdk";
 import { useDebouncedValue } from "./use-debounced-value";
 
 const route = getRouteApi("/clients");
@@ -37,7 +37,7 @@ const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
 });
-const col = createColumnHelper<typeof features, ClientDTO>();
+const col = createColumnHelper<typeof features, Client>();
 const columns = col.columns([
   col.accessor("number", {
     header: "Nr.",
@@ -246,4 +246,4 @@ export function ClientsPage() {
   );
 }
 
-const EMPTY: ClientDTO[] = [];
+const EMPTY: Client[] = [];

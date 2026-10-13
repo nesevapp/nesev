@@ -11,8 +11,7 @@ import { FormSection, NumberField, SwitchField, TextareaField, TextField } from 
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { CODECS, NumericInput } from "@/features/documents/components/numeric-input";
-import { apiErrorMessage } from "@/lib/api";
-import { reminderSettingsQuery, useUpdateReminderSettings } from "./api";
+import { apiErrorMessage, reminderSettingsQuery, useUpdateReminderSettings } from "@/sdk";
 
 type Values = z.input<typeof reminderSettingsSchema>;
 

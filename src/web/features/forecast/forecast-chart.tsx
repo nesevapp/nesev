@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { formatCents } from "@shared/money";
 import { cn } from "@/lib/utils";
-import type { ForecastSource } from "./api";
+import { type ForecastSource } from "@/sdk";
 
 // Expected inflow per period as stacked columns (one color per source, fixed order, 2px surface gap between
 // segments), plus a separate slim "kumuliert" chart on the same x bands. Two charts instead of a second

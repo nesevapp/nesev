@@ -23,10 +23,15 @@ import {
 } from "@shared/receipts";
 import type { ExpenseFormData, ExpenseFormValues } from "@shared/schemas/expense";
 import { Button } from "@/components/ui/button";
-import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  apiErrorMessage,
+  type ReceiptAnalysis,
+  receiptAnalysisQuery,
+  useAnalyzeReceipts,
+  useCancelAnalysis,
+} from "@/sdk";
 import { CodeText } from "./code-text";
-import { receiptAnalysisQuery, type ReceiptAnalysisDTO, useAnalyzeReceipts, useCancelAnalysis } from "./api";
 
 type Form = UseFormReturn<ExpenseFormValues, unknown, ExpenseFormData>;
 type FormLine = ExpenseFormValues["lines"][number];
@@ -207,7 +212,7 @@ export function AnalysisPanel({
   );
 }
 
-function StatusText({ analysis }: { analysis: ReceiptAnalysisDTO | null }) {
+function StatusText({ analysis }: { analysis: ReceiptAnalysis | null }) {
   if (!analysis) return <>Noch nicht analysiert</>;
   if (analysis.stale) return <>Beleg wurde ersetzt – neu analysieren</>;
   switch (analysis.status) {
@@ -238,7 +243,7 @@ function StatusText({ analysis }: { analysis: ReceiptAnalysisDTO | null }) {
   }
 }
 
-function Suggestions({ analysis, target }: { analysis: ReceiptAnalysisDTO; target: ApplyTarget }) {
+function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: ApplyTarget }) {
   const { form } = target;
   const result = analysis.result!;
   const fields = result.fields;
