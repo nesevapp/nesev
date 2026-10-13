@@ -1,57 +1,139 @@
-# nesev — local sevdesk clone
+# nesev – Plan & Status
 
-Single-user, local-only (no auth). Offers, invoices, credit notes, clients, PDF designer.
-Currency: EUR only. Clients: AT, EU, CH. No e-invoicing for now.
+Local single-user sevdesk clone for an Austrian sole trader: offers, invoices, credit notes, clients, PDF designer, plus expenses, bank and tax helpers. EUR only. Clients in AT, EU and CH. No auth, runs on localhost.
 
-## Stack
-- **Bun** runtime, **Hono** API (typed RPC client via `hc`)
-- **SQLite** (`bun:sqlite`) + **Drizzle** ORM / drizzle-kit migrations
-- **React + Vite + Tailwind + shadcn/ui**, TanStack Router/Table, react-hook-form + zod
-- **pdfme** for PDF template designer + generator
-- Single package; `bun dev` runs API + Vite (proxy), `bun start` serves built SPA from Hono
+Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092` (finance), receipt OCR in progress.
 
-```
-nesev/
-  src/
-    server/   index.ts, routes/, db/schema.ts, db/migrations/
-    web/      Vite React app (routes, components)
-    shared/   zod schemas, totals calc, tax rules, types   ← used by both sides
-  data/       nesev.db, pdfs/ (frozen invoices), assets/ (logo, fonts)
-```
+---
 
-## Tax modes (per document, defaulted from client country + UID)
+## 1. Status
+
+| # | Area | Status | Where |
+|---|------|--------|-------|
+| 1 | Scaffold, settings, numbering, shared money/tax/totals | ✅ done | `src/shared`, `/settings` |
+| 2 | Clients | ✅ done | `/clients` |
+| 3 | Offers, invoices, credit notes | ✅ done | `/offers`, `/invoices`, `/credit-notes` |
+| 4 | PDF output (pdfme), GiroCode, frozen PDFs | ✅ done | `services/pdf.ts`, `/api/pdf` |
+| 5 | PDF template designer (slimmed, section reordering) | ✅ done | `/templates` |
+| 6 | Dashboard, CSV/ZIP export, backups | ✅ done | `/`, `/export` |
+| 7 | Article catalog + autocomplete in line items | ✅ done | `/articles` |
+| 8 | Payment reminders (Mahnwesen) | ✅ done | `/reminders` |
+| 9 | Recurring invoices + payment forecast | ✅ done | `/recurring`, `/forecast` |
+| 10 | Unit list ("Einheit" dropdown) | ✅ done | Einstellungen → Einheiten |
+| 11 | Expenses with receipt upload | ✅ done | `/expenses` |
+| 12 | Taxes: UVA, ZM, EAR | ✅ done | `/tax` |
+| 13 | Bank import + payment matching | ✅ done | `/bank` |
+| 14 | On-demand local receipt OCR | 🚧 in progress | `/expenses`, Einstellungen → Belegerkennung |
+
+---
+
+## 2. How it works
+
+### Core rules
+- **Units:** money in integer cents, quantity in milli-units, rates in basis points. Dates are `YYYY-MM-DD`.
+- **Totals:** `calcTotals(items, taxMode)` is the only totals function (UI, API, PDF). Line net is rounded per line and tax is computed per rate.
+- **Tax modes** (per document, defaulted from the client's country and UID, can be overridden):
+
 | Mode | When | Effect |
 |---|---|---|
-| `AT_DOMESTIC` | AT clients | 20/13/10/0 % per line |
-| `EU_REVERSE_CHARGE` | EU B2B with UID | 0 %, reverse-charge note, client UID required |
-| `THIRD_COUNTRY` | CH clients | 0 %, "nicht im Inland steuerbar" note |
-| `SMALL_BUSINESS` | Kleinunternehmer | 0 %, §6 Abs 1 Z 27 note |
+| `AT_DOMESTIC` | AT clients | 20 / 13 / 10 / 0 % per line |
+| `EU_REVERSE_CHARGE` | EU B2B with UID | 0 %, reverse-charge note; client UID required |
+| `THIRD_COUNTRY` | e.g. CH | 0 %, "nicht im Inland steuerbar" note |
+| `SMALL_BUSINESS` | Kleinunternehmer (setting) | 0 %, §6 Abs 1 Z 27 note |
 
-Note texts configurable in settings (verify wording with tax advisor).
+- **Lifecycle:**
+  - Offer: draft → final → sent → accepted / declined.
+  - Invoice: draft → final → sent → paid. Overdue is derived from the due date.
+  - Credit note: draft → final.
+- **Finalize** = one transaction that assigns a gapless number (`AN-`, `RE-`, `GS-`, `MA-`, `ER-YYYY-NNNN`), freezes client and seller snapshots and locks the document. Afterwards the PDF is frozen to `data/pdfs`. Corrections only via credit notes, which store positive amounts.
+- **Conversions:** offer → invoice (any status; marks the offer accepted), invoice → credit note, duplicate.
 
-## Data model
-- **settings** (singleton): company data, UID, IBAN/BIC, logo, default payment terms, default intro/closing texts, default templates, tax note texts
-- **clients**: number, type (company/person), name, contact person, address, country, UID, email, phone, payment terms, default tax mode, notes, archived_at
-- **documents**: type (`offer|invoice|credit_note`), status, number (null until finalized), client_id, `client_snapshot` JSON, `seller_snapshot` JSON, issue date, service period, due/valid-until, tax_mode, intro/closing texts, template_id, parent_id (offer→invoice→credit note), cached totals (cents), finalized_at, sent_at, paid_at, pdf_path
-- **document_items**: position, title, description, quantity (milli-units), unit, unit_price_cents, tax_rate_bp, discount_bp
-- **number_sequences**: per type+year → `AN-2026-0001`, `RE-2026-0001`, `GS-2026-0001`; assigned transactionally on finalize, gapless
-- **pdf_templates**: name, doc type, pdfme JSON, optional base PDF, is_default
+### Clients & articles
+- Clients are numbered `K-0001` and can be archived. Delete is blocked while documents reference the client.
+- Articles are numbered `A-0001`. Typing a line title in any line-item editor suggests articles, most used first, and values are copied onto the line. "Als Artikel speichern" turns a line into an article. Usage counts up when a document is finalized.
+- Units come from the configurable list in Einstellungen (default: Std., Stk., Tag, Woche, Monat, Jahr, Pauschal, km).
 
-Rules:
-- Money as integer cents; one shared totals function for UI + PDF.
-- Finalized invoice = read-only, snapshot + frozen PDF on disk; corrections only via credit note.
+### PDFs & designer
+- pdfme templates per type (offer, invoice, credit note, reminder). A default is seeded and each document can pick a template.
+- Anything inside the top 30 mm or the bottom ~28 mm repeats on every page (header/footer). The body flows, and the items table breaks across pages.
+- A letterhead PDF is drawn under the pages: its page 1 under the first page, its page 2 under all following pages.
+- Designer: canvas plus one panel ("Aufbau" with ↑/↓ section reordering that really moves content, "Variablen", "Eigenschaften"). Text elements support `{placeholders}`.
+- Invoices get an EPC/GiroCode QR (IBAN, amount, invoice number as reference).
 
-## Statuses
-- Offer: draft → sent → accepted / declined
-- Invoice: draft → final → sent → paid (overdue derived from due date)
-- Credit note: draft → final
+### Reminders (Mahnwesen)
+- Levels are configurable (default: Zahlungserinnerung €0, 1. Mahnung €10, 2./letzte Mahnung €20, each +7 days). The last level can repeat. Optional default interest (simple, actual days / 365).
+- Only overdue, finalized, unpaid invoices can get a reminder. Open amount = gross − credit notes − bank payments. Fees and interest are not taxable.
+- Reminder PDF with GiroCode for the total including fees. Bulk creation from "Fällig zum Mahnen", plus actions on the invoice view and the dashboard.
 
-## Milestones
-1. **Scaffold** — Bun/Hono/Vite/Drizzle wiring, migrations, settings page
-2. **Clients** — list/search/filter, create/edit, archive
-3. **Offers & invoices** — line-item editor with live totals, tax modes, finalize + numbering, status, offer→invoice, invoice→credit note, mark paid
-4. **PDF output** — default pdfme template (items table, address variables, totals), preview, frozen PDF on finalize, EPC/GiroCode QR
-5. **PDF designer** — pdfme Designer page, multiple templates per doc type, fonts/logo/letterhead, variable picker, live preview with sample data
-6. **Polish** — dashboard (open/overdue/revenue per month), CSV export, DB backup
+### Recurring invoices & forecast
+- Intervals: monthly, every N months or yearly. The day of month anchors to the start date (31 Jan → 28/29 Feb → 31 Mar).
+- Missed periods are caught up with one invoice each, and the end date is respected.
+- Generated invoices are either drafts or auto-finalized; a failed finalize leaves a draft.
+- A scheduler runs on server start and then hourly. "Jetzt ausführen" and "Rechnung jetzt erstellen" trigger it by hand.
+- **Forecast** of incoming money (gross) over 3, 6 or 12 months:
+  - Open invoices are expected on their due date plus that client's average payment delay. Overdue invoices count as "now".
+  - Every planned recurring run is included.
+  - Optional: drafts, and open offers at a set probability.
+  - The VAT share of the inflow is shown separately.
 
-Later: Mahnungen, article catalog, recurring invoices.
+### Expenses (Ausgaben)
+- Fields: supplier, UID, country, supplier invoice number, dates, VAT treatment (`domestic`, `reverse_charge`, `ig_acquisition`, `import`, `none`).
+- Lines carry an EAR category, rate, stored tax (can be overridden to match the receipt) and deductible share.
+- `grossCents` = amount payable to the supplier. For reverse charge / ig. Erwerb that equals net, and the self-assessed tax is owed and deductible.
+- Receipts (PDF/JPG/PNG/WebP, ≤ 20 MB) go to `data/receipts/<year>/`. Dropping several files creates incomplete drafts (no lines), which reports exclude with a warning.
+
+### Taxes (`/tax`) – a helper, not tax advice
+- **UVA:**
+  - Month or quarter, per settings. Ist- or Sollbesteuerung, per settings.
+  - Mapped to the U30 Kennzahlen (000, 022/029/006/037, 016, 057/066, 070/072/065, 060, 061, 090 → 095).
+  - Each KZ opens the documents behind it and has a copy button. The due date is shown.
+- **ZM:** per EU client UID, the sum of reverse-charge services.
+- **EAR:** by payment date. Expenses grouped by category with an E1a suggestion, with warnings for assets over 1,000 € and for Bewirtung.
+- CSV export for each report.
+
+### Bank
+- **Import:** camt.053/052/054 and CSV.
+  - Tested against fixtures: camt, N26, Revolut, Wise.
+  - Built from memory, still to verify with real exports: George, ELBA, BAWAG, Revolut Business.
+  - Everything else goes through a generic column mapper, remembered per account.
+  - Duplicates are skipped via a hash, there's a preview before committing, and an import can be undone.
+- **Matching:** the invoice number in the payment text (in any spelling), exact amount, IBAN learned per client or supplier, name similarity.
+  - Auto-apply per account: off, safe (default) or aggressive, and only when exactly one candidate qualifies. Everything else is a one-click suggestion.
+  - Split and partial payments are supported. A covered invoice becomes paid with the booking date, and unmatching reverts that.
+
+### Receipt OCR (in progress)
+- Upload never analyses anything. The user queues an analysis per receipt or in bulk, and a background worker processes the queue one receipt at a time.
+- Pipeline: embedded ZUGFeRD/XRechnung XML → PDF text layer → Apple Vision OCR (Tesseract fallback) → local Ollama model (default `qwen2.5:7b`) with a JSON schema. The model is unloaded after a batch.
+- The extracted fields are checked: amounts must add up, UID and IBAN must be valid, and known suppliers are recognised.
+- In the editor, "Erkennung" suggestions only fill empty fields and are saved only when the user saves.
+
+### Data, export & backups
+- Everything lives in `data/` (gitignored).
+- Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
+- Accountant export: CSV (BOM, `;`, decimal comma) and a ZIP with all PDFs for a period.
+
+---
+
+## 3. Open decisions (for the user / Steuerberater)
+1. **UVA, B2B services to EU clients:** currently not in the UVA, only in the ZM (per BMF guidance). There's a toggle to report them in KZ 000/021 instead. Confirm.
+2. **Wording of the tax notes** for reverse charge, third country and Kleinunternehmer (editable in Einstellungen).
+3. **Default interest rate** in Mahnwesen (placeholder 11.2 % p.a. = base rate + 9.2 pp). Check against the current OeNB base rate.
+4. **Ist- vs. Sollbesteuerung** and monthly vs. quarterly UVA: set in Einstellungen → Umsatzsteuer.
+5. **Optional DB constraint patch** for the two FK columns without `ON DELETE SET NULL` (handled in code today).
+
+---
+
+## 4. Roadmap (in order)
+1. **Finish receipt OCR** – review the agent's results, test with real receipts, commit.
+2. **Verify bank presets with real exports** from the user's bank (George / ELBA / …) and fix the presets.
+3. **Close known gaps:**
+   - Manual "Zahlung zurücksetzen" should handle bank allocations.
+   - "teilbezahlt" badge in invoice lists and on the dashboard.
+   - A credit note that fully covers an invoice should mark it paid.
+   - Favicon.
+4. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
+5. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
+6. **Comfort:** dark mode, keyboard shortcuts overview, global search.
+7. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
+
+Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking.
