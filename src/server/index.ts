@@ -2,6 +2,8 @@ import { app } from "./app";
 import { db } from "./db";
 import { DB_PATH, WEB_DIST_DIR } from "./lib/paths";
 import { startBackupScheduler } from "./services/backup";
+import { getLlamaServer } from "./services/receipt-llama";
+import { initReceiptQueue } from "./services/receipt-queue";
 import { startRecurringScheduler } from "./services/recurring";
 import { serveFile } from "./lib/static";
 
@@ -22,6 +24,12 @@ if (isProd) {
 // Daily local DB snapshots to data/backups (guarded against double start under bun --hot).
 if (DB_PATH !== ":memory:") startBackupScheduler(db);
 if (DB_PATH !== ":memory:") startRecurringScheduler(db);
+if (DB_PATH !== ":memory:") {
+  // receipt analysis: recover runs interrupted by a restart, resume the queue
+  initReceiptQueue(db);
+  // llama-server: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
+  getLlamaServer();
+}
 
 console.log(`nesev ${isProd ? "server" : "API"} listening on http://localhost:${port}`);
 

@@ -8,6 +8,8 @@ export function createDb(path: string) {
   const sqlite = new Database(path, { create: true });
   sqlite.exec("PRAGMA journal_mode = WAL;");
   sqlite.exec("PRAGMA foreign_keys = ON;");
+  // the dev server and the MCP server may write concurrently: wait for the lock instead of failing
+  sqlite.exec("PRAGMA busy_timeout = 5000;");
   return drizzle(sqlite, { schema });
 }
 

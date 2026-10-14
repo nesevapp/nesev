@@ -3,16 +3,14 @@ import { z } from "zod";
 import { analyzeRequestSchema, llamaTestSchema, ocrProbeQuerySchema, ocrSettingsSchema } from "../../shared/schemas/receipt";
 import { db } from "../db";
 import { ensureHelper, helperStatus } from "../lib/ocr/helper";
-import { DB_PATH } from "../lib/paths";
 import { discoverModels } from "../lib/llama/paths";
 import { validate } from "../lib/validate";
-import { getLlamaServer, syncLlamaServer, testLlama } from "../services/receipt-llama";
+import { syncLlamaServer, testLlama } from "../services/receipt-llama";
 import { LlmError } from "../services/receipt-llm";
 import {
   cancelAnalysis,
   enqueueAnalyses,
   getReceiptWorker,
-  initReceiptQueue,
   latestAnalysis,
   markApplied,
   queueOverview,
@@ -24,11 +22,8 @@ import { componentStatus, getOcrSettings, updateOcrSettings } from "../services/
 
 const idParam = validate("param", z.object({ id: z.coerce.number().int().positive() }));
 
-if (DB_PATH !== ":memory:") {
-  initReceiptQueue(db);
-  // llama-server: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
-  getLlamaServer();
-}
+// Startup work (stale-run recovery, queue kick, llama-server exit handlers + orphan reaping) lives in
+// server/index.ts, so importing the app elsewhere (the MCP server) has no side effects.
 
 const app = new Hono()
   /** Queue runs for expenses with a receipt; skips ones without receipt or already queued/running. */

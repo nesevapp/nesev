@@ -39,6 +39,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 
 ## Gotchas
 - **`bun --hot` can keep stale modules** (seen with `src/shared/*` and service files imported by other services): errors like "X is not defined" for an existing export, or old behaviour after an edit. Restart `bun run dev` before debugging further.
+- **Importing `src/server/app.ts` must stay side-effect free** (the MCP server imports it in a second process). Startup work (schedulers, receipt-queue recovery, llama-server orphan reaping) belongs in `src/server/index.ts`. SQLite runs with WAL + `busy_timeout` so both processes can write.
 - **Migrations apply on server start only.** After a new migration, restart `bun run dev`; `--hot` doesn't re-run them.
 - **drizzle-kit drops `ON DELETE …` when it `ALTER TABLE … ADD` a column with a FK.** Prefer new tables for new relations, or fix the generated SQL by hand. The user's DB has two such columns (`document_items.article_id`, `documents.recurring_invoice_id`) without SET NULL; services null them explicitly before deleting.
 - bun:sqlite transactions are synchronous: no `await` inside `db.transaction`.
