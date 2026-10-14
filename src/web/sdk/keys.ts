@@ -98,6 +98,10 @@ export const keys = {
   recurringExpenses: {
     all: ["recurring-expenses"] as const,
     list: ["recurring-expenses", "list"] as const,
+    schedule: (id: number) => ["recurring-expenses", "schedule", id] as const,
+    candidates: (id: number, date: string) => ["recurring-expenses", "candidates", id, date] as const,
+    expenseLink: (expenseId: number) => ["recurring-expenses", "link", expenseId] as const,
+    suggestions: (expenseId: number) => ["recurring-expenses", "suggestions", expenseId] as const,
   },
   assets: {
     all: ["assets"] as const,

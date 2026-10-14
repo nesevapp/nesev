@@ -305,6 +305,7 @@ function EntryHint({ e }: { e: ForecastEntry }) {
       lines.push("Geplante Zahlung laut Fixkosten");
       break;
     case "expense":
+      if (e.recurringExpenseId) lines.push("Gebuchte Fixkosten-Zahlung (ersetzt den geplanten Termin)");
       if (!e.overdue) lines.push(`Fällig ${formatDate(e.dueDate)}`);
       if (e.fullGrossCents !== e.grossCents) lines.push(`Restbetrag (Rechnung ${formatCents(e.fullGrossCents)})`);
       break;
@@ -566,8 +567,9 @@ function Method({ data }: { data: Forecast }) {
         {data.smallBusiness
           ? "Als Kleinunternehmer fällt keine USt-Zahllast an."
           : "USt-Zahllast am 15. des zweiten Monats nach dem UVA-Zeitraum: abgeschlossene Zeiträume laut UVA, laufende und künftige geschätzt (USt. der erwarteten Eingänge − Vorsteuer der geplanten Ausgaben)."}{" "}
-        ESt-Vorauszahlungen laut Einstellung am 15.2., 15.5., 15.8. und 15.11. Ist eine Fixkosten-Zahlung schon als
-        unbezahlte Ausgabe erfasst, erscheint sie doppelt.
+        ESt-Vorauszahlungen laut Einstellung am 15.2., 15.5., 15.8. und 15.11. Ist eine Ausgabe mit einem
+        Fixkosten-Termin verknüpft, entfällt der geplante Termin – es zählt die Ausgabe (unbezahlt als offene Ausgabe,
+        bezahlt gar nicht mehr). Nicht verknüpfte Ausgaben zu Fixkosten erscheinen doppelt.
       </p>
       {data.balance && (
         <p>

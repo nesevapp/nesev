@@ -27,8 +27,18 @@ const affects = {
     keys.reminders.all,
     keys.tax.all,
   ],
-  /** Expense writes: lists, supplier suggestions, EAR/UVA and the bank's match candidates. */
-  expenses: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.dashboard.all, keys.assets.all],
+  /** Expense writes: lists, supplier suggestions, EAR/UVA, the bank's match candidates, the forecast (unpaid
+   *  expenses) and Fixkosten schedules/suggestions (links cascade on delete). */
+  expenses: [
+    keys.expenses.lists,
+    keys.expenses.suppliersAll,
+    keys.tax.all,
+    keys.bank.all,
+    keys.dashboard.all,
+    keys.assets.all,
+    keys.forecast.all,
+    keys.recurringExpenses.all,
+  ],
   /** New or replaced receipt file: also earlier analysis results. */
   expenseReceipt: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.receipts.all],
   receipts: [keys.receipts.all],
@@ -49,6 +59,8 @@ const affects = {
   backups: [keys.export.backups],
   /** Fixkosten: projected outflows in the forecast. */
   recurringExpenses: [keys.recurringExpenses.all, keys.forecast.all],
+  /** Expense ↔ Fixkosten-slot links: schedules, suggestions, forecast (linked slots aren't projected). */
+  recurringExpenseLinks: [keys.recurringExpenses.all, keys.forecast.all, keys.expenses.lists],
   /** Start balance / income tax prepayment: forecast only. */
   forecastSettings: [keys.forecast.all],
   /** Anlagen: AfA changes the EAR, the dashboard result and the expense hints. */

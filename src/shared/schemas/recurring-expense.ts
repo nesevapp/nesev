@@ -63,3 +63,12 @@ export const forecastSettingsSchema = z
   });
 
 export type ForecastSettings = z.infer<typeof forecastSettingsSchema>;
+
+/** Link an expense to one scheduled Fixkosten payment. */
+export const recurringExpenseLinkSchema = z.object({
+  recurringExpenseId: z.number().int().positive(),
+  expenseId: z.number().int().positive(),
+  scheduledDate: isoDate(),
+});
+
+export type RecurringExpenseLink = z.infer<typeof recurringExpenseLinkSchema>;

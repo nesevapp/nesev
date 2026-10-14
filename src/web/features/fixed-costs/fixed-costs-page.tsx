@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CalendarClock, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, ListChecks, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { addDays, formatDate, todayIso } from "@shared/dates";
 import { categoryLabel } from "@shared/expenses";
@@ -32,8 +32,13 @@ import {
   useUpdateRecurringExpense,
 } from "@/sdk";
 import { FixedCostDialog } from "./fixed-cost-dialog";
+import { FixedCostScheduleDialog } from "./fixed-cost-schedule-dialog";
 
-type DialogState = { kind: "edit"; item: RecurringExpense | null } | { kind: "delete"; item: RecurringExpense } | null;
+type DialogState =
+  | { kind: "edit"; item: RecurringExpense | null }
+  | { kind: "delete"; item: RecurringExpense }
+  | { kind: "schedule"; item: RecurringExpense }
+  | null;
 
 
 export function FixedCostsPage() {
@@ -101,6 +106,7 @@ export function FixedCostsPage() {
                   <TableHead>Nächste Zahlung</TableHead>
                   <TableHead className="text-right">Betrag</TableHead>
                   <TableHead className="text-right">pro Monat</TableHead>
+                  <TableHead>Belege</TableHead>
                   <TableHead className="w-16 text-right">Aktiv</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
@@ -130,6 +136,17 @@ export function FixedCostsPage() {
                       {r.taxCents > 0 && <div className="text-xs text-muted-foreground">USt. {formatCents(r.taxCents)}</div>}
                     </TableCell>
                     <TableCell className="text-right tabular">{formatCents(r.monthlyCents)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn("-ml-2 h-7 px-2 text-xs", r.missingCount > 0 ? "text-amber-800" : "text-muted-foreground")}
+                        onClick={() => setDialog({ kind: "schedule", item: r })}
+                      >
+                        <ListChecks />
+                        {r.missingCount > 0 ? `${r.missingCount} ohne Beleg` : "Zahlungen"}
+                      </Button>
+                    </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <Switch
                         size="sm"
@@ -158,6 +175,10 @@ export function FixedCostsPage() {
                             <Pencil />
                             Bearbeiten
                           </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setDialog({ kind: "schedule", item: r })}>
+                            <ListChecks />
+                            Zahlungen &amp; Belege
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem variant="destructive" onSelect={() => setDialog({ kind: "delete", item: r })}>
                             <Trash2 />
@@ -173,7 +194,7 @@ export function FixedCostsPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={5}>Summe aktiv</TableCell>
                   <TableCell className="text-right tabular">{formatCents(monthly)}</TableCell>
-                  <TableCell colSpan={2} />
+                  <TableCell colSpan={3} />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -186,6 +207,7 @@ export function FixedCostsPage() {
         onOpenChange={(open) => !open && setDialog(null)}
         item={editItem}
       />
+      <FixedCostScheduleDialog item={dialog?.kind === "schedule" ? dialog.item : null} onClose={() => setDialog(null)} />
       <DeleteDialog item={dialog?.kind === "delete" ? dialog.item : null} onClose={() => setDialog(null)} />
     </Page>
   );

@@ -1,10 +1,11 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, test } from "bun:test";
 import type { RecurringCreate } from "../../shared/schemas/recurring";
 import { createTestDb, type Db } from "../db/client";
 import type { RecurringExpenseCreate } from "../../shared/schemas/recurring-expense";
 import { clients, documentItems, documents, expenseLines, expenses, type NewClient, type NewDocument, type NewExpense } from "../db/schema";
 import { buildForecast, paymentDelays, updateForecastSettings } from "./forecast";
-import { createRecurringExpense, updateRecurringExpense } from "./recurring-expenses";
+import { createRecurringExpense, linkExpense, unlinkExpense, updateRecurringExpense } from "./recurring-expenses";
 import { createRecurring } from "./recurring";
 import { updateSettings } from "./settings";
 
@@ -387,5 +388,34 @@ describe("balance projection", () => {
     const g = buildForecast(db, out);
     expect(g.kpis.endBalance).toBe(100000 - 100000 + 300000 - 60000);
     expect(g.kpis.lowestBalance).toEqual({ cents: 0, date: "2026-10-25" });
+  });
+});
+
+describe("Fixkosten linked to expenses", () => {
+  test("a linked slot is not projected; an unpaid linked expense counts once; paid → nothing; unlink restores", () => {
+    const db = setup();
+    updateSettings(db, { smallBusiness: true });
+    const miete = createRecurringExpense(db, fixed({ startDate: "2026-01-01" })); // 1.11., 1.12. in the horizon
+    const nov = addExpense(db, { issueDate: "2026-10-28", dueDate: "2026-11-01" }, [{ netCents: 50000, taxCents: 10000 }]);
+    const fc = (f: ReturnType<typeof buildForecast>) => f.entries.filter((e) => e.source === "fixed_cost").map((e) => e.expectedDate);
+
+    expect(fc(buildForecast(db, out))).toEqual(["2026-11-01", "2026-12-01"]);
+    expect(buildForecast(db, out).kpis.outTotal).toBe(60000 * 2 + 60000); // double counted before linking
+
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: nov.id, scheduledDate: "2026-11-01" });
+    let f = buildForecast(db, out);
+    expect(fc(f)).toEqual(["2026-12-01"]);
+    const exp = f.entries.find((e) => e.expenseId === nov.id)!;
+    expect(exp).toMatchObject({ source: "expense", expectedDate: "2026-11-01", grossCents: 60000, recurringExpenseId: miete.id });
+    expect(f.kpis.outTotal).toBe(120000);
+
+    db.update(expenses).set({ paidAt: "2026-10-30" }).where(eq(expenses.id, nov.id)).run();
+    f = buildForecast(db, out);
+    expect(f.entries.some((e) => e.expenseId === nov.id)).toBe(false);
+    expect(fc(f)).toEqual(["2026-12-01"]);
+    expect(f.kpis.outTotal).toBe(60000);
+
+    unlinkExpense(db, nov.id);
+    expect(fc(buildForecast(db, out))).toEqual(["2026-11-01", "2026-12-01"]);
   });
 });

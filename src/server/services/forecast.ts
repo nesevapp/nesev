@@ -2,12 +2,22 @@ import { and, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { addDays, todayIso } from "../../shared/dates";
 import { deductibleTaxCents, type VatTreatment } from "../../shared/expenses";
 import { addMonthsAnchored, runDatesUntil } from "../../shared/recurring";
-import { paymentDatesBetween } from "../../shared/recurring-expenses";
+import { paymentDatesBetween, slotLabel } from "../../shared/recurring-expenses";
 import type { ForecastSettings } from "../../shared/schemas/recurring-expense";
 import { nextWorkingDay, parsePeriod, periodKeyFor, periodKind, shiftPeriod, uvaDueDate } from "../../shared/tax-report";
 import type { DbOrTx } from "../db/client";
-import { clients, documents, expenseLines, expenses, recurringExpenses, recurringInvoices, settings } from "../db/schema";
+import {
+  clients,
+  documents,
+  expenseLines,
+  expenses,
+  recurringExpensePayments,
+  recurringExpenses,
+  recurringInvoices,
+  settings,
+} from "../db/schema";
 import { creditedCentsByInvoice, paidCentsByDocument, paidCentsByExpense } from "./bank";
+import { linkedSlotKeys } from "./recurring-expenses";
 import { getSettings, updateSettings } from "./settings";
 import { computeUva } from "./tax";
 
@@ -25,7 +35,9 @@ import { computeUva } from "./tax";
 // average over all clients, else 0. Expected dates never lie before today.
 //
 // Outflow sources (unless includeOutflows is off):
-// - Fixkosten (recurringExpenses): every active payment date in the horizon, respecting endDate.
+// - Fixkosten (recurringExpenses): every active payment date in the horizon, respecting endDate, except slots
+//   linked to a booked expense (recurringExpensePayments): that expense counts instead (unpaid → outflow below,
+//   paid → already gone), so a payment is never counted twice.
 // - unpaid expenses (paidAt null, with lines): open = gross − bank allocations, expected on the due date; without
 //   one at issue date + 14 days (UNPAID_EXPENSE_TERMS_DAYS). Overdue → today, in the overdue bucket.
 // - VAT (UVA Zahllast, not for Kleinunternehmer): every UVA period whose due date (15th of the 2nd month after it,
@@ -575,8 +587,10 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
 
 function pushFixedCosts(db: DbOrTx, today: string, horizonEnd: string, push: (e: EntryInput) => void) {
   const rows = db.select().from(recurringExpenses).where(eq(recurringExpenses.active, true)).all();
+  const linked = linkedSlotKeys(db);
   for (const r of rows) {
     for (const date of paymentDatesBetween(r, today, horizonEnd)) {
+      if (linked.has(`${r.id}:${date}`)) continue;
       push({
         key: `fix-${r.id}-${date}`,
         source: "fixed_cost",
@@ -604,6 +618,15 @@ function pushUnpaidExpenses(db: DbOrTx, today: string, push: (e: EntryInput) => 
   const deductibleBy = new Map<number, number>();
   for (const l of lines) deductibleBy.set(l.expenseId, (deductibleBy.get(l.expenseId) ?? 0) + deductibleTaxCents(l));
   const paid = paidCentsByExpense(db, ids);
+  const links = new Map(
+    db
+      .select({ expenseId: recurringExpensePayments.expenseId, recurringExpenseId: recurringExpensePayments.recurringExpenseId, date: recurringExpensePayments.scheduledDate, name: recurringExpenses.name })
+      .from(recurringExpensePayments)
+      .innerJoin(recurringExpenses, eq(recurringExpensePayments.recurringExpenseId, recurringExpenses.id))
+      .where(inArray(recurringExpensePayments.expenseId, ids))
+      .all()
+      .map((l) => [l.expenseId, l]),
+  );
   for (const x of rows) {
     if (!deductibleBy.has(x.id)) continue; // incomplete draft without lines
     const open = x.grossCents - (paid.get(x.id) ?? 0);
@@ -612,6 +635,7 @@ function pushUnpaidExpenses(db: DbOrTx, today: string, push: (e: EntryInput) => 
     const deductible = (x.vatTreatment as VatTreatment) === "domestic" ? deductibleBy.get(x.id)! : 0;
     const dueDate = x.dueDate ?? addDays(x.issueDate, UNPAID_EXPENSE_TERMS_DAYS);
     const overdue = dueDate < today;
+    const link = links.get(x.id);
     push({
       key: `exp-${x.id}`,
       source: "expense",
@@ -622,8 +646,9 @@ function pushUnpaidExpenses(db: DbOrTx, today: string, push: (e: EntryInput) => 
       issueDate: x.issueDate,
       partyName: x.supplierName,
       expenseId: x.id,
+      recurringExpenseId: link?.recurringExpenseId ?? null,
       number: x.number,
-      label: x.description || x.supplierInvoiceNumber,
+      label: x.description || x.supplierInvoiceNumber || (link ? `${link.name} ${slotLabel(link.date)}` : ""),
       grossCents: open,
       taxCents: x.grossCents > 0 ? Math.round((deductible * open) / x.grossCents) : 0,
       fullGrossCents: x.grossCents,

@@ -2,12 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { containedTaxCents, monthlyEquivalentCents, nextPaymentDate, paymentDatesBetween } from "../../shared/recurring-expenses";
 import { recurringExpenseCreateSchema, recurringExpenseUpdateSchema } from "../../shared/schemas/recurring-expense";
 import type { RecurringExpenseCreate } from "../../shared/schemas/recurring-expense";
-import { createTestDb } from "../db/client";
+import { eq } from "drizzle-orm";
+import { createTestDb, type Db } from "../db/client";
+import { expenseLines, expenses, type NewExpense, recurringExpensePayments } from "../db/schema";
 import {
+  candidateExpenses,
   createRecurringExpense,
   deleteRecurringExpense,
+  getExpenseLink,
   getRecurringExpense,
+  getSchedule,
+  linkExpense,
   listRecurringExpenses,
+  suggestSlots,
+  unlinkExpense,
   updateRecurringExpense,
 } from "./recurring-expenses";
 
@@ -85,5 +93,111 @@ describe("Fixkosten CRUD", () => {
     expect(recurringExpenseCreateSchema.safeParse(input({ endDate: "2025-01-01" })).success).toBe(false);
     expect(recurringExpenseCreateSchema.safeParse(input({ category: "gibtsnicht" as "software_abos" })).success).toBe(false);
     expect(recurringExpenseUpdateSchema.safeParse({ active: false }).data).toEqual({ active: false });
+  });
+});
+
+// ── Links to expenses ───────────────────────────────────────────────────────────
+
+let expNo = 0;
+function addExpense(db: Db, over: Partial<NewExpense> = {}, category = "miete", grossCents = 60000) {
+  const e = db
+    .insert(expenses)
+    .values({ number: `ER-T-${++expNo}`, supplierName: "Immo Huber KG", issueDate: "2026-11-02", grossCents, netCents: grossCents - 10000, taxCents: 10000, ...over })
+    .returning()
+    .get();
+  db.insert(expenseLines).values({ expenseId: e.id, position: 0, category, netCents: grossCents - 10000, taxRateBp: 2000, taxCents: 10000 }).run();
+  return e;
+}
+
+const rent = (over: Partial<RecurringExpenseCreate> = {}) =>
+  input({ name: "Miete", supplierName: "Immo Huber GmbH", category: "miete", startDate: "2026-01-01", grossCents: 60000, taxCents: 10000, ...over });
+
+describe("Fixkosten payments", () => {
+  test("suggestions: supplier (normalized) or category, amount ± 5 %, date ± 10 days, best first, free slots only", () => {
+    const db = createTestDb();
+    const miete = createRecurringExpense(db, rent());
+    const lager = createRecurringExpense(db, rent({ name: "Lager", supplierName: "Lagerhaus", grossCents: 61000 }));
+    createRecurringExpense(db, rent({ name: "Pausiert", active: false }));
+    const e = addExpense(db);
+
+    const s = suggestSlots(db, e.id);
+    // Miete: supplier + category; Lager: category only (61.000 within 5 %)
+    expect(s.map((x) => [x.name, x.scheduledDate])).toEqual([
+      ["Miete", "2026-11-01"],
+      ["Lager", "2026-11-01"],
+    ]);
+    expect(s[0]!.score).toBeGreaterThan(s[1]!.score);
+
+    expect(suggestSlots(db, addExpense(db, { issueDate: "2026-11-20" }).id)).toHaveLength(0); // 19 days off
+    expect(suggestSlots(db, addExpense(db, {}, "miete", 70000).id)).toHaveLength(0); // amount off
+    expect(suggestSlots(db, addExpense(db, { supplierName: "Fremd" }, "buero").id)).toHaveLength(0); // nothing in common
+    // a supplier match alone is enough (other category)
+    expect(suggestSlots(db, addExpense(db, {}, "buero").id).map((x) => x.name)).toEqual(["Miete"]);
+
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: e.id, scheduledDate: "2026-11-01" });
+    const other = addExpense(db);
+    expect(suggestSlots(db, other.id).map((x) => x.name)).toEqual(["Lager"]); // Miete Nov is taken
+    expect(lager.id).toBeGreaterThan(0);
+  });
+
+  test("link, move, conflict, unlink; schedule shows linked / missing / open", () => {
+    const db = createTestDb();
+    const miete = createRecurringExpense(db, rent());
+    const a = addExpense(db);
+    const b = addExpense(db);
+
+    expect(() => linkExpense(db, { recurringExpenseId: miete.id, expenseId: a.id, scheduledDate: "2026-11-02" })).toThrow("Kein geplanter");
+    expect(linkExpense(db, { recurringExpenseId: miete.id, expenseId: a.id, scheduledDate: "2026-11-01" })).toEqual({
+      recurringExpenseId: miete.id,
+      name: "Miete",
+      scheduledDate: "2026-11-01",
+    });
+    expect(() => linkExpense(db, { recurringExpenseId: miete.id, expenseId: b.id, scheduledDate: "2026-11-01" })).toThrow("bereits mit ER-T-");
+    // moving the same expense to another slot replaces its link
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: a.id, scheduledDate: "2026-10-01" });
+    expect(getExpenseLink(db, a.id)!.scheduledDate).toBe("2026-10-01");
+
+    const { slots } = getSchedule(db, miete.id, "2026-10-14", 3, 2);
+    expect(slots.map((x) => [x.date, x.status, x.expense?.number ?? null])).toEqual([
+      ["2026-08-01", "missing", null],
+      ["2026-09-01", "missing", null],
+      ["2026-10-01", "linked", a.number],
+      ["2026-11-01", "open", null],
+      ["2026-12-01", "open", null],
+    ]);
+    expect(listRecurringExpenses(db, "2026-10-14")[0]!.missingCount).toBe(2); // Aug, Sep (Jul is > 90 days ago)
+
+    unlinkExpense(db, a.id);
+    expect(getExpenseLink(db, a.id)).toBeNull();
+  });
+
+  test("picker candidates: unlinked expenses around the slot, matching ones first", () => {
+    const db = createTestDb();
+    const miete = createRecurringExpense(db, rent());
+    const match = addExpense(db);
+    const near = addExpense(db, { supplierName: "Büro Shop" }, "buero", 4000);
+    addExpense(db, { issueDate: "2026-06-01" }); // too far away
+    const linked = addExpense(db, { issueDate: "2026-10-01" });
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: linked.id, scheduledDate: "2026-10-01" });
+    const c = candidateExpenses(db, miete.id, "2026-11-01");
+    expect(c.map((x) => [x.id, x.match])).toEqual([
+      [match.id, true],
+      [near.id, false],
+    ]);
+  });
+
+  test("deleting the expense or the Fixkosten removes the link (cascade)", () => {
+    const db = createTestDb();
+    const miete = createRecurringExpense(db, rent());
+    const a = addExpense(db);
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: a.id, scheduledDate: "2026-11-01" });
+    db.delete(expenses).where(eq(expenses.id, a.id)).run();
+    expect(db.select().from(recurringExpensePayments).all()).toHaveLength(0);
+
+    const b = addExpense(db);
+    linkExpense(db, { recurringExpenseId: miete.id, expenseId: b.id, scheduledDate: "2026-11-01" });
+    deleteRecurringExpense(db, miete.id);
+    expect(db.select().from(recurringExpensePayments).all()).toHaveLength(0);
+    expect(db.select().from(expenses).where(eq(expenses.id, b.id)).get()).toBeDefined();
   });
 });

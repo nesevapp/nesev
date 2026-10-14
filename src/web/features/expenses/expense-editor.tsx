@@ -48,6 +48,7 @@ import {
   expensesQuery,
   receiptUrl,
   useCreateExpense,
+  useLinkFixedCostPayment,
   useDeleteExpense,
   useMarkAnalysisApplied,
   useRemoveReceipt,
@@ -55,6 +56,7 @@ import {
   useUploadReceipt,
 } from "@/sdk";
 import { AssetHint } from "./components/asset-hint";
+import { FixedCostHint } from "./components/fixed-cost-hint";
 import { ExpenseBadges } from "./components/expense-badges";
 import { ExpenseLinesEditor, newLine } from "./components/expense-lines-editor";
 import { type ReceiptSource, ReceiptPane, receiptKind } from "./components/receipt-pane";
@@ -128,10 +130,23 @@ function useGrossMode(): [boolean, (v: boolean) => void] {
  * ⌘/Ctrl+S saves, ⌘/Ctrl+Enter saves and opens the next one (next incomplete draft when editing a
  * draft, otherwise a new expense).
  */
-export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onSavedNext: () => void }) {
+export function ExpenseEditor({
+  expense,
+  onSavedNext,
+  initialValues,
+  linkTo,
+}: {
+  expense?: Expense;
+  onSavedNext: () => void;
+  /** prefill for a new expense (e.g. from a Fixkosten payment) */
+  initialValues?: ExpenseFormValues;
+  /** link the new expense to this scheduled Fixkosten payment on first save */
+  linkTo?: { recurringExpenseId: number; scheduledDate: string; name: string };
+}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const create = useCreateExpense();
+  const linkPayment = useLinkFixedCostPayment();
   const update = useUpdateExpense();
   const remove = useDeleteExpense();
   const upload = useUploadReceipt();
@@ -153,7 +168,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onS
 
   const form: Form = useForm<ExpenseFormValues, unknown, ExpenseFormData>({
     resolver: zodResolver(expenseFormSchema),
-    defaultValues: expense ? toFormValues(expense) : emptyFormValues(),
+    defaultValues: expense ? toFormValues(expense) : (initialValues ?? emptyFormValues()),
   });
   const { control, formState } = form;
   const [treatment, lines] = useWatch({ control, name: ["vatTreatment", "lines"] });
@@ -204,6 +219,13 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onS
             let saved = expense
               ? await update.mutateAsync({ id: expense.id, json: values })
               : await create.mutateAsync(values);
+            if (!expense && linkTo) {
+              try {
+                await linkPayment.mutateAsync({ recurringExpenseId: linkTo.recurringExpenseId, expenseId: saved.id, scheduledDate: linkTo.scheduledDate });
+              } catch (err) {
+                toast.error(`Fixkosten-Verknüpfung fehlgeschlagen: ${apiErrorMessage(err)}`);
+              }
+            }
             if (pendingFile) {
               try {
                 saved = await upload.mutateAsync({ id: saved.id, file: pendingFile });
@@ -504,6 +526,7 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onS
                   </FormItem>
                 )}
               />
+              <FixedCostHint expenseId={expense?.id ?? null} pending={expense ? undefined : linkTo} />
             </section>
 
             <section className="py-6">

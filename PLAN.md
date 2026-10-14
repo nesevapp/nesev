@@ -84,7 +84,11 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - USt-Zahllast (not for Kleinunternehmer): each UVA period due (15th of the 2nd month after it, next working day) inside the horizon. Amount = `computeUva()` of what is already recorded + an estimate for what the forecast still expects in the period (output VAT of inflows − deductible VAT of Fixkosten/unpaid expenses; dated by basis: Ist = payment date, Soll = invoice date, offers = today). Periods not yet over are marked „geschätzt“. Negative = refund (inflow). Assumes nothing was paid before the due date.
   - Balance: „Kontostand am <Datum>“ (setting) + all entries expected on/after that date. Per bucket: balance at the end and lowest day-end balance; KPI and red banner for the lowest point if it goes below 0.
   - Settings via the page's „Kontostand & Steuern“ popover (`GET/PUT /api/forecast/settings`).
-- **Fixkosten** (`/fixed-costs`, `/api/recurring-expenses`): recurring outgoing payments (name, recipient, expense category, gross, contained deductible VAT with a 20/13/10/0 % helper, monthly / every N months / yearly anchored like recurring invoices, start, optional end, active, notes). Forecast-only; nothing is booked. A Fixkosten payment that is also entered as an unpaid expense is counted twice.
+- **Fixkosten** (`/fixed-costs`, `/api/recurring-expenses`): recurring outgoing payments (name, recipient, expense category, gross, contained deductible VAT with a 20/13/10/0 % helper, monthly / every N months / yearly anchored like recurring invoices, start, optional end, active, notes). Forecast-only; nothing is booked automatically.
+  - **Payments ↔ expenses** (`recurring_expense_payments`): an expense can be linked to one scheduled payment („Miete · Nov 2026“). The forecast then skips that slot; the expense counts instead (unpaid → „Offene Ausgabe“, paid → nothing), and being a real expense it is also in `computeUva`. Unlinked expenses for Fixkosten are still counted twice.
+  - „Zahlungen & Belege“ per Fixkosten: last 12 + next 6 slots with status (verknüpft/bezahlt, geplant, „überfällig – ohne Beleg“); actions „Ausgabe erfassen“ (`/expenses/new?fixedCost=<id>&slot=<date>`, prefilled and linked on save), „Verknüpfen“ (unlinked expenses ± 60 days, matching first), „Verknüpfung lösen“. The list shows slots of the last 90 days without a receipt.
+  - Suggestions: active Fixkosten, free slot, supplier (normalized) or category matches, amount ± 5 %, issue/due/paid date ± 10 days of the slot; supplier matches rank first. The expense editor shows the link („Fixkosten: Miete · Nov 2026“, lösen) or the best suggestion as a one-click „verknüpfen“.
+  - Links cascade when the expense or the Fixkosten entry is deleted.
 
 ### Expenses (Ausgaben)
 - Fields: supplier, UID, country, supplier invoice number, dates, VAT treatment (`domestic`, `reverse_charge`, `ig_acquisition`, `import`, `none`).
@@ -179,4 +183,4 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 5. **Comfort:** dark mode. (Global search and keyboard shortcuts are done.)
 6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
 
-Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, linking Fixkosten payments to booked expenses (avoids double counting in the forecast), live bank balance from the last import as the forecast start.
+Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, live bank balance from the last import as the forecast start.
