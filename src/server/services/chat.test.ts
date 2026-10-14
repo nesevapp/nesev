@@ -23,6 +23,7 @@ import {
   listConversations,
   needsData,
   REJECTED_TEXT,
+  rejectionReply,
   renameConversation,
   sendMessage,
 } from "./chat";
@@ -271,7 +272,7 @@ describe("agent loop", () => {
   test("confirm flow: pending blocks, approve executes and continues", async () => {
     const c = createConversation(db);
     scripts.push(toolCall("finalize_document", '{"id":2}'));
-    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung" }, emit));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
     expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "confirm"]);
     const confirm = events.at(-1) as Extract<ChatStreamEvent, { type: "confirm" }>;
     expect(confirm.summary).toBe("Rechnung (Entwurf, id 2) für Alpen GmbH über € 540,00 finalisieren – vergibt die Nummer und erzeugt das PDF, danach unveränderbar");
@@ -296,16 +297,27 @@ describe("agent loop", () => {
     expect(() => assertCanConfirm(db, c.id, confirm.messageId)).toThrow("bereits beantwortet");
   });
 
-  test("confirm flow: reject → cancelled, the model is told", async () => {
+  test("confirm flow: reject → cancelled and a fixed reply, no model call; the model sees the rejection later", async () => {
     const c = createConversation(db);
     scripts.push(toolCall("finalize_document", '{"id":2}'));
-    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere" }, emit));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere diese Rechnung", context: { path: "/invoices/2" } }, emit));
     const confirm = events.at(-1) as Extract<ChatStreamEvent, { type: "confirm" }>;
-    scripts.push(text("Okay, nicht finalisiert."));
+    const before = requests.length;
     const after = await collect((emit) => confirmToolCall(deps, c.id, confirm.messageId, false, emit));
+    expect(types(after)).toEqual(["tool_result", "assistant_start", "done"]);
     expect((after[0] as Extract<ChatStreamEvent, { type: "tool_result" }>).message.status).toBe("cancelled");
+    expect(requests.length).toBe(before);
     expect(calls.map((x) => x.name)).toEqual(["get_document"]);
-    expect(requests.at(-1).messages.at(-1)).toEqual({ role: "tool", tool_call_id: "id_finalize_document", content: REJECTED_TEXT });
+    const reply = "Alles klar, der Entwurf bleibt unverändert und wird nicht finalisiert. Soll ich etwas anders machen?";
+    expect(after.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text).join("")).toBe(reply);
+    expect(conversationDetail(db, c.id).messages.at(-1)).toMatchObject({ role: "assistant", content: reply });
+    expect(rejectionReply("some_new_tool")).toBe("Alles klar, ich habe nichts geändert. Soll ich etwas anders machen?");
+    // the next turn's history carries the rejection for the model
+    scripts.push(text("Gut."));
+    await collect((emit) => sendMessage(deps, c.id, { text: "Danke" }, emit));
+    const msgs = requests.at(-1).messages;
+    expect(msgs).toContainEqual({ role: "tool", tool_call_id: "id_finalize_document", content: REJECTED_TEXT });
+    expect(msgs).toContainEqual({ role: "assistant", content: reply });
   });
 
   test("malformed arguments go back to the model once; repeated → error", async () => {
@@ -327,7 +339,7 @@ describe("agent loop", () => {
     const c = createConversation(db);
     const same = () => toolCall("create_invoice_draft", '{"clientId":1}');
     scripts.push(same(), same(), same());
-    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Rechnung anlegen" }, emit));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Rechnung anlegen für Kunde id 1" }, emit));
     expect(calls.filter((x) => x.name === "create_invoice_draft")).toHaveLength(1);
     const results = events.filter((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>[];
     expect(results.map((r) => r.message.toolResult?.summary)).toEqual(["Fehler: Position 1: Bezeichnung fehlt", "Wiederholter fehlerhafter Aufruf", "Wiederholter fehlerhafter Aufruf"]);

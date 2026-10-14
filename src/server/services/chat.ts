@@ -15,6 +15,7 @@ import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
 import { checkContextUse } from "./chat-context";
+import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
 import { nudgeUiCall } from "./chat-ui-tools";
@@ -36,9 +37,33 @@ const SAFETY = 1024;
 const OLD_TOOL_CHARS = 600;
 const RECENT_TURNS = 2;
 
-/** what the model reads for a declined confirmation */
-export const REJECTED_TEXT =
-  "Der Nutzer hat die Aktion abgelehnt; es wurde nichts ausgeführt oder geändert. Bestätige das in einem Satz, sprich den Nutzer dabei direkt an, und frag, ob etwas anders gemacht werden soll. Keine Vermutungen über den Grund.";
+/** what the model reads (in later turns) for a declined confirmation */
+export const REJECTED_TEXT = "Der Nutzer hat die Aktion abgelehnt; es wurde nichts ausgeführt oder geändert.";
+
+/** what stays as it was, per declined tool (the reply is fixed text, no model call) */
+const REJECTED_EFFECT: Record<string, string> = {
+  finalize_document: "der Entwurf bleibt unverändert und wird nicht finalisiert",
+  mark_document_sent: "der Beleg bleibt als nicht versendet markiert",
+  mark_invoice_paid: "der Zahlungsstatus der Rechnung bleibt unverändert",
+  convert_offer_to_invoice: "das Angebot bleibt, wie es ist – es wurde keine Rechnung erstellt",
+  create_credit_note: "es wurde keine Gutschrift angelegt",
+  create_reminder: "es wurde keine Mahnung erstellt",
+  match_bank_transaction: "die Buchung bleibt unzugeordnet",
+  unmatch_bank_transaction: "die Zuordnung bleibt bestehen",
+  set_bank_transaction_ignored: "die Buchung bleibt, wie sie ist",
+  set_recurring_invoice_active: "die Serienrechnung bleibt, wie sie ist",
+  generate_recurring_invoice: "es wurde keine Rechnung erstellt",
+  update_client: "die Kundendaten bleiben unverändert",
+  update_expense: "die Ausgabe bleibt unverändert",
+  mark_expense_paid: "der Zahlungsstatus der Ausgabe bleibt unverändert",
+  apply_receipt_analysis: "die Ausgabe bleibt unverändert, die Erkennung wurde nicht übernommen",
+  link_expense_to_fixed_cost: "die Ausgabe bleibt ohne neue Fixkosten-Verknüpfung",
+};
+
+/** "Alles klar, die Kundendaten bleiben unverändert. Soll ich etwas anders machen?" */
+export function rejectionReply(toolName: string): string {
+  return `Alles klar, ${REJECTED_EFFECT[toolName] ?? "ich habe nichts geändert"}. Soll ich etwas anders machen?`;
+}
 
 export class ChatConflictError extends Error {}
 export class ChatNotFoundError extends Error {}
@@ -374,6 +399,15 @@ export async function confirmToolCall(deps: ChatDeps, conversationId: number, me
     }
     await emit({ type: "tool_result", message: messageView(done) });
     if (signal?.aborted) return;
+    if (!approve) {
+      // no model call: a fixed acknowledgement (models tended to speculate or ask to "confirm in the app")
+      const text = rejectionReply(call.name);
+      const reply = insertMessage(db, { conversationId, role: "assistant", content: text });
+      await emit({ type: "assistant_start", messageId: reply.id });
+      await emit({ type: "delta", messageId: reply.id, text });
+      await emit({ type: "done", conversation: summary(db, touch(db, conversationId)) });
+      return;
+    }
     await runLoop(deps, { conversationId, malformed: 0 }, emit, signal);
   });
 }
@@ -548,6 +582,15 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       const contextError = await checkContextUse(call, { contextPath: lastUser?.contextPath, userText: lastUser?.content ?? "", host, warned: (state.contextWarned ??= new Set()) });
       if (contextError) {
         const row = insertMessage(db, { ...base, content: contextError, status: "error", toolResult: { ok: false, summary: "Anderer Datensatz als auf der Seite gemeint", links: [] } satisfies ChatToolResult });
+        await emit({ type: "tool_result", message: messageView(row) });
+        continue;
+      }
+      const provenanceError = await checkProvenance(call, { rows: messages(db, state.conversationId), host });
+      if (provenanceError) {
+        // counts like a malformed call: a second guessed id in the same turn ends it instead of looping
+        state.malformed++;
+        deps.log?.(`[chat] conv ${state.conversationId}: ${call.name} with ids not looked up – rejected`);
+        const row = insertMessage(db, { ...base, content: provenanceError, status: "error", toolResult: { ok: false, summary: "Id nicht nachgeschlagen – zuerst suchen", links: [] } satisfies ChatToolResult });
         await emit({ type: "tool_result", message: messageView(row) });
         continue;
       }
