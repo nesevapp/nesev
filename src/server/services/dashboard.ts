@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
 import type { DbOrTx } from "../db/client";
-import { clients, documents, settings } from "../db/schema";
+import { clients, documents, expenses, settings } from "../db/schema";
 import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
@@ -12,6 +12,8 @@ import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
 //   overdue = those with dueDate < today (see isOverdue). Their sums are that open amount.
 // - Paid = invoices by paidAt, gross minus credit notes (an invoice settled by credit note brought in nothing).
 // - Open offers = final/sent offers (neither accepted nor declined).
+// - Expenses = net of expenses (sum of their lines), bucketed by issueDate like revenue. Incomplete drafts
+//   without lines have net 0 and so add nothing. (The EAR on /tax counts by payment date instead.)
 
 export interface DashboardDocRow {
   id: number;
@@ -50,12 +52,14 @@ export interface DashboardData {
     overdue: Figure;
     /** net revenue in `year` */
     revenue: { cents: number; previousCents: number };
+    /** net expenses in `year` */
+    expenses: { cents: number; previousCents: number };
     /** gross received in `year` (invoices by paidAt) */
     paid: Figure;
     openOffers: Figure;
   };
-  /** net revenue per month, index 0 = January */
-  monthly: { month: number; cents: number; previousCents: number }[];
+  /** net revenue and net expenses per month, index 0 = January */
+  monthly: { month: number; cents: number; previousCents: number; expenseCents: number; previousExpenseCents: number }[];
   overdue: OverdueRow[];
   recent: DashboardDocRow[];
   openOffers: DashboardDocRow[];
@@ -118,6 +122,26 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
+/** Net expenses per month for the given years: Map<year, cents[12]>. */
+function monthlyExpenses(db: DbOrTx, years: number[]): Map<number, number[]> {
+  const from = `${Math.min(...years)}-01-01`;
+  const to = `${Math.max(...years) + 1}-01-01`;
+  const ym = sql<string>`substr(${expenses.issueDate}, 1, 7)`;
+  const rows = db
+    .select({ ym, cents: sql<number>`coalesce(sum(${expenses.netCents}), 0)` })
+    .from(expenses)
+    .where(and(gte(expenses.issueDate, from), lt(expenses.issueDate, to)))
+    .groupBy(ym)
+    .all();
+  const out = new Map(years.map((y) => [y, Array<number>(12).fill(0)]));
+  for (const r of rows) {
+    const [y, m] = r.ym.split("-").map(Number);
+    const bucket = out.get(y!);
+    if (bucket) bucket[m! - 1] = r.cents;
+  }
+  return out;
+}
+
 /** gross − credit notes − bank payments of the invoice in the current row */
 const openCentsSql = sql<number>`(${documents.grossCents} - ${creditedCentsSql} - ${paidCentsSql})`;
 
@@ -159,6 +183,9 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const monthlyByYear = monthlyRevenue(db, [year, year - 1]);
   const current = monthlyByYear.get(year)!;
   const previous = monthlyByYear.get(year - 1)!;
+  const expensesByYear = monthlyExpenses(db, [year, year - 1]);
+  const currentExpenses = expensesByYear.get(year)!;
+  const previousExpenses = expensesByYear.get(year - 1)!;
   const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 
   const base = () => db.select(rowColumns).from(documents).leftJoin(clients, eq(clients.id, documents.clientId));
@@ -176,10 +203,10 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
     .limit(LIST_LIMIT)
     .all();
 
-  const yearRows = db
-    .selectDistinct({ y: sql<string>`substr(${documents.issueDate}, 1, 4)` })
-    .from(documents)
-    .all();
+  const yearRows = [
+    ...db.selectDistinct({ y: sql<string>`substr(${documents.issueDate}, 1, 4)` }).from(documents).all(),
+    ...db.selectDistinct({ y: sql<string>`substr(${expenses.issueDate}, 1, 4)` }).from(expenses).all(),
+  ];
   const thisYear = Number(today.slice(0, 4));
   const years = [...new Set([thisYear, year, ...yearRows.map((r) => Number(r.y))])].sort((a, b) => b - a);
 
@@ -194,10 +221,17 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
       openInvoices,
       overdue: overdueFig,
       revenue: { cents: sum(current), previousCents: sum(previous) },
+      expenses: { cents: sum(currentExpenses), previousCents: sum(previousExpenses) },
       paid,
       openOffers: openOffersFig,
     },
-    monthly: current.map((cents, month) => ({ month, cents, previousCents: previous[month]! })),
+    monthly: current.map((cents, month) => ({
+      month,
+      cents,
+      previousCents: previous[month]!,
+      expenseCents: currentExpenses[month]!,
+      previousExpenseCents: previousExpenses[month]!,
+    })),
     overdue,
     recent,
     openOffers,

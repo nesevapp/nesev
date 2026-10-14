@@ -28,15 +28,18 @@ import { ChartLegend, MONTHS, RevenueChart } from "./revenue-chart";
 interface DashboardSearch {
   year?: number;
   compare?: boolean;
+  expenses?: boolean;
 }
 
 export function DashboardPage({
   year,
   compare,
+  expenses,
   setSearch,
 }: {
   year?: number;
   compare: boolean;
+  expenses: boolean;
   setSearch: (update: DashboardSearch) => void;
 }) {
   const { data, isFetching } = useQuery(dashboardQuery(year));
@@ -57,7 +60,13 @@ export function DashboardPage({
         <div className={cn("space-y-8 transition-opacity", isFetching && "opacity-70")}>
           {data.setup.companyMissing && <CompanyBanner />}
           <Kpis data={data} />
-          <RevenueSection data={data} compare={compare} setCompare={(c) => setSearch({ compare: c || undefined })} />
+          <RevenueSection
+            data={data}
+            compare={compare}
+            setCompare={(c) => setSearch({ compare: c || undefined })}
+            expenses={expenses}
+            setExpenses={(e) => setSearch({ expenses: e ? undefined : false })}
+          />
           <OverdueSection rows={data.overdue} total={data.kpis.overdue.count} />
           <div className="grid gap-8 lg:grid-cols-2">
             <RecentSection rows={data.recent} today={data.today} />
@@ -96,41 +105,89 @@ function Kpis({ data }: { data: Dashboard }) {
   const isCurrentYear = year === Number(today.slice(0, 4));
   // Current year: compare with the same months of the previous year, not the whole year.
   const lastMonth = isCurrentYear ? Number(today.slice(5, 7)) - 1 : 11;
-  const prevComparable = monthly.slice(0, lastMonth + 1).reduce((s, m) => s + m.previousCents, 0);
-  const delta = prevComparable > 0 ? (kpis.revenue.cents - prevComparable) / prevComparable : null;
+  const comparable = monthly.slice(0, lastMonth + 1);
   const deltaLabel = isCurrentYear ? `ggü. Jän–${MONTHS[lastMonth]} ${year - 1}` : `ggü. ${year - 1}`;
+  const result = kpis.revenue.cents - kpis.expenses.cents;
+  const margin = kpis.revenue.cents > 0 ? result / kpis.revenue.cents : null;
   const overdue = kpis.overdue.count > 0;
 
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
-      <Tile label="Offene Rechnungen" value={formatCents(kpis.openInvoices.cents)} sub={countLabel(kpis.openInvoices.count, "Rechnung", "Rechnungen")} />
-      <Tile
-        label="Davon überfällig"
-        value={formatCents(kpis.overdue.cents)}
-        sub={countLabel(kpis.overdue.count, "Rechnung", "Rechnungen")}
-        tone={overdue ? "danger" : undefined}
-        link={overdue ? <Link to="/invoices" search={{ status: "overdue" }} className="absolute inset-0" aria-label="Überfällige Rechnungen anzeigen" /> : undefined}
-      />
-      <Tile
-        label={`Umsatz ${year} (netto)`}
-        value={formatCents(kpis.revenue.cents)}
-        sub={
-          delta === null ? (
-            "Rechnungen abzgl. Gutschriften"
-          ) : (
-            <>
-              <span className={cn("font-medium", delta >= 0 ? "text-emerald-700" : "text-red-600")}>
-                {delta >= 0 ? "+" : "−"}
-                {Math.abs(delta * 100).toLocaleString("de-AT", { maximumFractionDigits: 0 })} %
-              </span>{" "}
-              {deltaLabel}
-            </>
-          )
-        }
-      />
-      <Tile label={`Bezahlt ${year}`} value={formatCents(kpis.paid.cents)} sub={`${countLabel(kpis.paid.count, "Rechnung", "Rechnungen")} (brutto)`} />
-      <Tile label="Offene Angebote" value={formatCents(kpis.openOffers.cents)} sub={countLabel(kpis.openOffers.count, "Angebot", "Angebote")} />
+    <div className="space-y-3">
+      <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-4">
+        <Tile
+          label={`Umsatz ${year} (netto)`}
+          value={formatCents(kpis.revenue.cents)}
+          sub={
+            <Delta
+              current={kpis.revenue.cents}
+              previous={comparable.reduce((s, m) => s + m.previousCents, 0)}
+              label={deltaLabel}
+              fallback="Rechnungen abzgl. Gutschriften"
+            />
+          }
+        />
+        <Tile
+          label={`Ausgaben ${year} (netto)`}
+          value={formatCents(kpis.expenses.cents)}
+          sub={
+            <Delta
+              current={kpis.expenses.cents}
+              previous={comparable.reduce((s, m) => s + m.previousExpenseCents, 0)}
+              label={deltaLabel}
+              fallback="nach Belegdatum"
+              lowerIsBetter
+            />
+          }
+          link={<Link to="/expenses" className="absolute inset-0" aria-label="Ausgaben anzeigen" />}
+        />
+        <Tile
+          label={`Ergebnis ${year}`}
+          value={formatCents(result)}
+          tone={result < 0 ? "danger" : undefined}
+          sub={margin === null ? "Umsatz − Ausgaben" : `Marge ${(margin * 100).toLocaleString("de-AT", { maximumFractionDigits: 0 })} % · Umsatz − Ausgaben`}
+        />
+        <Tile label={`Bezahlt ${year}`} value={formatCents(kpis.paid.cents)} sub={`${countLabel(kpis.paid.count, "Rechnung", "Rechnungen")} (brutto)`} />
+      </div>
+      <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
+        <Tile label="Offene Rechnungen" value={formatCents(kpis.openInvoices.cents)} sub={countLabel(kpis.openInvoices.count, "Rechnung", "Rechnungen")} />
+        <Tile
+          label="Davon überfällig"
+          value={formatCents(kpis.overdue.cents)}
+          sub={countLabel(kpis.overdue.count, "Rechnung", "Rechnungen")}
+          tone={overdue ? "danger" : undefined}
+          link={overdue ? <Link to="/invoices" search={{ status: "overdue" }} className="absolute inset-0" aria-label="Überfällige Rechnungen anzeigen" /> : undefined}
+        />
+        <Tile label="Offene Angebote" value={formatCents(kpis.openOffers.cents)} sub={countLabel(kpis.openOffers.count, "Angebot", "Angebote")} />
+      </div>
     </div>
+  );
+}
+
+/** "+12 % ggü. …"; green when the change is good (more revenue, fewer expenses). */
+function Delta({
+  current,
+  previous,
+  label,
+  fallback,
+  lowerIsBetter = false,
+}: {
+  current: number;
+  previous: number;
+  label: string;
+  fallback: string;
+  lowerIsBetter?: boolean;
+}) {
+  if (previous <= 0) return <>{fallback}</>;
+  const delta = (current - previous) / previous;
+  const good = lowerIsBetter ? delta <= 0 : delta >= 0;
+  return (
+    <>
+      <span className={cn("font-medium", good ? "text-emerald-700" : "text-red-600")}>
+        {delta >= 0 ? "+" : "−"}
+        {Math.abs(delta * 100).toLocaleString("de-AT", { maximumFractionDigits: 0 })} %
+      </span>{" "}
+      {label}
+    </>
   );
 }
 
@@ -152,7 +209,13 @@ function Tile({
   link?: ReactNode;
 }) {
   return (
-    <div className={cn("relative bg-background p-4", tone === "danger" && "bg-red-50/60", link && "hover:bg-red-50")}>
+    <div
+      className={cn(
+        "relative bg-background p-4",
+        tone === "danger" && "bg-red-50/60",
+        link && (tone === "danger" ? "hover:bg-red-50" : "hover:bg-muted/50"),
+      )}
+    >
       <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-red-700")}>
         {tone === "danger" && <span className="size-1.5 rounded-full bg-red-600" aria-hidden />}
         {label}
@@ -166,13 +229,43 @@ function Tile({
 
 // ── Revenue chart ───────────────────────────────────────────────────────────────
 
-function RevenueSection({ data, compare, setCompare }: { data: Dashboard; compare: boolean; setCompare: (c: boolean) => void }) {
+function RevenueSection({
+  data,
+  compare,
+  setCompare,
+  expenses,
+  setExpenses,
+}: {
+  data: Dashboard;
+  compare: boolean;
+  setCompare: (c: boolean) => void;
+  expenses: boolean;
+  setExpenses: (e: boolean) => void;
+}) {
   const [view, setView] = useState<"chart" | "table">("chart");
   const isCurrentYear = data.year === Number(data.today.slice(0, 4));
   const lastMonth = isCurrentYear ? Number(data.today.slice(5, 7)) - 1 : 11;
+  const { revenue, expenses: costs } = data.kpis;
+  const head = "h-8 text-right text-xs text-muted-foreground";
+  const cell = "py-1.5 text-right tabular";
+  const prevCell = cn(cell, "text-muted-foreground");
+  const resultCell = (v: number) => cn(cell, "font-medium", v < 0 && "text-red-600");
   return (
     <section>
-      <SectionHeader title="Umsatz pro Monat" hint="netto, Rechnungen abzüglich Gutschriften nach Belegdatum">
+      <SectionHeader
+        title={expenses ? "Umsatz & Ausgaben pro Monat" : "Umsatz pro Monat"}
+        hint={
+          expenses
+            ? "netto nach Belegdatum; Umsatz = Rechnungen abzüglich Gutschriften"
+            : "netto, Rechnungen abzüglich Gutschriften nach Belegdatum"
+        }
+      >
+        <div className="flex items-center gap-2">
+          <Switch id="expenses" size="sm" checked={expenses} onCheckedChange={setExpenses} />
+          <Label htmlFor="expenses" className="text-xs font-normal text-muted-foreground">
+            Ausgaben
+          </Label>
+        </div>
         <div className="flex items-center gap-2">
           <Switch id="compare" size="sm" checked={compare} onCheckedChange={setCompare} />
           <Label htmlFor="compare" className="text-xs font-normal text-muted-foreground">
@@ -196,31 +289,40 @@ function RevenueSection({ data, compare, setCompare }: { data: Dashboard; compar
         {view === "chart" ? (
           <>
             <div className="mb-2 flex justify-end">
-              <ChartLegend year={data.year} compare={compare} />
+              <ChartLegend year={data.year} compare={compare} expenses={expenses} />
             </div>
-            <RevenueChart data={data.monthly} year={data.year} compare={compare} lastMonth={lastMonth} />
+            <RevenueChart data={data.monthly} year={data.year} compare={compare} expenses={expenses} lastMonth={lastMonth} />
           </>
         ) : (
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 text-xs text-muted-foreground">Monat</TableHead>
-                <TableHead className="h-8 text-right text-xs text-muted-foreground">{data.year}</TableHead>
-                {compare && <TableHead className="h-8 text-right text-xs text-muted-foreground">{data.year - 1}</TableHead>}
+                <TableHead className={head}>Umsatz {data.year}</TableHead>
+                {compare && <TableHead className={head}>Umsatz {data.year - 1}</TableHead>}
+                {expenses && <TableHead className={head}>Ausgaben {data.year}</TableHead>}
+                {expenses && compare && <TableHead className={head}>Ausgaben {data.year - 1}</TableHead>}
+                {expenses && <TableHead className={head}>Ergebnis {data.year}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.monthly.map((m) => (
                 <TableRow key={m.month} className="hover:bg-transparent">
                   <TableCell className="py-1.5">{MONTHS[m.month]}</TableCell>
-                  <TableCell className="py-1.5 text-right tabular">{formatCents(m.cents)}</TableCell>
-                  {compare && <TableCell className="py-1.5 text-right tabular text-muted-foreground">{formatCents(m.previousCents)}</TableCell>}
+                  <TableCell className={cell}>{formatCents(m.cents)}</TableCell>
+                  {compare && <TableCell className={prevCell}>{formatCents(m.previousCents)}</TableCell>}
+                  {expenses && <TableCell className={cell}>{formatCents(m.expenseCents)}</TableCell>}
+                  {expenses && compare && <TableCell className={prevCell}>{formatCents(m.previousExpenseCents)}</TableCell>}
+                  {expenses && <TableCell className={resultCell(m.cents - m.expenseCents)}>{formatCents(m.cents - m.expenseCents)}</TableCell>}
                 </TableRow>
               ))}
               <TableRow className="font-medium hover:bg-transparent">
                 <TableCell className="py-1.5">Summe</TableCell>
-                <TableCell className="py-1.5 text-right tabular">{formatCents(data.kpis.revenue.cents)}</TableCell>
-                {compare && <TableCell className="py-1.5 text-right tabular text-muted-foreground">{formatCents(data.kpis.revenue.previousCents)}</TableCell>}
+                <TableCell className={cell}>{formatCents(revenue.cents)}</TableCell>
+                {compare && <TableCell className={prevCell}>{formatCents(revenue.previousCents)}</TableCell>}
+                {expenses && <TableCell className={cell}>{formatCents(costs.cents)}</TableCell>}
+                {expenses && compare && <TableCell className={prevCell}>{formatCents(costs.previousCents)}</TableCell>}
+                {expenses && <TableCell className={resultCell(revenue.cents - costs.cents)}>{formatCents(revenue.cents - costs.cents)}</TableCell>}
               </TableRow>
             </TableBody>
           </Table>

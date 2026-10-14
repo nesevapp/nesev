@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createTestDb, type Db } from "../db/client";
-import { clients, documents, type NewDocument } from "../db/schema";
+import { clients, documents, expenses, type NewDocument } from "../db/schema";
 import { getDashboard } from "./dashboard";
 import { updateSettings } from "./settings";
 
@@ -58,8 +58,8 @@ describe("getDashboard", () => {
 
     const d = getDashboard(db, 2026, TODAY);
     expect(d.kpis.revenue).toEqual({ cents: 24000, previousCents: 7000 });
-    expect(d.monthly[0]).toEqual({ month: 0, cents: 11000, previousCents: 0 });
-    expect(d.monthly[11]).toEqual({ month: 11, cents: 13000, previousCents: 7000 });
+    expect(d.monthly[0]).toMatchObject({ month: 0, cents: 11000, previousCents: 0 });
+    expect(d.monthly[11]).toMatchObject({ month: 11, cents: 13000, previousCents: 7000 });
     expect(d.years).toEqual([2027, 2026, 2025, 2024]);
   });
 
@@ -123,5 +123,23 @@ describe("getDashboard", () => {
 
     updateSettings(db, { companyName: "Firma", street: "Gasse 1", city: "Wien" });
     expect(getDashboard(db, 2026, TODAY).setup.companyMissing).toBe(false);
+  });
+  test("expenses: net per month by issueDate with previous year; years include expense-only years", () => {
+    const { db, add } = setup();
+    add({ type: "invoice", issueDate: "2026-02-10", netCents: 50000 });
+    const exp = (issueDate: string, netCents: number) =>
+      db.insert(expenses).values({ supplierName: "Lieferant", issueDate, netCents, taxCents: 0, grossCents: netCents }).run();
+    exp("2026-02-03", 12000);
+    exp("2026-02-28", 3000);
+    exp("2026-11-30", 7000);
+    exp("2025-02-15", 4000);
+    exp("2024-06-01", 1000);
+    exp("2026-05-01", 0); // incomplete draft without lines
+
+    const d = getDashboard(db, 2026, TODAY);
+    expect(d.kpis.expenses).toEqual({ cents: 22000, previousCents: 4000 });
+    expect(d.monthly[1]).toMatchObject({ cents: 50000, expenseCents: 15000, previousExpenseCents: 4000 });
+    expect(d.monthly[10]!.expenseCents).toBe(7000);
+    expect(d.years).toContain(2024);
   });
 });

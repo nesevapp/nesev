@@ -61,6 +61,10 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Designer: canvas plus one panel ("Aufbau" with ↑/↓ section reordering that really moves content, "Variablen", "Eigenschaften"). Text elements support `{placeholders}`.
 - Invoices get an EPC/GiroCode QR (IBAN, amount, invoice number as reference).
 
+### Dashboard
+- Tiles for the selected year: Umsatz (net, vs. the same months of the previous year), Ausgaben (net, by document date), Ergebnis (Umsatz − Ausgaben, with margin), Bezahlt; second row: open invoices, overdue, open offers.
+- Monthly chart: revenue (blue) and expenses (orange) as columns, result as a line; switches for "Ausgaben" (on by default) and "Vorjahr"; table view with the same columns. Expenses count by document date like revenue (the EAR on `/tax` counts by payment date); incomplete drafts have no lines and add nothing.
+
 ### Reminders (Mahnwesen)
 - Levels are configurable (default: Zahlungserinnerung €0, 1. Mahnung €10, 2./letzte Mahnung €20, each +7 days). The last level can repeat. Optional default interest (simple, actual days / 365).
 - Only overdue, finalized, unpaid invoices can get a reminder. Open amount = gross − credit notes − bank payments. Fees and interest are not taxable.

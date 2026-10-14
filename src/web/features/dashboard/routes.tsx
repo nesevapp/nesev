@@ -7,6 +7,8 @@ import { DashboardPage } from "./dashboard-page";
 const dashboardSearch = z.object({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   compare: z.boolean().optional(),
+  /** expenses are shown by default; only `false` is kept in the URL */
+  expenses: z.boolean().optional(),
 });
 
 const dashboardRoute = createRoute({
@@ -22,6 +24,7 @@ const dashboardRoute = createRoute({
       <DashboardPage
         year={search.year}
         compare={search.compare ?? false}
+        expenses={search.expenses ?? true}
         setSearch={(update) => void navigate({ search: (s) => ({ ...s, ...update }), replace: true })}
       />
     );
