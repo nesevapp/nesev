@@ -203,8 +203,10 @@ export function mergeFields(primary: ReceiptFields, secondary: ReceiptFields): R
     else {
       // arithmetic beats self-reported confidence: prefer the value that checks out
       const consistent = preferConsistent(key, a.value, b.value, primary, secondary);
+      // a strong trade keyword ("Tankstelle", "Installateur", …) beats the small model's category unless it is very sure
+      const strongCategory = key === "category" && b.source === "rules" && b.confidence >= 0.7 && a.confidence < 0.9;
       const [win, lose] =
-        consistent === "a" ? [a, b] : consistent === "b" ? [b, a] : b.confidence > a.confidence + 0.2 ? [b, a] : [a, b];
+        consistent === "a" ? [a, b] : consistent === "b" ? [b, a] : strongCategory || b.confidence > a.confidence + 0.2 ? [b, a] : [a, b];
       merged = adjust(win, 0.85, `${lose.source === "rules" ? "Regeln" : "Modell"}: ${describe(key, lose.value)}`);
     }
     if (merged) (out as Record<string, unknown>)[key] = merged;

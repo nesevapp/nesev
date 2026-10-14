@@ -265,8 +265,8 @@ function findTreatment(text: string, country: string | undefined, uid: string | 
   return rules(defaultVatTreatment(country, uid), 0.5);
 }
 
-// Unambiguous trade / supplier terms: checked first and confident enough (0.7) to override a model category
-// the model itself wasn't sure about (mergeFields prefers the rules when they are > 0.2 more confident).
+// Unambiguous trade / supplier terms: checked first, and at 0.7 they override the model's category unless the
+// model reports ≥ 0.9 (see mergeFields).
 // KFZ comes before the trades so "KFZ-Werkstätte Reparatur" stays KFZ.
 const STRONG_CATEGORY_KEYWORDS: [ExpenseCategoryKey, RegExp][] = [
   ["kfz", /tankstelle|kfz[\s-]?(werkst|reparatur|service)|autowerkst|autohaus|reifen(wechsel|service|händler)|pickerl|§\s*57a|vignette/i],

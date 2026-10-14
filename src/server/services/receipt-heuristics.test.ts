@@ -220,12 +220,16 @@ describe("category rules", () => {
     test(`${text.split("\n")[0]} → ${key}`, () => expect(findCategory(text)?.value).toBe(key as never));
   }
 
-  test("trade keywords override an unsure model category, not a confident one", () => {
+  test("trade keywords override the model category unless it is very sure", () => {
     const text = "Elektro Gruber GmbH\nElektroinstallation, Störungsbehebung\nArbeitszeit 2 Std.";
     const rules = extractWithRules(text).fields;
     expect(rules.category).toMatchObject({ value: "instandhaltung", confidence: 0.7 });
     const unsure = mapLlmOutput({ category: "hardware_gwg", confidence: { category: 0.4 } });
     expect(mergeFields(unsure, rules).category?.value).toBe("instandhaltung");
+    const fairlySure = mapLlmOutput({ category: "wareneinkauf", confidence: { category: 0.72 } });
+    expect(mergeFields(fairlySure, rules).category?.value).toBe("instandhaltung");
+    const fuel = extractWithRules("GUTMANN GMBH\nDISK TANKSTELLE\n*ZP01 EURO SUPER 10,19L 18,59*B").fields;
+    expect(mergeFields(fairlySure, fuel).category?.value).toBe("kfz");
     const sure = mapLlmOutput({ category: "wareneinkauf", confidence: { category: 0.9 } });
     expect(mergeFields(sure, rules).category?.value).toBe("wareneinkauf");
     // generic keywords stay a weak hint
