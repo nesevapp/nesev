@@ -57,6 +57,13 @@
       "when": 1791979679877,
       "tag": "0007_fixed_cost_links",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791984827881,
+      "tag": "0008_receipt_crop",
+      "breakpoints": true
     }
   ]
 }

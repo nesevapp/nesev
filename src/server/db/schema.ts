@@ -345,6 +345,8 @@ export const expenses = sqliteTable(
     /** uploaded receipt relative to data dir, e.g. "receipts/2026/ER-2026-0001.pdf" */
     attachmentPath: text("attachment_path"),
     attachmentName: str("attachment_name"),
+    /** original photo when the receipt was cropped/straightened; attachmentPath then points to the cropped image */
+    attachmentOriginalPath: text("attachment_original_path"),
     ...timestamps,
   },
   (t) => [
