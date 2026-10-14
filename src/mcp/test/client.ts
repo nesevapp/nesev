@@ -9,6 +9,12 @@ import { PROJECT_ROOT } from "../../server/lib/paths";
 
 export const MODERN_VERSION = "2026-07-28";
 
+/**
+ * The time zone this process actually uses, for the env of spawned processes. `bun test` runs in UTC without setting
+ * process.env.TZ, so children would use the system zone and see another "today" around midnight.
+ */
+export const sameTimeZone = () => ({ TZ: Intl.DateTimeFormat().resolvedOptions().timeZone });
+
 /** NESEV_* settings of this process (web/API URL) reach the server too; the SDK only passes a minimal env. */
 function passThrough(): Record<string, string> {
   return Object.fromEntries(
@@ -21,7 +27,7 @@ export async function connectClient(opts: { dataDir: string; era?: "legacy" | "m
     command: process.execPath,
     args: ["run", "--silent", "mcp"],
     cwd: PROJECT_ROOT,
-    env: { ...getDefaultEnvironment(), ...passThrough(), NESEV_DATA_DIR: opts.dataDir, ...opts.env },
+    env: { ...getDefaultEnvironment(), ...passThrough(), ...sameTimeZone(), NESEV_DATA_DIR: opts.dataDir, ...opts.env },
     stderr: "pipe",
   });
   const client = new Client(

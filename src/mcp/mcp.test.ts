@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { PROJECT_ROOT } from "../server/lib/paths";
 import { addDays, todayIso } from "../shared/dates";
 import { addMonthsAnchored } from "../shared/recurring";
-import { connectClient, MODERN_VERSION } from "./test/client";
+import { connectClient, MODERN_VERSION, sameTimeZone } from "./test/client";
 import type { SeedIds } from "./test/seed";
 
 // End-to-end: the real entry (`bun run mcp`) as a subprocess on a seeded temp data dir, driven by the SDK client in
@@ -76,7 +76,7 @@ beforeAll(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "nesev-mcp-test-"));
   const seed = Bun.spawnSync([process.execPath, "src/mcp/test/seed.ts"], {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, NESEV_DATA_DIR: dataDir },
+    env: { ...process.env, ...sameTimeZone(), NESEV_DATA_DIR: dataDir },
   });
   if (seed.exitCode !== 0) throw new Error(`seed failed: ${seed.stderr.toString()}`);
   ids = JSON.parse(seed.stdout.toString().trim().split("\n").at(-1)!);
@@ -515,7 +515,7 @@ describe("write tools", () => {
     const script = `import { api } from "./src/mcp/api";
 const res = await api.receipts.analyze.$post({ json: { expenseIds: [1] } });
 console.error(JSON.stringify({ status: res.status, body: await res.json() }));`;
-    const run = Bun.spawnSync([process.execPath, "-e", script], { cwd: PROJECT_ROOT, env: { ...process.env, NESEV_DATA_DIR: dataDir } });
+    const run = Bun.spawnSync([process.execPath, "-e", script], { cwd: PROJECT_ROOT, env: { ...process.env, ...sameTimeZone(), NESEV_DATA_DIR: dataDir } });
     const out = JSON.parse(run.stderr.toString().trim().split("\n").at(-1)!);
     expect(out.status).toBe(403);
     expect(out.body.error).toContain("nicht im MCP-Prozess");
@@ -867,7 +867,7 @@ function countIds(out: string) {
 test("stdout carries only JSON-RPC (raw `bun run mcp`)", async () => {
   const proc = Bun.spawn([process.execPath, "run", "mcp"], {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, NESEV_DATA_DIR: dataDir },
+    env: { ...process.env, ...sameTimeZone(), NESEV_DATA_DIR: dataDir },
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
