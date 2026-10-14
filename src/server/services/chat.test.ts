@@ -151,6 +151,9 @@ describe("conversations", () => {
     expect(list[0]!.id).toBe(a.id);
     expect(list[0]!.title).toBe("Hallo, wer bist du eigentlich und …");
     expect(list[0]!.preview).toBe("Hallo!");
+    scripts.push(text("Entwurf angelegt:\n- **Kunde:** [Alpen](/clients/1)\n- `Beratung`"));
+    await collect((emit) => sendMessage(deps, a.id, { text: "Leg an" }, emit));
+    expect(listConversations(db)[0]!.preview).toBe("Entwurf angelegt: Kunde: Alpen Beratung");
     expect(renameConversation(db, b.id, " Steuern ").title).toBe("Steuern");
     deleteConversation(db, a.id);
     expect(listConversations(db).map((c) => c.id)).toEqual([b.id]);

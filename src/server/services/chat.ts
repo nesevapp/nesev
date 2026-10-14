@@ -80,7 +80,13 @@ function lastPreview(db: DbOrTx, conversationId: number): string {
     .limit(1)
     .all();
   const text = rows[0]?.content ?? "";
-  const flat = text.replace(/\s+/g, " ").trim();
+  // plain text: no Markdown emphasis, list markers, headings, code ticks; links keep their label
+  const flat = text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*(?:[-*+]|\d+\.|#{1,6})\s+/gm, "")
+    .replace(/[*_`]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat;
 }
 
