@@ -14,6 +14,7 @@ import { type ChatConversation, type ChatMessage, chatConversations, chatMessage
 import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
+import { checkContextUse } from "./chat-context";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
 import { nudgeUiCall } from "./chat-ui-tools";
@@ -34,6 +35,10 @@ const SAFETY = 1024;
 /** tool results older than the last turns are cut to this many characters first when the history is too long */
 const OLD_TOOL_CHARS = 600;
 const RECENT_TURNS = 2;
+
+/** what the model reads for a declined confirmation */
+export const REJECTED_TEXT =
+  "Der Nutzer hat die Aktion abgelehnt; es wurde nichts ausgeführt oder geändert. Bestätige das in einem Satz, sprich den Nutzer dabei direkt an, und frag, ob etwas anders gemacht werden soll. Keine Vermutungen über den Grund.";
 
 export class ChatConflictError extends Error {}
 export class ChatNotFoundError extends Error {}
@@ -222,7 +227,7 @@ Regeln:
 - Verlinke Datensätze als Markdown mit dem Pfad aus dem Werkzeug-Ergebnis, z. B. [RE-2026-0004](/invoices/12).
 - „Öffne …“ / „geh zu …“ → open_in_app (Seite oder Datensatz), „PDF zeigen“ → open_pdf, „herunterladen“ → download_pdf – mit der id aus einem Werkzeug-Ergebnis (sonst zuerst search). Danach nur kurz bestätigen; Nummern nur aus Werkzeug-Ergebnissen (Entwürfe haben keine).
 - Tabellen, Diagramme und Belege aus Werkzeug-Ergebnissen sieht der Nutzer direkt im Chat. Wiederhole sie nicht als Liste, sondern nenne in 1–3 Sätzen das Wesentliche (Summe, Auffälliges, nächster Schritt).
-- Beginnt eine Nutzernachricht mit „(Kontext: …)“, steht dort, was der Nutzer gerade in der App sieht; „diese Rechnung“ usw. meint diesen Datensatz. Schreib selbst keine solche Kontext-Zeile.`;
+- Beginnt eine Nutzernachricht mit „(Kontext: …)“, steht dort, was der Nutzer gerade in der App sieht. Diesen Datensatz meint er nur mit „diese/dieses/davon/hier/die aktuelle“. Nennt er einen Kunden, eine Nummer oder „den Entwurf für X“, such genau diesen (search) – nimm dann nie die id aus dem Kontext. Schreib selbst keine solche Kontext-Zeile.`;
 }
 
 const PAGE_TYPES: [RegExp, string][] = [
@@ -266,7 +271,7 @@ export function describePage(path: string, title?: string): string {
 }
 
 function userContent(m: ChatMessage, title?: string): string {
-  return m.contextPath ? `(Kontext: ${describePage(m.contextPath, title)})\n${m.content}` : m.content;
+  return m.contextPath ? `(Kontext: ${describePage(m.contextPath, title)} Gilt nur für „diese/hier/davon“.)\n${m.content}` : m.content;
 }
 
 /**
@@ -322,6 +327,8 @@ interface TurnState {
   malformed: number;
   /** name + arguments of calls that failed in this turn (a small model tends to repeat them unchanged) */
   failed?: Set<string>;
+  /** context records whose blind use was already flagged in this turn (chat-context.ts) */
+  contextWarned?: Set<string>;
 }
 
 function insertMessage(db: DbOrTx, values: typeof chatMessages.$inferInsert): ChatMessage {
@@ -360,7 +367,7 @@ export async function confirmToolCall(deps: ChatDeps, conversationId: number, me
       done = updateMessage(db, row.id, { content: toolContent(outcome, result), toolResult: result, status: outcome.isError ? "error" : "done" });
     } else {
       done = updateMessage(db, row.id, {
-        content: "Der Nutzer hat abgelehnt; die Aktion wurde nicht ausgeführt.",
+        content: REJECTED_TEXT,
         toolResult: { ok: false, summary: "Abgelehnt", links: [] } satisfies ChatToolResult,
         status: "cancelled",
       });
@@ -535,6 +542,12 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           ? `Fehler: Unbekanntes Werkzeug „${call.name}“. Verfügbar: ${tools.map((t) => t.name).join(", ")}.`
           : `Fehler: Die Argumente sind kein gültiges JSON-Objekt (${malformed.get(call.id)!.slice(0, 200)}). Bitte den Aufruf mit korrektem JSON wiederholen.`;
         const row = insertMessage(db, { ...base, content: text, status: "error", toolResult: { ok: false, summary: text.split(". ")[0]!, links: [] } satisfies ChatToolResult });
+        await emit({ type: "tool_result", message: messageView(row) });
+        continue;
+      }
+      const contextError = await checkContextUse(call, { contextPath: lastUser?.contextPath, userText: lastUser?.content ?? "", host, warned: (state.contextWarned ??= new Set()) });
+      if (contextError) {
+        const row = insertMessage(db, { ...base, content: contextError, status: "error", toolResult: { ok: false, summary: "Anderer Datensatz als auf der Seite gemeint", links: [] } satisfies ChatToolResult });
         await emit({ type: "tool_result", message: messageView(row) });
         continue;
       }

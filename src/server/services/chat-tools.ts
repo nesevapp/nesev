@@ -305,7 +305,8 @@ export function extractLinks(structured: Record<string, unknown> | null): ChatLi
 
 /** The UI view of a tool result: summary line, links, and for successful calls the card (chat-cards.ts) and the UI action. */
 export function toChatToolResult(outcome: ToolOutcome, toolName?: string): ChatToolResult {
-  const first = outcome.text.split("\n").find((l) => l.trim())?.trim() ?? "";
+  // the first line is often a heading of the list that follows ("3 Belege, Summe brutto € 1.284,00:")
+  const first = (outcome.text.split("\n").find((l) => l.trim())?.trim() ?? "").replace(/\s*:$/, "");
   const summary = first.length > 160 ? `${first.slice(0, 157)}…` : first;
   const result: ChatToolResult = { ok: !outcome.isError, summary: summary || (outcome.isError ? "Fehler" : "Erledigt"), links: outcome.isError ? [] : extractLinks(outcome.structured) };
   if (outcome.isError) return result;

@@ -22,6 +22,7 @@ import {
   describePage,
   listConversations,
   needsData,
+  REJECTED_TEXT,
   renameConversation,
   sendMessage,
 } from "./chat";
@@ -98,6 +99,9 @@ const host: ToolHost = {
     calls.push({ name, args });
     if (name === "list_documents") {
       return { isError: false, text: "2 offene Rechnungen\n- RE-2026-0001 Alpen GmbH € 120,00", structured: { documents: [{ number: "RE-2026-0001", link: "/invoices/1" }] } };
+    }
+    if (name === "get_document" && args.id === 1) {
+      return { isError: false, text: "Rechnung RE-2026-0001", structured: { id: 1, type: "invoice", typeLabel: "Rechnung", number: "RE-2026-0001", status: "final", client: { name: "Alpen Software GmbH" }, gross: { cents: 128400, formatted: "€ 1.284,00" }, link: "/invoices/1" } };
     }
     if (name === "get_document") {
       return { isError: false, text: "Rechnung", structured: { id: args.id, type: "invoice", typeLabel: "Rechnung", number: null, status: "draft", client: { name: "Alpen GmbH" }, gross: { cents: 54000, formatted: "€ 540,00" }, link: `/invoices/${args.id}` } };
@@ -188,7 +192,7 @@ describe("agent loop", () => {
     expect(req.stream).toBe(true);
     expect(req.chat_template_kwargs).toEqual({ enable_thinking: false });
     expect(req.messages[0].content).toContain("14.10.2026");
-    expect(req.messages[1].content).toBe("(Kontext: Der Nutzer sieht gerade Rechnung id 12 („RE-2026-0004“).)\nHallo");
+    expect(req.messages[1].content).toBe("(Kontext: Der Nutzer sieht gerade Rechnung id 12 („RE-2026-0004“). Gilt nur für „diese/hier/davon“.)\nHallo");
     expect(req.tools.map((t: any) => t.function.name)).toEqual(host.tools.map((t) => t.name));
     expect(req.tools[0].function.parameters.$schema).toBeUndefined();
     const detail = conversationDetail(db, c.id);
@@ -242,6 +246,28 @@ describe("agent loop", () => {
     expect(requests[2].messages.at(-1).content).toBe(results[1]!.message.content);
   });
 
+  test("page context: a call on the context record is stopped when the message names another record; deictic or repeated → runs", async () => {
+    deps.host = async () => withUiTools(host, db);
+    const c = createConversation(db);
+    const context = { path: "/invoices/1", title: "Rechnung RE-2026-0001" };
+    scripts.push(toolCall("download_pdf", '{"id":1}'), toolCall("download_pdf", '{"id":5}', "id_dl2"), text("Lädt."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Lade mir die Vorschau vom Entwurf für Alpen herunter", context }, emit));
+    const results = events.filter((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>[];
+    expect(results[0]!.message.status).toBe("error");
+    expect(results[0]!.message.content).toContain("id 1 ist Rechnung RE-2026-0001, der Datensatz, den der Nutzer gerade ansieht – aber die Nachricht meint einen Entwurf, dieser Beleg ist finalisiert");
+    expect(results[1]!.message.toolResult?.action).toMatchObject({ kind: "download", url: "/api/pdf/documents/5?download=1" });
+
+    // "davon" refers to the page: runs at once
+    scripts.push(toolCall("download_pdf", '{"id":1}', "id_dl3"), text("Lädt."));
+    const deictic = await collect((emit) => sendMessage(deps, c.id, { text: "Lade mir das PDF davon herunter", context }, emit));
+    expect((deictic.find((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>).message.status).toBe("done");
+
+    // warned once per turn: the model insists after checking → runs
+    scripts.push(toolCall("download_pdf", '{"id":1}', "id_a"), toolCall("download_pdf", '{"id":1}', "id_b"), text("Lädt."));
+    const insist = await collect((emit) => sendMessage(deps, c.id, { text: "Lade die Rechnung für Berlin herunter", context }, emit));
+    expect((insist.filter((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>[]).map((r) => r.message.status)).toEqual(["error", "done"]);
+  });
+
   test("confirm flow: pending blocks, approve executes and continues", async () => {
     const c = createConversation(db);
     scripts.push(toolCall("finalize_document", '{"id":2}'));
@@ -279,7 +305,7 @@ describe("agent loop", () => {
     const after = await collect((emit) => confirmToolCall(deps, c.id, confirm.messageId, false, emit));
     expect((after[0] as Extract<ChatStreamEvent, { type: "tool_result" }>).message.status).toBe("cancelled");
     expect(calls.map((x) => x.name)).toEqual(["get_document"]);
-    expect(requests.at(-1).messages.at(-1)).toEqual({ role: "tool", tool_call_id: "id_finalize_document", content: "Der Nutzer hat abgelehnt; die Aktion wurde nicht ausgeführt." });
+    expect(requests.at(-1).messages.at(-1)).toEqual({ role: "tool", tool_call_id: "id_finalize_document", content: REJECTED_TEXT });
   });
 
   test("malformed arguments go back to the model once; repeated → error", async () => {

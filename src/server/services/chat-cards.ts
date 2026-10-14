@@ -221,15 +221,19 @@ const fixedCosts: Builder = (d) => {
 const dashboard: Builder = (d) => {
   if (!Array.isArray(d.monthly) || !d.monthly.length) return null;
   const months: Data[] = d.monthly;
+  // months after today without bookings have no value yet (null: no bar, the result line ends instead of dropping to 0)
+  const thisMonth = typeof d.today === "string" ? d.today.slice(0, 7) : null;
+  const empty = (m: Data) => thisMonth !== null && String(m.month) > thisMonth && !cents(m.revenue) && !cents(m.expenses);
+  const values = (pick: (m: Data) => unknown) => months.map((m) => (empty(m) ? null : cents(pick(m))));
   return {
     kind: "chart",
     title: `Umsatz und Ausgaben ${d.year} (netto)`,
     chart: "bar",
     labels: months.map((m) => monthLabel(String(m.month), false)),
     series: [
-      { label: "Umsatz", values: months.map((m) => cents(m.revenue)), tone: "revenue" },
-      { label: "Ausgaben", values: months.map((m) => cents(m.expenses)), tone: "expenses" },
-      { label: "Ergebnis", values: months.map((m) => cents(m.result)), tone: "result", type: "line" },
+      { label: "Umsatz", values: values((m) => m.revenue), tone: "revenue" },
+      { label: "Ausgaben", values: values((m) => m.expenses), tone: "expenses" },
+      { label: "Ergebnis", values: values((m) => m.result), tone: "result", type: "line" },
     ],
     link: link("Dashboard", d.link),
   };

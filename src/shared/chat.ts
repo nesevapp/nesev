@@ -124,7 +124,8 @@ export type ChatCard =
       /** x-axis labels, e.g. ["Jän", "Feb", …] or ["KW 42", …] */
       labels: string[];
       /** bars are drawn side by side; a "line" series in a bar chart is drawn as a line on top (like the result line) */
-      series: { label: string; values: number[]; tone: ChatTone; type?: "bar" | "line" }[];
+      /** null = no value (e.g. months after today): no bar, a gap in the line */
+      series: { label: string; values: (number | null)[]; tone: ChatTone; type?: "bar" | "line" }[];
       link?: ChatLink;
     }
   /** one invoice / offer / credit note / reminder */

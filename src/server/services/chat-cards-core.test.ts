@@ -35,6 +35,22 @@ describe("cards", () => {
     });
   });
 
+  test("get_dashboard: months after today without bookings are null (no bar, the line ends)", () => {
+    const month = (k: string, r: number, e: number) => ({ month: k, revenue: m(r), expenses: m(e), result: m(r - e) });
+    const card = buildCard("get_dashboard", { year: 2026, today: "2026-10-14", monthly: [month("2026-09", 100, 40), month("2026-10", 0, 0), month("2026-11", 0, 0), month("2026-12", 500, 0)] });
+    expect(card?.kind === "chart" && card.series.map((x) => x.values)).toEqual([
+      [100, 0, null, 500],
+      [40, 0, null, 0],
+      [60, 0, null, 500],
+    ]);
+  });
+
+  test("tool summaries drop the trailing colon of a heading line", () => {
+    expect(toChatToolResult({ isError: false, text: "1 Belege, Summe brutto € 1.284,00, offen € 1.140,00:\n- RE-2026-0001", structured: null }).summary).toBe(
+      "1 Belege, Summe brutto € 1.284,00, offen € 1.140,00",
+    );
+  });
+
   test("get_document (and document write tools) → document card with raw status; open only for finalized invoices", () => {
     const doc = {
       id: 12,
