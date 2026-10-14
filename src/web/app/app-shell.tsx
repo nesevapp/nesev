@@ -130,7 +130,10 @@ export function AppShell() {
           ))}
         </nav>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+      {/* `relative`: absolutely positioned descendants (Radix Select/Switch/Checkbox render hidden native inputs with
+          position:absolute) must resolve against main, not the viewport; otherwise they stretch the document, the
+          window becomes scrollable and the whole shell, sidebar included, scrolls away. */}
+      <main className="relative flex-1 overflow-y-auto">
         <Outlet />
       </main>
       <ChatPanel />

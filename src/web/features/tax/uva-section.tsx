@@ -64,7 +64,7 @@ export function UvaSection({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           {VAT_BASIS_LABELS[data.basis]} · UVA {VAT_PERIOD_LABELS[data.vatPeriod]} ·{" "}
-          <Link to="/settings" className="underline underline-offset-2 hover:text-foreground">
+          <Link to="/settings" search={{ tab: "belege" }} className="underline underline-offset-2 hover:text-foreground">
             ändern
           </Link>
         </p>

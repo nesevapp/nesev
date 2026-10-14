@@ -113,7 +113,7 @@ function ChatPanelBody({ open }: { open: boolean }) {
           chatUi.setOpen(false);
         }
       }}
-      className={cn("flex w-[420px] shrink-0 flex-col border-l bg-background", !open && "hidden")}
+      className={cn("relative flex w-[420px] shrink-0 flex-col border-l bg-background", !open && "hidden")}
     >
       <ChatHeader conversation={detail} status={status.data} busyText={session.streaming ? session.live.statusText : null} />
       <div
