@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
+import { ForecastSettingsSection } from "@/features/forecast/forecast-settings-section";
 import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
 import {
   apiErrorMessage,
@@ -222,6 +223,7 @@ export function SettingsPage() {
       </Form>
       <UnitSettingsSection />
       <ReminderSettingsSection />
+      <ForecastSettingsSection />
       <ReceiptSettingsSection />
     </Page>
   );
