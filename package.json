@@ -12,7 +12,8 @@
     "db:migrate": "bun src/server/db/migrate.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "mcp": "bun src/mcp/server.ts"
+    "mcp": "bun src/mcp/server.ts",
+    "eval:chat": "bun src/server/eval/run.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "0.9.1",

@@ -542,7 +542,9 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       const id = raw.id || newCallId();
       const args = parseArgs(raw.arguments);
       if (!args) malformed.set(id, raw.arguments);
-      calls.push({ id, ...nudgeUiCall(raw.name, args ?? {}, lastUser?.content ?? "") });
+      const nudged = nudgeUiCall(raw.name, args ?? {}, lastUser?.content ?? "");
+      if (nudged.name !== raw.name) deps.log?.(`[chat] conv ${state.conversationId}: nudged ${raw.name} → ${nudged.name}`);
+      calls.push({ id, ...nudged });
     }
     if (holdText && !calls.length) {
       forcedRetried = true;

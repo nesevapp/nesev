@@ -13,6 +13,7 @@ bun test                  # all *.test.ts (in-memory DBs via createTestDb)
 bun run build && bun start  # production: Hono serves SPA + API on PORT
 bun run db:generate       # after editing src/server/db/schema.ts → new migration file (commit it)
 NESEV_DATA_DIR=/tmp/nesev-mcp NESEV_API_URL=http://127.0.0.1:9 bun run mcp   # MCP server (stdio), see src/mcp/README.md
+bun run eval:chat         # assistant eval with the real local model on demo data (own temp dir + port), see src/server/eval/README.md
 ```
 Ports 3001/5173 are used by other projects on this machine, so always set `PORT`. The user's own instance runs on API 3998 / Vite 5174 with the real `data/`. Never touch it and never use `data/` for experiments.
 Isolated test runs: `NESEV_DATA_DIR=/tmp/nesev-x PORT=39xx bun run dev:api` plus `bunx vite --port 51xx --strictPort` (with `PORT` set the same). **Stop only processes you started, by PID.** Never `pkill`/`kill` by name, pattern or port range: that has killed the user's server before.
