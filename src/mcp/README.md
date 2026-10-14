@@ -64,7 +64,8 @@ bun src/mcp/test/client.ts create_invoice_draft '{"clientName":"Alpen","items":[
 - It doesn't start the app's background work: backup and recurring schedulers, the receipt OCR worker, llama-server.
   That work lives in `src/server/index.ts`, which the MCP never imports.
 - `api.ts` refuses every non-GET request to `/api/receipts` in-process (403), because `POST /analyze` would start
-  the OCR worker inside the MCP process.
+  the OCR worker inside the MCP process. The one exception is `POST /:id/applied` (only a timestamp), which
+  `apply_receipt_analysis` needs.
 
 ## Tools
 
@@ -103,6 +104,8 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `update_document_draft` | Drafts only. Changes the given fields; `items` replaces all lines |
 | `create_expense` | Lines with net or gross, rate and deductible %; the VAT treatment defaults from country and UID. Optional: `receiptPath` (a local file, checked like the UI: PDF/JPG/PNG/WebP, ≤ 20 MB, plus the file content) and `fixedCostId` + `fixedCostSlot` |
 | `queue_receipt_analysis` | Queues OCR on the running nesev server over HTTP (`NESEV_API_URL`). It first checks that the server uses the same data (each expense must match on number, supplier and receipt). Fails clearly when the server isn't running. |
+| `create_fixed_cost` | Fixkosten: gross per payment in euros, the contained VAT rate, interval (`intervalCount` × month/year), first payment date |
+| `create_asset` | Anlage with straight-line AfA. With `expenseId`, name, dates and cost (net + non-deductible VAT, minus assets already linked) come from the expense's `anlagen` lines; useful life is always required. Returns the AfA plan |
 
 ### Change state (`destructiveHint: true`)
 
@@ -119,6 +122,11 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `set_bank_transaction_ignored` | Ignore (private, own transfer) or, with `ignored: false`, reopen a transaction without allocations |
 | `set_recurring_invoice_active` | Pause/resume a recurring invoice (resuming catches up missed periods on the app's next run) |
 | `generate_recurring_invoice` | "Rechnung jetzt erstellen": invoice for the next period now, schedule advances. With the template's `autoFinalize` it is **irreversibly** finalized, otherwise a draft |
+| `update_client` | Changes only the given fields (the tool sends the merged client, because the API's update schema fills defaults). Returns the client plus `changes` (before/after) |
+| `update_expense` | Changes only the given fields; `lines` replaces all lines (for reverse charge / ig. Erwerb `gross` = net), `category` sets it on all lines, a treatment switch adapts the rates like the editor. Returns `changes` |
+| `mark_expense_paid` | Paid on a date (default today), or open again with `paidAt: null`. Bank allocations stay untouched |
+| `apply_receipt_analysis` | Saves the listed `fields` of the latest analysis (as the editor's "Übernehmen"; replaces existing values) and marks the analysis applied. Refuses running, stale or result-less analyses and an `analysisId` that is no longer the latest |
+| `link_expense_to_fixed_cost` | Links an expense to a Fixkosten payment: explicit `fixedCostId` + `scheduledDate`, or the best free suggested slot. Replaces an existing link of the expense (destructive for that reason) |
 
 The server's `instructions` tell the model that documents start as drafts and that it should show a draft and get
 the user's confirmation before `finalize_document`.
@@ -156,6 +164,7 @@ inputs.ts         write-tool inputs: resolveClientId (clientName), configured un
 tools/            read: overview, documents, clients, articles, expenses, finance
                   write: write-masterdata, write-documents, write-expenses, receipts (read + queue)
                   bank (read + matching), recurring (list, pause/resume, generate)
+                  write-records (client/expense updates, receipt suggestions, Fixkosten, assets)
                   documentDetail/clientDetail/expenseDetail/articleRow are shared by the read and write tools
 test/seed.ts      demo data through the API (refuses the default data dir)
 test/client.ts    SDK client over stdio for tests and manual calls (legacy or --modern era)
@@ -201,15 +210,16 @@ mcp.test.ts       end-to-end: the real entry as a subprocess in both eras; every
   - **Allow:** all read tools. Rules name tools exactly (`mcp__nesev__search`); the snippet below allows the read
     tools.
   - **Usually fine to allow:** `create_client`, `create_article`, `create_invoice_draft`, `create_offer_draft`,
-    `update_document_draft` and `queue_receipt_analysis`. These only add records or edit drafts, and any of it can
-    be fixed or deleted in the web app.
+    `update_document_draft`, `queue_receipt_analysis`, `create_fixed_cost` and `create_asset`. These only add
+    records or edit drafts, and any of it can be fixed or deleted in the web app.
   - `create_expense` is in the same category, but it copies a local file into `data/receipts`. Allow it if that's
     fine.
   - **Always confirm:** `finalize_document`, `create_reminder` (finalizes by default), `mark_invoice_paid`,
     `mark_document_sent`, `convert_offer_to_invoice`, `create_credit_note`, `generate_recurring_invoice` (may
     finalize), and the bank matching tools (`match_bank_transaction`, `unmatch_bank_transaction`,
-    `set_bank_transaction_ignored`) and `set_recurring_invoice_active`. They change legal or bookkeeping
-    state; finalized numbers and PDFs can't be undone.
+    `set_bank_transaction_ignored`), `set_recurring_invoice_active`, and the record updates (`update_client`,
+    `update_expense`, `mark_expense_paid`, `apply_receipt_analysis`, `link_expense_to_fixed_cost`). They change
+    legal or bookkeeping state; finalized numbers and PDFs can't be undone.
 - Tax output (UVA/ZM/EAR, AfA) is a helper, not tax advice. The tools say so in their descriptions and results.
 
 ```json

@@ -26,16 +26,19 @@ const BASE = "http://nesev.local/api";
 
 /**
  * Receipt analysis must never run in the MCP process: POST /api/receipts/analyze kicks the in-process worker (OCR,
- * llama-server). Only GETs of /api/receipts are served in-process; queueing goes to the running nesev server over
- * HTTP (remoteApi, tools/receipts.ts). Inside the nesev server process itself (in-app assistant) the worker belongs
- * there, so createApi({ inServer: true }) serves them.
+ * llama-server). Only GETs of /api/receipts (and POST /:id/applied, a timestamp) are served in-process; queueing
+ * goes to the running nesev server over HTTP (remoteApi, tools/receipts.ts). Inside the nesev server process itself
+ * (in-app assistant) the worker belongs there, so createApi({ inServer: true }) serves them.
  */
 const IN_PROCESS_BLOCKED = /^\/api\/receipts(\/|$)/;
+/** marking an analysis as applied only sets a timestamp (apply_receipt_analysis); no worker involved */
+const IN_PROCESS_ALLOWED = /^\/api\/receipts\/\d+\/applied$/;
 
 export function createApi(opts: { inServer?: boolean } = {}) {
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
-    if (!opts.inServer && req.method !== "GET" && IN_PROCESS_BLOCKED.test(new URL(req.url).pathname)) {
+    const path = new URL(req.url).pathname;
+    if (!opts.inServer && req.method !== "GET" && IN_PROCESS_BLOCKED.test(path) && !IN_PROCESS_ALLOWED.test(path)) {
       return Response.json({ error: "Belegerkennung läuft nur im nesev-Server, nicht im MCP-Prozess" }, { status: 403 });
     }
     return app.fetch(req);

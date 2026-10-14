@@ -49,9 +49,9 @@ const WRITE_TOOLS = [
 /** appended after WRITE_TOOLS (tools/bank.ts, tools/recurring.ts, tools/write-records.ts), in this order */
 const BANK_TOOLS: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored"];
 const RECURRING_TOOLS: string[] = ["list_recurring_invoices", "set_recurring_invoice_active", "generate_recurring_invoice"];
-const RECORD_TOOLS: string[] = [];
+const RECORD_TOOLS: string[] = ["update_client", "update_expense", "mark_expense_paid", "apply_receipt_analysis", "create_fixed_cost", "link_expense_to_fixed_cost", "create_asset"];
 const MORE_READ_ONLY: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "list_recurring_invoices"];
-const MORE_STATE_CHANGING: string[] = ["match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored", "set_recurring_invoice_active", "generate_recurring_invoice"];
+const MORE_STATE_CHANGING: string[] = ["match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored", "set_recurring_invoice_active", "generate_recurring_invoice", "update_client", "update_expense", "mark_expense_paid", "apply_receipt_analysis", "link_expense_to_fixed_cost"];
 const ALL_TOOLS = [...TOOLS, ...WRITE_TOOLS, ...BANK_TOOLS, ...RECURRING_TOOLS, ...RECORD_TOOLS];
 const STATE_CHANGING = [...MORE_STATE_CHANGING, "finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
 const WEB_URL = "http://nesev.test:4321";
@@ -640,6 +640,186 @@ describe("bank and recurring tools", () => {
 
     const missing = await callTool("generate_recurring_invoice", { id: 99999 });
     expect(missing.text).toBe("Fehler: Serienrechnung nicht gefunden");
+  });
+});
+
+describe("record tools (updates, fixed costs, assets)", () => {
+  const year = new Date().getFullYear();
+
+  test("update_client changes only the given fields", async () => {
+    const id = ids.clients.berlin;
+    const before = (await callTool("get_client", { id })).data;
+    const res = await callTool("update_client", { id, city: "München", paymentTermsDays: 21, uid: before.uid });
+    expect(res.isError).toBeFalsy();
+    expect(res.data).toMatchObject({ city: "München", paymentTermsDays: 21, name: before.name, uid: before.uid, street: before.street, country: "DE" });
+    expect(res.data.changes).toEqual([
+      { field: "city", label: "Ort", before: "Berlin", after: "München" },
+      { field: "paymentTermsDays", label: "Zahlungsziel (Tage)", before: "Standard", after: "21" },
+    ]);
+    expect((await callTool("get_client", { id })).data).toMatchObject({ city: "München", paymentTermsDays: 21, zip: before.zip });
+
+    const back = await callTool("update_client", { id, paymentTermsDays: null });
+    expect(back.data.paymentTermsDays).toBeNull();
+    expect((await callTool("update_client", { id })).text).toContain("Keine Felder");
+    const badEmail = await callTool("update_client", { id, email: "kein-mail" });
+    expect(badEmail.isError).toBe(true);
+    expect(badEmail.text).toContain("E-Mail");
+    expect((await callTool("update_client", { id: 99999, city: "x" })).text).toContain("Kunde nicht gefunden");
+  });
+
+  test("update_expense: fields, category, lines, treatment switch; mark_expense_paid", async () => {
+    const created = await callTool("create_expense", { supplierName: "Office Shop", issueDate: `${year}-03-02`, lines: [{ category: "buero", net: 100 }] });
+    const id = created.data.id;
+
+    const cat = await callTool("update_expense", { id, supplierInvoiceNumber: "R-1", category: "werbung" });
+    expect(cat.isError).toBeFalsy();
+    expect(cat.data).toMatchObject({ supplierInvoiceNumber: "R-1", supplier: "Office Shop", net: { cents: 10000 }, tax: { cents: 2000 } });
+    expect(cat.data.lines[0].category).toBe("werbung");
+    expect(cat.data.changes.map((c: Data) => c.field)).toEqual(["supplierInvoiceNumber", "lines"]);
+
+    // reverse charge: gross = amount payable = net, the VAT is self-assessed
+    const rc = await callTool("update_expense", {
+      id,
+      supplierCountry: "de",
+      supplierUid: "DE000000000",
+      vatTreatment: "reverse_charge",
+      lines: [{ category: "software_abos", gross: 50 }],
+    });
+    expect(rc.data).toMatchObject({ supplierCountry: "DE", vatTreatment: "reverse_charge", net: { cents: 5000 }, tax: { cents: 1000 }, gross: { cents: 5000 } });
+
+    const none = await callTool("update_expense", { id, vatTreatment: "none" });
+    expect(none.data).toMatchObject({ tax: { cents: 0 }, gross: { cents: 5000 } });
+    const domestic = await callTool("update_expense", { id, vatTreatment: "domestic" });
+    expect(domestic.data).toMatchObject({ net: { cents: 5000 }, tax: { cents: 1000 }, gross: { cents: 6000 } });
+    expect(domestic.data.lines[0].taxRatePercent).toBe(20);
+
+    expect((await callTool("update_expense", { id })).text).toContain("Keine Felder");
+    expect((await callTool("update_expense", { id, lines: [{ category: "buero", net: 1, gross: 1 }] })).text).toContain("net oder gross");
+    expect((await callTool("update_expense", { id, lines: [{ category: "buero", net: 1, taxRate: 19 }] })).text).toContain("Steuersatz 19 %");
+    expect((await callTool("get_expense", { id })).data.gross.cents).toBe(6000);
+
+    const paid = await callTool("mark_expense_paid", { id, paidAt: `${year}-03-10` });
+    expect(paid.data).toMatchObject({ paidAt: `${year}-03-10`, statusLabel: "bezahlt" });
+    const open = await callTool("mark_expense_paid", { id, paidAt: null });
+    expect(open.data).toMatchObject({ paidAt: null, statusLabel: "offen" });
+    expect((await callTool("mark_expense_paid", { id: 99999 })).isError).toBe(true);
+  });
+
+  test("apply_receipt_analysis applies only the approved fields and marks the analysis applied", async () => {
+    const e = await callTool("create_expense", {
+      supplierName: "Unbekannt",
+      issueDate: `${year}-03-01`,
+      lines: [{ category: "sonstiges", net: 1 }],
+      receiptPath: join(FIXTURES, "receipt.png"),
+    });
+    const expenseId = e.data.id;
+    expect((await callTool("apply_receipt_analysis", { expenseId, fields: ["supplierName"] })).text).toContain("keine Belegerkennung");
+
+    // a finished analysis as the worker would store it
+    const sqlite = new Database(join(dataDir, "nesev.db"));
+    const { attachment_path } = sqlite.query("select attachment_path from expenses where id = ?").get(expenseId) as { attachment_path: string };
+    const s = (value: unknown) => ({ value, confidence: 0.9, source: "llm" });
+    const result = {
+      fields: {
+        supplierName: s("Libro GmbH"),
+        supplierUid: s("ATU11111111"),
+        issueDate: s(`${year}-03-05`),
+        category: s("buero"),
+        vatTreatment: s("domestic"),
+        grossCents: s(3000),
+        taxLines: s([{ taxRateBp: 2000, netCents: 2500, taxCents: 500, grossCents: 3000 }]),
+      },
+      warnings: [],
+    };
+    const now = new Date().toISOString();
+    const analysisId = Number(
+      sqlite
+        .query(
+          "insert into receipt_analyses (expense_id, status, attachment_path, text_source, result, finished_at, created_at, updated_at) values (?, 'done', ?, 'vision', ?, ?, ?, ?)",
+        )
+        .run(expenseId, attachment_path, JSON.stringify(result), now, now, now).lastInsertRowid,
+    );
+    try {
+      expect((await callTool("apply_receipt_analysis", { expenseId, fields: ["supplierName"], analysisId: analysisId + 1 })).text).toContain("neuere Belegerkennung");
+      const missing = await callTool("apply_receipt_analysis", { expenseId, fields: ["dueDate", "supplierName"] });
+      expect(missing.text).toContain("Kein Vorschlag für: dueDate");
+      expect(missing.text).toContain("lines");
+
+      const applied = await callTool("apply_receipt_analysis", { expenseId, fields: ["supplierName", "issueDate", "lines"], analysisId });
+      expect(applied.isError).toBeFalsy();
+      expect(applied.data).toMatchObject({ analysisId, applied: ["supplierName", "issueDate", "lines"], supplier: "Libro GmbH", supplierUid: "", issueDate: `${year}-03-05`, gross: { cents: 3000 } });
+      expect(applied.data.lines).toEqual([expect.objectContaining({ category: "buero", net: expect.objectContaining({ cents: 2500 }), tax: expect.objectContaining({ cents: 500 }) })]);
+      expect(applied.data.changes.map((c: Data) => c.field)).toEqual(["supplierName", "issueDate", "lines", "gross"]);
+      expect((await callTool("get_receipt_analysis", { expenseId })).data.analysis.applied).toBe(true);
+
+      sqlite.query("update receipt_analyses set attachment_path = 'receipts/other.png' where id = ?").run(analysisId);
+      expect((await callTool("apply_receipt_analysis", { expenseId, fields: ["supplierUid"] })).text).toContain("ersetzt");
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  test("create_fixed_cost and link_expense_to_fixed_cost (suggested and explicit slot)", async () => {
+    const fc = await callTool("create_fixed_cost", {
+      name: "Cloud-Server",
+      supplierName: "Hetzner Online GmbH",
+      category: "software_abos",
+      gross: "24,00",
+      startDate: `${year}-03-15`,
+    });
+    expect(fc.isError).toBeFalsy();
+    expect(fc.data).toMatchObject({ name: "Cloud-Server", interval: "monatlich", gross: { cents: 2400 }, tax: { cents: 400 }, monthly: { cents: 2400 } });
+    expect((await callTool("list_fixed_costs")).data.fixedCosts.some((f: Data) => f.id === fc.data.id)).toBe(true);
+    expect((await callTool("create_fixed_cost", { name: "x", category: "svs", gross: 0, startDate: `${year}-01-01` })).text).toContain("größer als 0");
+    expect((await callTool("create_fixed_cost", { name: "x", category: "svs", gross: 10, taxRate: 19, startDate: `${year}-01-01` })).text).toContain("Steuersatz 19 %");
+
+    const e = await callTool("create_expense", { supplierName: "Hetzner Online GmbH", issueDate: `${year}-03-16`, lines: [{ category: "software_abos", gross: 24 }] });
+    const expenseId = e.data.id;
+    const linked = await callTool("link_expense_to_fixed_cost", { expenseId });
+    expect(linked.isError).toBeFalsy();
+    expect(linked.data).toMatchObject({ expense: { id: expenseId }, fixedCost: { id: fc.data.id, scheduledDate: `${year}-03-15` }, replaced: null });
+    expect((await callTool("get_expense", { id: expenseId })).data.fixedCost).toMatchObject({ id: fc.data.id, scheduledDate: `${year}-03-15` });
+
+    const moved = await callTool("link_expense_to_fixed_cost", { expenseId, fixedCostId: fc.data.id, scheduledDate: `${year}-04-15` });
+    expect(moved.data.replaced).toMatchObject({ fixedCostId: fc.data.id, scheduledDate: `${year}-03-15` });
+
+    expect((await callTool("link_expense_to_fixed_cost", { expenseId, fixedCostId: fc.data.id, scheduledDate: `${year}-04-16` })).text).toContain("Kein geplanter Zahlungstermin");
+    expect((await callTool("link_expense_to_fixed_cost", { expenseId, scheduledDate: `${year}-04-15` })).text).toContain("nur zusammen mit fixedCostId");
+    expect((await callTool("link_expense_to_fixed_cost", { expenseId: ids.expenses.telekom })).text).toContain("Kein freier passender Fixkosten-Termin");
+  });
+
+  test("create_asset from an expense's anlagen line and by hand, with the AfA plan", async () => {
+    const e = await callTool("create_expense", {
+      supplierName: "Computerhändler",
+      issueDate: `${year}-09-01`,
+      lines: [{ category: "anlagen", description: "Workstation", gross: "1.200,00" }, { category: "buero", gross: 12 }],
+    });
+    const fromExpense = await callTool("create_asset", { expenseId: e.data.id, usefulLifeYears: 4 });
+    expect(fromExpense.isError).toBeFalsy();
+    expect(fromExpense.data).toMatchObject({
+      name: "Workstation",
+      acquisitionDate: `${year}-09-01`,
+      inServiceDate: `${year}-09-01`,
+      cost: { cents: 100000 },
+      annualAfa: { cents: 25000 },
+      halfYearFirst: true,
+      gwg: true,
+      expense: { id: e.data.id },
+      link: `${WEB_URL}/assets/${fromExpense.data.id}`,
+    });
+    expect(fromExpense.data.number).toMatch(/^AV-\d{4}$/);
+    expect(fromExpense.data.schedule[0]).toMatchObject({ year, afa: { cents: 12500 } });
+    expect(fromExpense.data.schedule.reduce((s: number, y: Data) => s + y.afa.cents, 0)).toBe(100000);
+    expect((await callTool("create_asset", { expenseId: e.data.id, usefulLifeYears: 4 })).text).toContain("schon vollständig als Anlagen erfasst");
+
+    const chair = await callTool("create_asset", { name: "Bürostuhl", cost: "1.500,00", acquisitionDate: `${year}-03-01`, usefulLifeYears: 10 });
+    expect(chair.data).toMatchObject({ inServiceDate: `${year}-03-01`, annualAfa: { cents: 15000 }, halfYearFirst: false, gwg: false, expense: null });
+    expect(chair.data.schedule).toHaveLength(10);
+
+    expect((await callTool("create_asset", { name: "x", usefulLifeYears: 3 })).text).toContain("fehlen: cost, acquisitionDate");
+    expect((await callTool("create_asset", { expenseId: ids.expenses.telekom, usefulLifeYears: 3 })).text).toContain("keine Position der Kategorie");
+    const register = await callTool("list_assets", { year });
+    expect(register.data.assets.map((a: Data) => a.id)).toEqual(expect.arrayContaining([fromExpense.data.id, chair.data.id]));
   });
 });
 
