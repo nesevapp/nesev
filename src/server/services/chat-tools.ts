@@ -118,36 +118,56 @@ export const toolTokens = (tools: ChatTool[]) => estimateTokens(JSON.stringify(t
 
 /**
  * Routing table: which groups a request gets besides "core" and "ui" (always offered). A group is added when the
- * current or previous user message matches its words, when the user is on one of its pages, or when one of its
- * tools ran in the last turns (follow-ups like "ja, finalisiere" or "und im September?"). New tools only need a group.
- * Words are matched on the lower-cased text; stems, so "rechnungen", "Rechnungsentwurf" etc. match.
+ * current or previous user message matches its `words`, when the user is on one of its pages, or when one of its
+ * tools ran in the last turns (follow-ups like "ja, finalisiere" or "und im September?"). `weak` words are ambiguous
+ * ("bezahlt", "offen", "Zahlung", "ändern" …): they add their group only when no other group is named by a strong
+ * word, so "Markiere die Ausgabe von Adobe als bezahlt" gets expenses only, "Was ist noch offen?" documents.
+ * New tools only need a group. Matched on the lower-cased text; stems, so "rechnungen", "Rechnungsentwurf" match.
  */
-export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: RegExp; paths: RegExp }> = {
+export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: RegExp; weak?: RegExp; paths: RegExp }> = {
   documents: {
     words:
-      /rechnung|angebot|gutschrift|storn|entwurf|entwürf|finalis|abschlie|mahn|zahlungserinnerung|überfällig|ueberfaellig|fällig|faellig|offen|bezahlt|versend|verschick|gesendet|umwandel|position|serien|wiederkehrend|abrechn|verrechn|stunde|std\b|\b(re|an|gs|ma)-?\s?\d/,
+      /rechnung|angebot|gutschrift|storn|entwurf|entwürf|finalis|abschlie|mahn|zahlungserinnerung|überfällig|ueberfaellig|versend|verschick|gesendet|umwandel|serien|wiederkehrend|abrechn|verrechn|stunde|std\b|\b(re|an|gs|ma)-?\s?\d/,
+    weak: /fällig|faellig|offen|bezahlt|position/,
     paths: /^\/(invoices|offers|credit-notes|reminders|recurring)\b/,
   },
   clients: {
-    words: /kunde|kundin|client|artikel|leistung|produkt|stammdat|adresse|\buid\b|e-?mail|telefon|ansprechp|kontaktp|änder|aender|\bk-?\d/,
+    words: /kunde|kundin|client|artikel|leistung|produkt|stammdat|adresse|e-?mail|telefon|ansprechp|kontaktp|\bk-?\d/,
+    weak: /änder|aender|\buid\b/,
     paths: /^\/(clients|articles)\b/,
   },
   expenses: {
     words:
-      /ausgabe|beleg|quittung|kassenbon|rechnungsfoto|einkauf|eingangsrechnung|lieferant|fixkost|miete|versicherung|\bsvs\b|abo\b|abonnement|kosten|kategori|erkennung|\bocr\b|\ber-?\s?\d/,
+      /ausgabe|beleg|quittung|kassenbon|rechnungsfoto|einkauf|eingangsrechnung|lieferant|fixkost|miete|versicherung|\bsvs\b|abo\b|abonnement|kategori|erkennung|\bocr\b|\ber-?\s?\d/,
+    weak: /kosten/,
     paths: /^\/(expenses|fixed-costs)\b/,
   },
   bank: {
     words:
-      /bank|konto|kontoauszug|buchung|zuordn|zugeordnet|\bordne|\bzahlung(en)?\b|eingegangen|abgleich|zahlungseingang|geldeingang|überweis|ueberweis|lastschrift|\biban\b|umsätze zu|umsatz zu|bankumsatz|bankumsätze|camt|kontobewegung/,
+      /bank|konto|kontoauszug|buchung|zugeordnet|zahlungseingang|geldeingang|überweis|ueberweis|lastschrift|\biban\b|umsätze zu|umsatz zu|camt|kontobewegung|(zahlung|eingang)[^.?!]*\bzu\b|zuordn[^.?!]*zahlung/,
+    weak: /zuordn|\bordne|\bzahlung(en)?\b|eingegangen|abgleich/,
     paths: /^\/bank\b/,
   },
   finance: {
     words:
-      /prognose|liquidität|liquiditaet|cashflow|cash-flow|vorschau auf|kontostand|\buva\b|\bzm\b|\bear\b|steuer|\bust\b|umsatzsteuer|vorsteuer|zahllast|finanzamt|\bafa\b|abschreib|anlage|anlagen|\bgwg\b|geringwertig|e1a|einnahmen-ausgaben|gewinn|verlust/,
+      /prognose|liquidität|liquiditaet|cashflow|cash-flow|vorschau auf|kontostand|\buva\b|\bzm\b|\bear\b|umsatzsteuer|zahllast|finanzamt|\bafa\b|abschreib|anlage|anlagen|\bgwg\b|geringwertig|e1a|einnahmen-ausgaben/,
+    weak: /steuer|\bust\b|vorsteuer|gewinn|verlust/,
     paths: /^\/(forecast|tax|assets)\b/,
   },
 };
+
+type RoutedGroup = keyof typeof GROUP_ROUTES;
+
+/** Groups named by the text: strong words, plus weak words of a group when no other group is named strongly. */
+export function textGroups(text: string): Set<RoutedGroup> {
+  const entries = Object.entries(GROUP_ROUTES) as [RoutedGroup, (typeof GROUP_ROUTES)[RoutedGroup]][];
+  const strong = new Set(entries.filter(([, r]) => r.words.test(text)).map(([g]) => g));
+  const out = new Set(strong);
+  for (const [g, r] of entries) {
+    if (!strong.has(g) && r.weak?.test(text) && ![...strong].some((s) => s !== g)) out.add(g);
+  }
+  return out;
+}
 
 /**
  * A short, pure navigation request ("Öffne die Ausgabe von A1", "Geh zu den Steuern"): only core + ui, so the 4B
@@ -190,8 +210,9 @@ export function routeGroups(all: ChatTool[], input: Omit<ToolSelectionInput, "bu
   const text = input.userTexts.slice(0, 2).join("\n").toLowerCase();
   const groups = new Set<ToolGroup>(["core", "ui"]);
   if (isOpenRequest(input.userTexts[0] ?? "")) return { groups, fallback: false, generic: false };
-  for (const [group, route] of Object.entries(GROUP_ROUTES) as [ToolGroup, { words: RegExp; paths: RegExp }][]) {
-    if (route.words.test(text) || (input.contextPath && route.paths.test(input.contextPath))) groups.add(group);
+  for (const g of textGroups(text)) groups.add(g);
+  for (const [group, route] of Object.entries(GROUP_ROUTES) as [RoutedGroup, { paths: RegExp }][]) {
+    if (input.contextPath && route.paths.test(input.contextPath)) groups.add(group);
   }
   const byName = new Map(all.map((t) => [t.name, t.group]));
   for (const name of input.recentTools ?? []) {
@@ -224,7 +245,7 @@ export function selectToolsDetailed(all: ChatTool[], input: ToolSelectionInput):
   let tools = order(all.filter((t) => groups.has(t.group) || (fallback && (t.readOnly || generic))));
   if (toolTokens(tools) > input.budgetTokens) {
     const text = input.userTexts.slice(0, 2).join("\n").toLowerCase();
-    const worded = new Set(Object.entries(GROUP_ROUTES).filter(([, r]) => r.words.test(text)).map(([g]) => g));
+    const worded: Set<ToolGroup> = textGroups(text);
     tools = tools.filter((t) => t.readOnly || t.group === "core" || worded.has(t.group));
     if (toolTokens(tools) > input.budgetTokens) tools = tools.filter((t) => t.readOnly || t.group === "core");
   }

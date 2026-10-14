@@ -27,7 +27,7 @@ import {
 } from "./chat";
 import { repetitionCut } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
-import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
+import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
 
 // The agent loop against a fake OpenAI-compatible streaming server (Bun.serve emitting SSE chunks like
@@ -484,6 +484,26 @@ describe("tools", () => {
     expect(names({ userTexts: ["und die zweite?", "Welche Kunden habe ich?"] })).toEqual([...core, "list_clients", "create_client"]);
     // several groups keep the TOOL_GROUPS order regardless of the host order
     expect(names({ userTexts: ["Ausgaben und Rechnungen"] })).toEqual([...core, "list_documents", "create_invoice_draft", "create_reminder", "list_expenses", "list_fixed_costs", "create_expense"]);
+  });
+
+  test("routing: weak words (bezahlt, offen, Zahlung, ändern, Kosten, Steuer) count only when no other group is named", () => {
+    const groups = (text: string) => [...textGroups(text.toLowerCase())].sort();
+    // a record word wins over the ambiguous one
+    expect(groups("Markiere die Ausgabe von Adobe als bezahlt")).toEqual(["expenses"]);
+    expect(groups("Welche Ausgaben sind noch offen?")).toEqual(["expenses"]);
+    expect(groups("Ändere die UID der Ausgabe ER-2026-0002")).toEqual(["expenses"]);
+    expect(groups("Ordne die Ausgabe den Fixkosten zu")).toEqual(["expenses"]);
+    expect(groups("Wie viel Vorsteuer haben die Ausgaben?")).toEqual(["expenses"]);
+    expect(groups("Markiere die Rechnung RE-2026-0001 als bezahlt")).toEqual(["documents"]);
+    // alone, the weak word routes to its group
+    expect(groups("Was ist noch offen?")).toEqual(["documents"]);
+    expect(groups("Welche Zahlungen sind eingegangen?")).toEqual(["bank"]);
+    expect(groups("Wie hoch ist mein Gewinn?")).toEqual(["finance"]);
+    expect(groups("Was kosten mich die Abos?")).toEqual(["expenses"]);
+    // both record words → both groups; a payment to assign stays bank
+    expect(groups("Welche Rechnungen und Ausgaben sind offen?")).toEqual(["documents", "expenses"]);
+    expect(groups("Ordne die Zahlung von Alpen der Rechnung zu")).toEqual(["bank", "documents"]);
+    expect(names({ userTexts: ["Markiere die Ausgabe von Adobe als bezahlt"] })).toEqual([...core, "list_expenses", "list_fixed_costs", "create_expense"]);
   });
 
   test("routing fallback: nothing matched → read tools of all groups; a generic write verb → everything", () => {
