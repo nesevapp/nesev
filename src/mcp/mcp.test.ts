@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PROJECT_ROOT } from "../server/lib/paths";
+import { addDays, todayIso } from "../shared/dates";
+import { addMonthsAnchored } from "../shared/recurring";
 import { connectClient, MODERN_VERSION } from "./test/client";
 import type { SeedIds } from "./test/seed";
 
@@ -45,11 +47,11 @@ const WRITE_TOOLS = [
   "queue_receipt_analysis",
 ];
 /** appended after WRITE_TOOLS (tools/bank.ts, tools/recurring.ts, tools/write-records.ts), in this order */
-const BANK_TOOLS: string[] = [];
-const RECURRING_TOOLS: string[] = [];
+const BANK_TOOLS: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored"];
+const RECURRING_TOOLS: string[] = ["list_recurring_invoices", "set_recurring_invoice_active", "generate_recurring_invoice"];
 const RECORD_TOOLS: string[] = [];
-const MORE_READ_ONLY: string[] = [];
-const MORE_STATE_CHANGING: string[] = [];
+const MORE_READ_ONLY: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "list_recurring_invoices"];
+const MORE_STATE_CHANGING: string[] = ["match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored", "set_recurring_invoice_active", "generate_recurring_invoice"];
 const ALL_TOOLS = [...TOOLS, ...WRITE_TOOLS, ...BANK_TOOLS, ...RECURRING_TOOLS, ...RECORD_TOOLS];
 const STATE_CHANGING = [...MORE_STATE_CHANGING, "finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
 const WEB_URL = "http://nesev.test:4321";
@@ -500,6 +502,144 @@ console.error(JSON.stringify({ status: res.status, body: await res.json() }));`;
     const out = JSON.parse(run.stderr.toString().trim().split("\n").at(-1)!);
     expect(out.status).toBe(403);
     expect(out.body.error).toContain("nicht im MCP-Prozess");
+  });
+});
+
+// ── bank + recurring (tools/bank.ts, tools/recurring.ts) ──────────────────────────
+// Every match is undone again, so later tests see the seeded payment state.
+describe("bank and recurring tools", () => {
+  const invoiceOpen = async () => (await callTool("get_document", { id: ids.documents.overdueInvoice })).data;
+
+  test("get_bank_overview and list_bank_transactions with filters", async () => {
+    const o = await callTool("get_bank_overview");
+    expect(o.isError).toBeFalsy();
+    expect(o.data).toMatchObject({ openCount: 3, openIn: { cents: 114000 }, openOut: { cents: 7234 } });
+    expect(o.data.accounts).toEqual([
+      expect.objectContaining({ id: ids.bank.account, iban: "AT61 1904 3002 3457 3201", transactionCount: 3, openCount: 3, link: `${WEB_URL}/bank?account=${ids.bank.account}` }),
+    ]);
+
+    const open = await callTool("list_bank_transactions");
+    expect(open.data).toMatchObject({ total: 3, truncated: false, sumIn: { cents: 114000 }, sumOut: { cents: -7234 } });
+    expect(open.data.transactions[0]).toMatchObject({ id: ids.bank.alpenPayment, direction: "in", status: "open", statusLabel: "Offen", remaining: { cents: 114000 }, matches: [] });
+    expect(open.data.transactions[0].link).toBe(`${WEB_URL}/bank?account=${ids.bank.account}&status=all&q=1140%2C00`);
+    const out = await callTool("list_bank_transactions", { direction: "out", limit: 1 });
+    expect(out.data).toMatchObject({ total: 2, truncated: true });
+    const byAmount = await callTool("list_bank_transactions", { amount: "60,00", status: "all" });
+    expect(byAmount.data.transactions.map((t: Data) => t.id)).toEqual([ids.bank.adobePayment]);
+    const byText = await callTool("list_bank_transactions", { query: "billa" });
+    expect(byText.data.transactions.map((t: Data) => t.id)).toEqual([ids.bank.billa]);
+    expect((await callTool("list_bank_transactions", { status: "matched" })).data.total).toBe(0);
+  });
+
+  test("get_bank_transaction: suggestions with reasons, candidate search", async () => {
+    const t = await callTool("get_bank_transaction", { id: ids.bank.alpenPayment });
+    expect(t.data.suggestions[0]).toMatchObject({ kind: "invoice", id: ids.documents.overdueInvoice, confidence: "high", open: { cents: 114000 }, proposedAmount: { cents: 114000 } });
+    expect(t.data.suggestions[0].reasons).toContain("Betrag exakt");
+    expect(t.data.suggestions[0].link).toBe(`${WEB_URL}/invoices/${ids.documents.overdueInvoice}`);
+    expect(t.text).toContain("Rechnungsnummer im Verwendungszweck");
+
+    const search = await callTool("get_bank_transaction", { id: ids.bank.adobePayment, query: "adobe" });
+    expect(search.data.suggestions.map((s: Data) => [s.kind, s.id])).toEqual([["expense", ids.expenses.adobe]]);
+    expect(search.data.suggestions[0].link).toBe(`${WEB_URL}/expenses/${ids.expenses.adobe}`);
+
+    const missing = await callTool("get_bank_transaction", { id: 99999 });
+    expect(missing.text).toBe("Fehler: Buchung nicht gefunden");
+  });
+
+  test("match_bank_transaction: partial, rest, then unmatch one and all", async () => {
+    const tx = ids.bank.alpenPayment;
+    const inv = ids.documents.overdueInvoice;
+    const part = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "invoice", id: inv, amount: "1.000,00" }] });
+    expect(part.isError).toBeFalsy();
+    expect(part.data).toMatchObject({ status: "open", allocated: { cents: 100000 }, remaining: { cents: 14000 } });
+    expect(part.data.targets).toEqual([{ kind: "invoice", id: inv, open: { cents: 14000, formatted: expect.any(String) }, paid: false, link: `${WEB_URL}/invoices/${inv}` }]);
+    expect((await invoiceOpen()).open.cents).toBe(14000);
+
+    const rest = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "invoice", id: inv }] });
+    expect(rest.data).toMatchObject({ status: "matched", remaining: { cents: 0 }, targets: [{ paid: true }] });
+    expect(rest.data.matches).toHaveLength(2);
+    expect(rest.data.matches[0]).toMatchObject({ kind: "invoice", id: inv, number: expect.stringMatching(/^RE-/), name: "Alpen Software GmbH" });
+    expect(rest.text).toContain("vollständig bezahlt");
+    expect((await invoiceOpen()).status).toBe("paid");
+    expect((await callTool("list_bank_transactions", { status: "matched", query: "RE-" })).data.transactions.map((t: Data) => t.id)).toEqual([tx]);
+
+    const full = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "invoice", id: inv }] });
+    expect(full.text).toContain("bereits vollständig zugeordnet");
+
+    const one = await callTool("unmatch_bank_transaction", { id: tx, matchId: rest.data.matches[1].matchId });
+    expect(one.data).toMatchObject({ status: "open", remaining: { cents: 14000 } });
+    expect(one.data.matches).toHaveLength(1);
+    const foreign = await callTool("unmatch_bank_transaction", { id: tx, matchId: 99999 });
+    expect(foreign.text).toContain("gehört nicht zu Buchung");
+    const all = await callTool("unmatch_bank_transaction", { id: tx });
+    expect(all.data).toMatchObject({ status: "open", matches: [], remaining: { cents: 114000 } });
+    const after = await invoiceOpen();
+    expect(after).toMatchObject({ open: { cents: 114000 }, statusLabel: "Überfällig" });
+    expect((await callTool("unmatch_bank_transaction", { id: tx })).text).toContain("keine Zuordnungen");
+  });
+
+  test("match_bank_transaction: expense, wrong kind, split without amounts, too much", async () => {
+    const adobe = await callTool("match_bank_transaction", { id: ids.bank.adobePayment, targets: [{ kind: "expense", id: ids.expenses.adobe }] });
+    expect(adobe.data).toMatchObject({ status: "matched", targets: [{ kind: "expense", paid: true }] });
+    expect((await callTool("get_expense", { id: ids.expenses.adobe })).data.paidAt).toBe(addDays(todayIso(), -3));
+    await callTool("unmatch_bank_transaction", { id: ids.bank.adobePayment });
+    expect((await callTool("get_expense", { id: ids.expenses.adobe })).data.paidAt).toBeNull();
+
+    const tx = ids.bank.alpenPayment;
+    const toExpense = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "expense", id: ids.expenses.adobe }] });
+    expect(toExpense.text).toBe("Fehler: Zahlungseingänge können nur Rechnungen zugeordnet werden");
+    const wrongKind = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "credit_note", id: ids.documents.overdueInvoice }] });
+    expect(wrongKind.text).toContain("ist kein Gutschrift");
+    const split = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "invoice", id: ids.documents.overdueInvoice }, { kind: "invoice", id: ids.documents.paidInvoice, amount: 1 }] });
+    expect(split.text).toContain("braucht jedes einen Betrag");
+    const tooMuch = await callTool("match_bank_transaction", { id: tx, targets: [{ kind: "invoice", id: ids.documents.overdueInvoice, amount: 2000 }] });
+    expect(tooMuch.text).toContain("übersteigt");
+    expect((await callTool("get_bank_overview")).data.openCount).toBe(3);
+  });
+
+  test("set_bank_transaction_ignored and back", async () => {
+    const ignored = await callTool("set_bank_transaction_ignored", { id: ids.bank.billa });
+    expect(ignored.data).toMatchObject({ status: "ignored", statusLabel: "Ignoriert", suggestions: [] });
+    expect((await callTool("list_bank_transactions", { status: "ignored" })).data.transactions.map((t: Data) => t.id)).toEqual([ids.bank.billa]);
+    const blocked = await callTool("match_bank_transaction", { id: ids.bank.billa, targets: [{ kind: "expense", id: ids.expenses.adobe }] });
+    expect(blocked.text).toContain("ist ignoriert");
+    const reopened = await callTool("set_bank_transaction_ignored", { id: ids.bank.billa, ignored: false });
+    expect(reopened.data.status).toBe("open");
+  });
+
+  test("recurring invoices: list, pause/resume, generate now", async () => {
+    const start = addDays(todayIso(), 5);
+    const list = await callTool("list_recurring_invoices");
+    expect(list.data).toMatchObject({ count: 1, monthlyGross: { cents: 14400 } });
+    expect(list.data.recurring[0]).toMatchObject({
+      id: ids.recurring.hosting,
+      name: "Hosting Alpen",
+      client: "Alpen Software GmbH",
+      active: true,
+      interval: "monatlich",
+      nextRunDate: start,
+      ended: false,
+      autoFinalize: false,
+      gross: { cents: 14400 },
+      invoiceCount: 0,
+      link: `${WEB_URL}/recurring/${ids.recurring.hosting}`,
+    });
+
+    const paused = await callTool("set_recurring_invoice_active", { id: ids.recurring.hosting, active: false });
+    expect(paused.data.active).toBe(false);
+    expect(paused.text).toContain("Pausiert");
+    expect((await callTool("list_recurring_invoices", { active: true })).data.count).toBe(0);
+    expect((await callTool("set_recurring_invoice_active", { id: ids.recurring.hosting, active: true })).data.active).toBe(true);
+
+    const gen = await callTool("generate_recurring_invoice", { id: ids.recurring.hosting });
+    expect(gen.isError).toBeFalsy();
+    expect(gen.data).toMatchObject({ type: "invoice", status: "draft", number: null, clientId: ids.clients.alpen, issueDate: todayIso(), servicePeriodStart: start, gross: { cents: 14400 } });
+    expect(gen.text).toContain("als Entwurf");
+    const next = addMonthsAnchored(start, 1, Number(start.slice(8, 10)));
+    expect((await callTool("list_recurring_invoices")).data.recurring[0]).toMatchObject({ nextRunDate: next, invoiceCount: 1 });
+
+    const missing = await callTool("generate_recurring_invoice", { id: 99999 });
+    expect(missing.text).toBe("Fehler: Serienrechnung nicht gefunden");
   });
 });
 

@@ -144,6 +144,49 @@ export async function seed() {
     }),
   );
 
+  // ── bank + recurring (tools/bank.ts, tools/recurring.ts) ──────────────────────
+  // One account without auto-matching, so nothing is allocated yet: payment of the overdue invoice (number + open
+  // amount), the Adobe expense (amount + name), a private card payment (to ignore). Plus a monthly recurring invoice.
+  const bankAccount = await call(api.bank.accounts.$post({ json: { name: "Geschäftskonto", iban: "AT61 1904 3002 3457 3201", bankName: "Testbank", autoMatch: "off" } }));
+  const inv1Number = (await call(api.documents[":id"].$get({ param: idParam(inv1.id) }))).number;
+  const csv = [
+    "Datum;Betrag;Name;IBAN;Zweck",
+    `${addDays(today, -2)};1140,00;Alpen Software GmbH;AT483200000012345864;Rechnung ${inv1Number}`,
+    `${addDays(today, -3)};-60,00;Adobe Systems Software Ireland;IE29AIBK93115212345678;Creative Cloud`,
+    `${addDays(today, -6)};-12,34;BILLA DANKT 1234;;Kartenzahlung`,
+  ].join("\n");
+  const mapping = { delimiter: ";", encoding: "utf-8", hasHeader: true, decimal: ",", dateFormat: "YYYY-MM-DD", bookingDate: 0, amount: 1, counterpartyName: [2], counterpartyIban: 3, purpose: [4] };
+  await call(
+    api.bank.accounts[":id"].import.$post({
+      param: idParam(bankAccount.id),
+      form: { file: new File([csv], "umsaetze.csv", { type: "text/csv" }), mapping: JSON.stringify(mapping) },
+    }),
+  );
+  const txs = await call(api.bank.transactions.$get({ query: { accountId: String(bankAccount.id) } }));
+  const txId = (name: string) => txs.find((t) => t.counterpartyName.startsWith(name))!.id;
+
+  const hosting = await call(
+    api.recurring.index.$post({
+      json: {
+        name: "Hosting Alpen",
+        clientId: alpen.id,
+        active: true,
+        intervalUnit: "month",
+        intervalCount: 1,
+        startDate: addDays(today, 5),
+        endDate: null,
+        setServicePeriod: true,
+        autoFinalize: false,
+        taxMode: "AT_DOMESTIC",
+        title: "Hosting",
+        introText: "",
+        closingText: "",
+        templateId: null,
+        items: [line("Hosting", 1, 12000, 2000, "Monat")],
+      },
+    }),
+  );
+
   return {
     clients: { alpen: alpen.id, berlin: berlin.id },
     article: article.id,
@@ -151,6 +194,8 @@ export async function seed() {
     expenses: { telekom: telekom.id, adobe: adobe.id, incomplete: incomplete.id },
     fixedCost: rent.id,
     asset: asset.id,
+    bank: { account: bankAccount.id, alpenPayment: txId("Alpen"), adobePayment: txId("Adobe"), billa: txId("BILLA") },
+    recurring: { hosting: hosting.id },
   };
 }
 

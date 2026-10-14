@@ -88,6 +88,10 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `get_tax_report` | `uva` / `zm` / `ear` with Kennzahlen, warnings and a disclaimer (a helper, not tax advice) |
 | `list_assets` | Anlagenverzeichnis of a year: AfA and book values |
 | `get_receipt_analysis` | latest OCR result of an expense: suggested fields with confidence. Nothing is applied. |
+| `get_bank_overview` | bank accounts (counts, sum of imported amounts, last booking) and the unallocated sums of open transactions |
+| `list_bank_transactions` | default open (unmatched) transactions. Filters: status (`all` too), direction, account, dates, query, exact amount; rows show the allocations |
+| `get_bank_transaction` | one transaction with allocations (`matchId`) and up to 3 suggested invoices/expenses (proposed amount, confidence, reasons); `query` searches open candidates instead |
+| `list_recurring_invoices` | Serienrechnungen: client, interval, next issue date, amount, active/paused, auto-finalize; monthly total of the active ones |
 
 ### Create (`readOnlyHint: false`, `destructiveHint: false`)
 
@@ -110,11 +114,17 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `convert_offer_to_invoice` | Creates an invoice draft and marks the offer accepted |
 | `create_credit_note` | Credit note draft for a finalized invoice: the whole invoice, or selected positions with quantity and price overrides |
 | `create_reminder` | Next dunning level for an overdue invoice. By default it is finalized at once (**irreversible**: MA number and PDF); with `finalize: false` it stays a draft |
+| `match_bank_transaction` | Allocates a transaction to invoices (incoming) or expenses/credit notes (outgoing). One target without amount takes the whole unallocated amount; splits need amounts. Fully covered targets become paid. Returns the targets' open amounts afterwards |
+| `unmatch_bank_transaction` | Removes all allocations of a transaction, or one by `matchId`; paid states set by the bank are reverted |
+| `set_bank_transaction_ignored` | Ignore (private, own transfer) or, with `ignored: false`, reopen a transaction without allocations |
+| `set_recurring_invoice_active` | Pause/resume a recurring invoice (resuming catches up missed periods on the app's next run) |
+| `generate_recurring_invoice` | "Rechnung jetzt erstellen": invoice for the next period now, schedule advances. With the template's `autoFinalize` it is **irreversibly** finalized, otherwise a draft |
 
 The server's `instructions` tell the model that documents start as drafts and that it should show a draft and get
 the user's confirmation before `finalize_document`.
 
-There are no delete, settings, bank import or email tools.
+There are no delete, settings, bank import or email tools. Recurring invoices are created and edited in the web app; their
+due runs (`POST /api/recurring/run`) are left to the app's scheduler.
 
 ### Conventions
 
@@ -145,6 +155,7 @@ format.ts         Money/money(), euroAmount/eurosToCents, qty/toMilli/percent, d
 inputs.ts         write-tool inputs: resolveClientId (clientName), configured units, tax rates, itemInput/buildItems
 tools/            read: overview, documents, clients, articles, expenses, finance
                   write: write-masterdata, write-documents, write-expenses, receipts (read + queue)
+                  bank (read + matching), recurring (list, pause/resume, generate)
                   documentDetail/clientDetail/expenseDetail/articleRow are shared by the read and write tools
 test/seed.ts      demo data through the API (refuses the default data dir)
 test/client.ts    SDK client over stdio for tests and manual calls (legacy or --modern era)
@@ -195,7 +206,9 @@ mcp.test.ts       end-to-end: the real entry as a subprocess in both eras; every
   - `create_expense` is in the same category, but it copies a local file into `data/receipts`. Allow it if that's
     fine.
   - **Always confirm:** `finalize_document`, `create_reminder` (finalizes by default), `mark_invoice_paid`,
-    `mark_document_sent`, `convert_offer_to_invoice` and `create_credit_note`. They change legal or bookkeeping
+    `mark_document_sent`, `convert_offer_to_invoice`, `create_credit_note`, `generate_recurring_invoice` (may
+    finalize), and the bank matching tools (`match_bank_transaction`, `unmatch_bank_transaction`,
+    `set_bank_transaction_ignored`) and `set_recurring_invoice_active`. They change legal or bookkeeping
     state; finalized numbers and PDFs can't be undone.
 - Tax output (UVA/ZM/EAR, AfA) is a helper, not tax advice. The tools say so in their descriptions and results.
 
@@ -206,7 +219,9 @@ mcp.test.ts       end-to-end: the real entry as a subprocess in both eras; every
       "mcp__nesev__search", "mcp__nesev__get_dashboard", "mcp__nesev__list_documents", "mcp__nesev__get_document",
       "mcp__nesev__list_reminders_due", "mcp__nesev__list_clients", "mcp__nesev__get_client", "mcp__nesev__list_articles",
       "mcp__nesev__list_expenses", "mcp__nesev__get_expense", "mcp__nesev__list_fixed_costs", "mcp__nesev__get_forecast",
-      "mcp__nesev__get_tax_report", "mcp__nesev__list_assets", "mcp__nesev__get_receipt_analysis"
+      "mcp__nesev__get_tax_report", "mcp__nesev__list_assets", "mcp__nesev__get_receipt_analysis",
+      "mcp__nesev__get_bank_overview", "mcp__nesev__list_bank_transactions", "mcp__nesev__get_bank_transaction",
+      "mcp__nesev__list_recurring_invoices"
     ]
   }
 }
