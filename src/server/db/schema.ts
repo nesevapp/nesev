@@ -520,6 +520,31 @@ export const recurringExpenses = sqliteTable(
 );
 
 /**
+ * Links a booked expense to one scheduled Fixkosten payment ("Miete November" → ER-2026-0042), so the
+ * forecast counts that payment once: a linked payment is no longer projected from the Fixkosten schedule.
+ */
+export const recurringExpensePayments = sqliteTable(
+  "recurring_expense_payments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    recurringExpenseId: integer("recurring_expense_id")
+      .notNull()
+      .references(() => recurringExpenses.id, { onDelete: "cascade" }),
+    /** an expense covers at most one scheduled payment */
+    expenseId: integer("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    /** the scheduled payment date (from the Fixkosten schedule) this expense covers */
+    scheduledDate: text("scheduled_date").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("recurring_expense_payments_expense_uq").on(t.expenseId),
+    uniqueIndex("recurring_expense_payments_slot_uq").on(t.recurringExpenseId, t.scheduledDate),
+  ],
+);
+
+/**
  * Anlagenverzeichnis: assets over the GWG limit, depreciated straight-line (AfA) over their useful life.
  * Expense lines with category "anlagen" are capitalized (not expensed); the AfA from this table replaces them.
  */
@@ -584,6 +609,7 @@ export type NewReminder = typeof reminders.$inferInsert;
 export type RecurringExpense = typeof recurringExpenses.$inferSelect;
 export type NewRecurringExpense = typeof recurringExpenses.$inferInsert;
 export type FixedAsset = typeof fixedAssets.$inferSelect;
+export type RecurringExpensePayment = typeof recurringExpensePayments.$inferSelect;
 export type NewFixedAsset = typeof fixedAssets.$inferInsert;
 export type NewPdfTemplate = typeof pdfTemplates.$inferInsert;
 
