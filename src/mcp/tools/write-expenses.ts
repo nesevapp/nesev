@@ -56,6 +56,7 @@ export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
     "create_expense",
     {
       title: "Ausgabe erfassen",
+      group: "expenses",
       description:
         "Record an expense (Eingangsrechnung / Beleg). Lines carry the EAR category, net amount OR gross amount in euros, " +
         "VAT rate (20/13/10/0 %; for reverse charge / ig. Erwerb the Austrian rate that is self-assessed) and the " +

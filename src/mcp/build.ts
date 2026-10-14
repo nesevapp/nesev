@@ -4,15 +4,18 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createContext, type ToolContext } from "./tool";
 import { registerArticleTools } from "./tools/articles";
+import { registerBankTools } from "./tools/bank";
 import { registerClientTools } from "./tools/clients";
 import { registerDocumentTools } from "./tools/documents";
 import { registerExpenseTools } from "./tools/expenses";
 import { registerFinanceTools } from "./tools/finance";
 import { registerOverviewTools } from "./tools/overview";
 import { registerReceiptTools } from "./tools/receipts";
+import { registerRecurringTools } from "./tools/recurring";
 import { registerDocumentWriteTools } from "./tools/write-documents";
 import { registerExpenseWriteTools } from "./tools/write-expenses";
 import { registerMasterDataWriteTools } from "./tools/write-masterdata";
+import { registerRecordWriteTools } from "./tools/write-records";
 
 export const SERVER_INFO = { name: "nesev", version: "0.1.0" };
 
@@ -35,6 +38,10 @@ const TOOL_MODULES: ((server: McpServer, ctx: ToolContext) => void)[] = [
   registerDocumentWriteTools,
   registerExpenseWriteTools,
   registerReceiptTools,
+  // bank (read + match) and recurring invoices, then updates of existing records, fixed costs, assets
+  registerBankTools,
+  registerRecurringTools,
+  registerRecordWriteTools,
 ];
 
 export function buildServer(ctx: ToolContext = createContext()): McpServer {

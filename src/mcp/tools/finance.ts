@@ -31,6 +31,7 @@ export function registerFinanceTools(server: McpServer, ctx: ToolContext) {
     "get_forecast",
     {
       title: "Zahlungsprognose",
+      group: "finance",
       description:
         "Cash-flow forecast for the next N months (gross amounts): expected inflows (open invoices on due date + the " +
         "client's average payment delay, planned recurring invoices, optionally drafts and weighted open offers) and " +
@@ -214,6 +215,7 @@ export function registerFinanceTools(server: McpServer, ctx: ToolContext) {
     "get_tax_report",
     {
       title: "Steuerauswertung",
+      group: "finance",
       description:
         "Austrian tax helper reports, computed from the data in nesev (a helper, NOT tax advice): " +
         "kind=uva → Umsatzsteuervoranmeldung (U30) Kennzahlen for a month or quarter (KZ, Bemessungsgrundlage, USt) and " +
@@ -368,6 +370,7 @@ export function registerFinanceTools(server: McpServer, ctx: ToolContext) {
     "list_assets",
     {
       title: "Anlagenverzeichnis",
+      group: "finance",
       description:
         "Asset register (Anlagenverzeichnis) for one year (default current year): per asset the cost, book value at 1.1., " +
         "straight-line AfA (depreciation) of the year, write-off on disposal, accumulated AfA and book value at 31.12., " +

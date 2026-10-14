@@ -44,7 +44,14 @@ const WRITE_TOOLS = [
   "get_receipt_analysis",
   "queue_receipt_analysis",
 ];
-const STATE_CHANGING = ["finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
+/** appended after WRITE_TOOLS (tools/bank.ts, tools/recurring.ts, tools/write-records.ts), in this order */
+const BANK_TOOLS: string[] = [];
+const RECURRING_TOOLS: string[] = [];
+const RECORD_TOOLS: string[] = [];
+const MORE_READ_ONLY: string[] = [];
+const MORE_STATE_CHANGING: string[] = [];
+const ALL_TOOLS = [...TOOLS, ...WRITE_TOOLS, ...BANK_TOOLS, ...RECURRING_TOOLS, ...RECORD_TOOLS];
+const STATE_CHANGING = [...MORE_STATE_CHANGING, "finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
 const WEB_URL = "http://nesev.test:4321";
 /** never the user's server (the default NESEV_API_URL is http://localhost:3998): nothing listens on port 9 */
 const DEAD_API_URL = "http://127.0.0.1:9";
@@ -94,9 +101,9 @@ describe("protocol eras", () => {
   for (const era of ["legacy", "modern"] as const) {
     test(`${era}: tools/list is deterministic, annotated and has output schemas`, async () => {
       const { tools } = await clients[era].listTools();
-      expect(tools.map((t) => t.name)).toEqual([...TOOLS, ...WRITE_TOOLS]);
+      expect(tools.map((t) => t.name)).toEqual(ALL_TOOLS);
       for (const t of tools) {
-        const readOnly = TOOLS.includes(t.name) || t.name === "get_receipt_analysis";
+        const readOnly = TOOLS.includes(t.name) || MORE_READ_ONLY.includes(t.name) || t.name === "get_receipt_analysis";
         expect({ name: t.name, readOnly: t.annotations?.readOnlyHint }).toEqual({ name: t.name, readOnly });
         expect(t.annotations?.openWorldHint).toBe(false);
         if (!readOnly) {
@@ -104,13 +111,14 @@ describe("protocol eras", () => {
           expect({ name: t.name, destructive: t.annotations?.destructiveHint }).toEqual({ name: t.name, destructive });
         }
         expect(t.outputSchema?.type).toBe("object");
+        expect(["core", "documents", "clients", "expenses", "bank", "finance"]).toContain(t._meta?.["nesev/group"] as string);
         expect(t.description!.length).toBeGreaterThan(80);
       }
       for (const name of ["finalize_document", "create_reminder"]) {
         expect(tools.find((t) => t.name === name)!.description).toContain("IRREVERSIBL");
       }
       const again = await clients[era].listTools();
-      expect(again.tools.map((t) => t.name)).toEqual([...TOOLS, ...WRITE_TOOLS]);
+      expect(again.tools.map((t) => t.name)).toEqual(ALL_TOOLS);
     });
   }
 });

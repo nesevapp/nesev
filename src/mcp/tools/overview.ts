@@ -27,6 +27,7 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
     "search",
     {
       title: "Suchen",
+      group: "core",
       description:
         "Global search across nesev: clients, invoices, offers, credit notes, reminders (Mahnungen), recurring invoices, " +
         "expenses, fixed costs (Fixkosten), assets (Anlagen) and articles. Use it first to find ids for the get_* tools. " +
@@ -79,6 +80,7 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
     "get_dashboard",
     {
       title: "Dashboard",
+      group: "core",
       description:
         "Business overview for one calendar year (default: current year): KPIs (net revenue and net expenses vs. previous " +
         "year, result, received payments, open and overdue invoices, open offers), net revenue/expenses/result per month, " +

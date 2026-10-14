@@ -57,6 +57,7 @@ export function registerArticleTools(server: McpServer, ctx: ToolContext) {
     "list_articles",
     {
       title: "Artikel auflisten",
+      group: "clients",
       description:
         "List catalog articles (Artikel: reusable line items with unit, net unit price and tax rate). `query` matches " +
         'title, description and the article number ("A-0002"). sort=usage puts the most used first. Prices are net.',

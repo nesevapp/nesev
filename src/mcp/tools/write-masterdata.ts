@@ -26,6 +26,7 @@ export function registerMasterDataWriteTools(server: McpServer, ctx: ToolContext
     "create_client",
     {
       title: "Kunde anlegen",
+      group: "clients",
       description:
         "Create a client (Kunde). The customer number (K-0001, …) is assigned automatically. Before creating, nesev " +
         "looks for likely duplicates (same name without legal form, same UID or email); if there are any, nothing is " +
@@ -82,6 +83,7 @@ export function registerMasterDataWriteTools(server: McpServer, ctx: ToolContext
     "create_article",
     {
       title: "Artikel anlegen",
+      group: "clients",
       description:
         "Create a catalog article (reusable line item): title, optional description, unit (must be one of the configured " +
         "units), net unit price in euros and VAT rate (20, 13, 10 or 0 %). The article number (A-0001, …) is assigned " +

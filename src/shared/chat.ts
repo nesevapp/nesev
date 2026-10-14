@@ -74,12 +74,93 @@ export interface ChatLink {
   path: string;
 }
 
+/**
+ * Tool groups for routing: every MCP tool declares one (defineTool `group`, sent as `_meta["nesev/group"]`).
+ * The assistant always offers "core" and "ui" and adds the other groups by intent (page, keywords, recent tools),
+ * so the small model sees a short, relevant tool list. Stdio MCP clients (Claude Code) get all tools.
+ */
+export const TOOL_GROUPS = ["core", "ui", "documents", "clients", "expenses", "bank", "finance"] as const;
+export type ToolGroup = (typeof TOOL_GROUPS)[number];
+export const TOOL_GROUP_META = "nesev/group";
+
+/**
+ * Visual tone of a value or chart series; the UI maps it to the platform's colors (revenue blue, expenses orange,
+ * result line, forecast in/out, …).
+ */
+export type ChatTone = "revenue" | "expenses" | "result" | "positive" | "negative" | "neutral" | "muted";
+
+/**
+ * Generative UI: a card the UI renders under a tool result. Built on the server from the tool's structured content
+ * (services/chat-cards.ts), never from model-written numbers. Amounts are integer cents; the UI formats them.
+ */
+export type ChatCard =
+  /** a few key figures, e.g. dashboard KPIs */
+  | {
+      kind: "kpis";
+      title: string;
+      items: { label: string; cents: number; hint?: string; tone?: ChatTone }[];
+      link?: ChatLink;
+    }
+  /** small chart in the style of the dashboard / forecast charts; values are cents, one per label */
+  | {
+      kind: "chart";
+      title: string;
+      chart: "bar" | "line";
+      /** x-axis labels, e.g. ["Jän", "Feb", …] or ["KW 42", …] */
+      labels: string[];
+      /** bars are drawn side by side; a "line" series in a bar chart is drawn as a line on top (like the result line) */
+      series: { label: string; values: number[]; tone: ChatTone; type?: "bar" | "line" }[];
+      link?: ChatLink;
+    }
+  /** one invoice / offer / credit note / reminder */
+  | {
+      kind: "document";
+      /** "Rechnung", "Angebot", … */
+      typeLabel: string;
+      number: string | null;
+      /** German status incl. "Überfällig", "teilbezahlt" */
+      status: string;
+      client: string | null;
+      date: string | null;
+      dueDate: string | null;
+      grossCents: number;
+      /** open amount for invoices; null otherwise */
+      openCents: number | null;
+      path: string;
+      /** app URL of the PDF (/api/pdf/documents/:id), drafts render live as a preview */
+      pdfUrl: string | null;
+    }
+  /** a list of records; at most ~8 rows, `more` = rows not shown */
+  | {
+      kind: "table";
+      title: string;
+      columns: { key: string; label: string; align?: "left" | "right"; money?: boolean }[];
+      /** cells keyed by column key: strings, or cents for money columns */
+      rows: { cells: Record<string, string | number | null>; path?: string }[];
+      total?: { label: string; cents: number };
+      more?: number;
+      link?: ChatLink;
+    };
+
+/**
+ * Something the assistant does in the UI (assistant-only tools such as open_in_app / download_pdf, see
+ * services/chat-ui-tools.ts). The UI runs it once when the tool_result arrives live; in the history it is a button.
+ */
+export type ChatUiAction =
+  | { kind: "navigate"; path: string; label: string }
+  | { kind: "download"; url: string; fileName: string; label: string }
+  | { kind: "open_tab"; url: string; label: string };
+
 /** What the UI shows for an executed (or pending/cancelled) tool call. */
 export interface ChatToolResult {
   ok: boolean;
   /** one line, German, e.g. "3 Treffer" or "RE-2026-0004 finalisiert" */
   summary: string;
   links: ChatLink[];
+  /** generative UI for the result (optional; older rows have none) */
+  card?: ChatCard | null;
+  /** UI action of an assistant-only tool */
+  action?: ChatUiAction | null;
 }
 
 export type ChatMessageStatus = "done" | "pending" | "cancelled" | "error";

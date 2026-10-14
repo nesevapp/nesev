@@ -170,6 +170,7 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
     "list_expenses",
     {
       title: "Ausgaben auflisten",
+      group: "expenses",
       description:
         "List expenses (Ausgaben / Eingangsrechnungen), newest first. Filters: issue date range, `query` (supplier, " +
         "description, receipt number, supplier invoice number, notes), status (open = unpaid and complete, paid, " +
@@ -228,6 +229,7 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
     "get_expense",
     {
       title: "Ausgabe anzeigen",
+      group: "expenses",
       description:
         "Details of one expense by id: supplier, dates, VAT treatment, lines (EAR category, net, rate, VAT, deductible " +
         "share), totals, bank payments and open amount, the linked fixed-cost payment (Fixkosten) and the absolute path " +
@@ -244,6 +246,7 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
     "list_fixed_costs",
     {
       title: "Fixkosten auflisten",
+      group: "expenses",
       description:
         "List fixed costs (Fixkosten: recurring outgoing payments such as rent, SVS, subscriptions) with interval, gross " +
         "per payment, contained deductible VAT, monthly equivalent, next payment date and how many past payments of the " +

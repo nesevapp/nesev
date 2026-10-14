@@ -40,6 +40,7 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
     "get_receipt_analysis",
     {
       title: "Belegerkennung anzeigen",
+      group: "expenses",
       description:
         "Latest receipt analysis (OCR + field extraction) of an expense: status, and when done the suggested fields " +
         "(supplier, UID, invoice number, dates, gross amount, category, VAT treatment, tax lines) with confidence 0..1 " +
@@ -154,6 +155,7 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
     "queue_receipt_analysis",
     {
       title: "Belegerkennung starten",
+      group: "expenses",
       description:
         "Queue the local receipt analysis (OCR + field extraction, fully on this machine) for expenses that have a " +
         "receipt attached. The analysis runs in the nesev server process, so the nesev server must be running " +

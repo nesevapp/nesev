@@ -82,8 +82,9 @@ const endpoint: LlamaEndpoint = { baseUrl: `http://127.0.0.1:${server.port}/v1`,
 
 // --- fake tools ---------------------------------------------------------------------------------------------------
 
-const tool = (name: string, readOnly: boolean, destructive = false): ChatTool => ({
+const tool = (name: string, readOnly: boolean, destructive = false, group: ChatTool["group"] = "core"): ChatTool => ({
   name,
+  group,
   description: `${name} tool`,
   inputSchema: { $schema: "x", type: "object", properties: { id: { type: "number" } } },
   readOnly,

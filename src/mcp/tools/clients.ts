@@ -147,6 +147,7 @@ export function registerClientTools(server: McpServer, ctx: ToolContext) {
     "list_clients",
     {
       title: "Kunden auflisten",
+      group: "clients",
       description:
         "List clients (Kunden) sorted by name. `query` matches name, contact person, email, city and the customer number " +
         '("K-0003" or "3"). By default only active clients; archived=all includes archived ones. Returns id, number, ' +
@@ -180,6 +181,7 @@ export function registerClientTools(server: McpServer, ctx: ToolContext) {
     "get_client",
     {
       title: "Kunde anzeigen",
+      group: "core",
       description:
         "Details of one client by id: address, contact, UID, payment terms, default tax mode, notes, the number of " +
         "offers/invoices/credit notes, and the open invoices (open amount = gross − credit notes − bank payments) with " +

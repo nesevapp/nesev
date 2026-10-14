@@ -40,6 +40,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
       invoice ? "create_invoice_draft" : "create_offer_draft",
       {
         title: invoice ? "Rechnungsentwurf anlegen" : "Angebotsentwurf anlegen",
+        group: "documents",
         description:
           `Create a${invoice ? "n invoice" : "n offer"} DRAFT (no number yet, freely editable, nothing is sent). Client by ` +
           "clientId or clientName (must match exactly one active client, otherwise an error lists the candidates). Items: " +
@@ -75,6 +76,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "update_document_draft",
     {
       title: "Entwurf bearbeiten",
+      group: "documents",
       description:
         "Change a DRAFT offer, invoice or credit note. Only the given fields change; `items` replaces ALL line items " +
         "(same item format as create_invoice_draft). Finalized documents cannot be changed (the API refuses; corrections " +
@@ -111,6 +113,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "finalize_document",
     {
       title: "Beleg finalisieren",
+      group: "documents",
       description:
         IRREVERSIBLE +
         "finalizes a draft offer, invoice or credit note: assigns the next gapless number (AN-/RE-/GS-YYYY-NNNN), freezes " +
@@ -133,6 +136,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "mark_document_sent",
     {
       title: "Als versendet markieren",
+      group: "documents",
       description:
         "Mark a finalized offer or invoice as sent (status Versendet, sets the sent timestamp). It does not send anything " +
         "itself. Cannot be reverted from here.",
@@ -151,6 +155,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "mark_invoice_paid",
     {
       title: "Rechnung als bezahlt markieren",
+      group: "documents",
       description:
         "Mark a finalized invoice as paid by hand on a date (default today). Use it for payments that are not matched " +
         "from a bank import (bank matches settle invoices automatically). Pass expectedAmount (euros) to make sure the " +
@@ -184,6 +189,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "convert_offer_to_invoice",
     {
       title: "Angebot in Rechnung umwandeln",
+      group: "documents",
       description:
         "Create an invoice DRAFT from an offer (same client, tax mode, title, service period and items) and mark a " +
         "finalized/sent offer as accepted. The invoice is a draft: review it, then finalize_document.",
@@ -202,6 +208,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "create_credit_note",
     {
       title: "Gutschrift erstellen",
+      group: "documents",
       description:
         "Create a credit note (Gutschrift) DRAFT for a finalized invoice, the only way to correct an invoice. Without " +
         "`items` it credits the whole invoice; with `items` only the listed invoice positions (1-based, as in " +
@@ -260,6 +267,7 @@ export function registerDocumentWriteTools(server: McpServer, ctx: ToolContext) 
     "create_reminder",
     {
       title: "Mahnung erstellen",
+      group: "documents",
       description:
         "Create a payment reminder (Mahnung) for an overdue, unpaid, finalized invoice (see list_reminders_due). Level " +
         "defaults to the next one (Zahlungserinnerung, 1. Mahnung, …) with its fee and default interest from the " +

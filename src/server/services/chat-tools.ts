@@ -1,4 +1,4 @@
-import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult } from "../../shared/chat";
+import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult, TOOL_GROUP_META, TOOL_GROUPS, type ToolGroup } from "../../shared/chat";
 import type { LlmTool } from "./chat-llm";
 
 // The assistant's tools are nesev's MCP tools (src/mcp), executed in-process: an MCP client linked to buildServer()
@@ -14,7 +14,14 @@ export interface ChatTool {
   readOnly: boolean;
   /** changes state (MCP destructiveHint): needs the user's click */
   destructive: boolean;
+  /** routing group (MCP `_meta["nesev/group"]`; "core" when missing) */
+  group: ToolGroup;
 }
+
+export const toolGroup = (meta: Record<string, unknown> | undefined): ToolGroup => {
+  const g = meta?.[TOOL_GROUP_META];
+  return (TOOL_GROUPS as readonly unknown[]).includes(g) ? (g as ToolGroup) : "core";
+};
 
 export interface ToolOutcome {
   isError: boolean;
@@ -64,6 +71,7 @@ async function connectMcpHost(): Promise<ToolHost> {
       inputSchema: t.inputSchema as Record<string, unknown>,
       readOnly: t.annotations?.readOnlyHint === true,
       destructive: t.annotations?.destructiveHint === true,
+      group: toolGroup(t._meta),
     })),
     async call(name, args) {
       try {

@@ -226,6 +226,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
     "list_documents",
     {
       title: "Belege auflisten",
+      group: "documents",
       description:
         "List offers (Angebote), invoices (Rechnungen) and credit notes (Gutschriften), newest issue date first. Filters: type, " +
         'status (draft|final|sent|accepted|declined|paid, or "overdue" = unpaid invoices past due date, or "open" = invoices ' +
@@ -323,6 +324,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
     "get_document",
     {
       title: "Beleg anzeigen",
+      group: "core",
       description:
         "Full details of one offer, invoice or credit note by id (find ids with search or list_documents): client, dates, " +
         "tax mode, line items (quantity, unit price, discount, tax rate, line net), totals per tax rate, and for finalized " +
@@ -340,6 +342,7 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
     "list_reminders_due",
     {
       title: "Fällig zum Mahnen",
+      group: "documents",
       description:
         "Overdue, unpaid finalized invoices with their dunning state (Mahnwesen), most overdue first: open amount, days " +
         "overdue, the highest reminder level sent so far, an existing draft reminder, and the suggested next level with its " +

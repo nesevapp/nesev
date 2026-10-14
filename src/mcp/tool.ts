@@ -2,6 +2,7 @@ import type { McpServer, StandardSchemaWithJSON, ToolAnnotations } from "@modelc
 import { join } from "node:path";
 import type { z } from "zod";
 import { DATA_DIR } from "../server/lib/paths";
+import { TOOL_GROUP_META, type ToolGroup } from "../shared/chat";
 import { type Api, ApiError, api, createApi } from "./api";
 
 // The shared core every tool module builds on: the context passed to register<Area>Tools(server, ctx) and
@@ -73,6 +74,8 @@ type ObjectSchema = z.ZodObject;
 
 export interface ToolSpec<I extends ObjectSchema, O extends ObjectSchema> {
   title: string;
+  /** routing group for the in-app assistant (see TOOL_GROUPS in src/shared/chat.ts); "ui" is reserved for assistant-only tools */
+  group: Exclude<ToolGroup, "ui">;
   /** written for an LLM: when to use it, what it returns, units */
   description: string;
   input: I;
@@ -101,6 +104,7 @@ export function defineTool<I extends ObjectSchema, O extends ObjectSchema>(
       inputSchema: spec.input as unknown as StandardSchemaWithJSON,
       outputSchema: spec.output as unknown as StandardSchemaWithJSON,
       annotations: { title: spec.title, ...spec.annotations },
+      _meta: { [TOOL_GROUP_META]: spec.group },
     },
     async (input: unknown) => {
       try {
