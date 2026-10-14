@@ -15,7 +15,7 @@ import { StatusRow } from "@/features/receipts/status-row";
 
 /** Radix Select can't hold "": stands for an empty model path (automatic choice) */
 const AUTO_MODEL = "__auto__";
-const CONTEXT_SIZES = [8192, 16384, 32768, 65536];
+const CONTEXT_SIZES = [8192, 16384, 32768, 65536, 131072];
 
 /** "Assistent" section on the settings page (own form, saved via PUT /api/chat/settings). */
 export function ChatSettingsSection() {

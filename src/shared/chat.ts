@@ -51,7 +51,7 @@ export interface ChatSettings {
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   enabled: true,
   modelPath: "",
-  contextSize: 32768,
+  contextSize: 65536,
   reasoning: false,
 };
 
