@@ -20,10 +20,13 @@ NESEV_DATA_DIR=/tmp/nesev-mcp bun run mcp     # against another data dir
 | `NESEV_WEB_URL` | `http://localhost:5174` | base for the web links in tool results |
 | `NESEV_API_URL` | `http://localhost:3998` | the running nesev server, used only by `queue_receipt_analysis` |
 
-**Claude Code** (user scope, so it's available in every project):
+**Claude Code**, registered only for a dedicated folder (local scope), so other sessions don't see the tools.
+The user's setup uses `/path/to/nesev-ai`:
 ```bash
-claude mcp add --scope user nesev -- /opt/homebrew/bin/bun /path/to/nesev/src/mcp/server.ts
+cd /path/to/nesev-ai
+claude mcp add --scope local nesev -- /opt/homebrew/bin/bun /path/to/nesev/src/mcp/server.ts
 ```
+(`--scope user` would make it available in every project.)
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`). Desktop doesn't use your
 shell's PATH, so give the absolute path to bun:
