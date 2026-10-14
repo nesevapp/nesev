@@ -427,6 +427,8 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
   /** an empty answer (with reasoning: thinking only) is retried once without reasoning */
   let reasoning = settings.reasoning;
   let emptyRetried = false;
+  /** a forced first call answered with text instead of a tool call (Qwen3.5-4B ignores "required" now and then) is retried once */
+  let forcedRetried = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal?.aborted) return;
     const rows = messages(db, state.conversationId);
@@ -440,8 +442,10 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
     const tools = selection.tools;
     const history = buildHistory(rows, available - toolTokens(tools), state.contextTitle);
 
-    // first call after a new user message (not after a confirmation, which already ran a tool)
-    const forceTool = step === 0 && rows.at(-1)?.role === "user" && needsData(rows.at(-1)!.content);
+    // first call after a new user message (not after a confirmation, which already ran a tool); its text is held
+    // back until it's clear the model called a tool
+    const forceTool = rows.at(-1)?.role === "user" && needsData(rows.at(-1)!.content);
+    const holdText = forceTool && !forcedRetried;
     let assistant: ChatMessage | null = null;
     let thinkingSent = false;
     const result = await deps.withModel(
@@ -462,7 +466,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           fetchFn: deps.fetchFn,
           onDelta: (text) => {
             pendingText += text;
-            void emit({ type: "delta", messageId, text });
+            if (!holdText) void emit({ type: "delta", messageId, text });
           },
           onThinking: () => {
             if (thinkingSent) return;
@@ -498,6 +502,13 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       if (!args) malformed.set(id, raw.arguments);
       calls.push({ id, name: raw.name, arguments: args ?? {} });
     }
+    if (holdText && !calls.length) {
+      forcedRetried = true;
+      deps.log?.(`[chat] conv ${state.conversationId}: forced tool call answered with text – retrying once`);
+      db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
+      continue;
+    }
+    if (holdText && result.content) await emit({ type: "delta", messageId, text: result.content });
     updateMessage(db, messageId, { content: result.content, toolCalls: calls.length ? calls : null });
     for (const c of calls) await emit({ type: "tool_call", messageId, toolCall: c });
 

@@ -19,7 +19,10 @@ const mcp: ToolHost = {
     const id = args.id as number;
     if (name === "get_document" && docs[id]) return { isError: false, text: "Beleg", structured: docs[id]! };
     if (name === "get_client" && id === 3) return { isError: false, text: "Kunde", structured: { id: 3, name: "Alpen GmbH", link: "/clients/3" } };
-    if (name === "search") return { isError: false, text: "Treffer", structured: null };
+    if (name === "search") {
+      const results = args.query === "RE-2026-0004" ? [{ type: "client", id: 3 }, { type: "invoice", id: 4 }] : [];
+      return { isError: false, text: "Treffer", structured: { query: args.query, results } };
+    }
     return { isError: true, text: "Fehler: nicht gefunden", structured: null };
   },
 };
@@ -59,7 +62,15 @@ describe("UI tools", () => {
     // no detail page: the list page even with an id
     expect((await host.call("open_in_app", { what: "fixed_cost", id: 2 })).action).toMatchObject({ path: "/fixed-costs" });
     expect((await host.call("open_in_app", { what: "rocket" })).isError).toBe(true);
-    expect((await host.call("open_in_app", { what: "invoice", id: "RE-2026-0004" })).text).toContain("Ungültige id");
+    expect((await host.call("open_in_app", { what: "invoice", id: -3 })).text).toContain("Ungültige id");
+  });
+
+  test("records by number (resolved via search), also when the model puts the number into id", async () => {
+    expect((await host.call("open_in_app", { what: "invoice", number: "RE-2026-0004" })).action).toMatchObject({ path: "/invoices/4" });
+    expect((await host.call("open_in_app", { what: "document", id: "RE-2026-0004" })).action).toMatchObject({ path: "/invoices/4" });
+    expect((await host.call("open_in_app", { what: "invoice", number: "RE-2099-0001" })).text).toBe("Fehler: Rechnungen: „RE-2099-0001“ nicht gefunden – die id mit search ermitteln");
+    expect((await host.call("download_pdf", { number: "RE-2026-0004" })).action).toMatchObject({ url: "/api/pdf/documents/4?download=1", fileName: "RE-2026-0004.pdf" });
+    expect((await host.call("open_pdf", { number: "RE-2099-0001" })).isError).toBe(true);
   });
 
   test("open_in_app: DB-checked records (asset, reminder, recurring invoice)", async () => {
@@ -90,7 +101,7 @@ describe("UI tools", () => {
     expect(draft.text).toBe("PDF-Vorschau Angebot (Entwurf) wird heruntergeladen (Entwurf-7.pdf).");
     expect(draft.action).toMatchObject({ fileName: "Entwurf-7.pdf" });
     expect((await host.call("open_pdf", { id: 99 })).isError).toBe(true);
-    expect((await host.call("open_pdf", {})).text).toContain("id fehlt");
+    expect((await host.call("open_pdf", {})).text).toContain("id oder number fehlt");
     expect((await host.call("open_pdf", { id: 1, type: "reminder" })).text).toContain("Mahnung id 1 nicht gefunden");
     expect((await host.call("open_pdf", { id: 3, type: "client" })).text).toContain("PDFs gibt es nur");
   });

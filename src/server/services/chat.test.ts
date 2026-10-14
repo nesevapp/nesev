@@ -353,6 +353,21 @@ describe("agent loop", () => {
     expect(requests.at(-1).tool_choice).toBe("auto");
   });
 
+  test("a forced call answered with text is retried once; its text is never streamed", async () => {
+    const c = createConversation(db);
+    scripts.push(text("Ich habe keinen Zugriff."), toolCall("list_documents", "{}"), text("Eine offen."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Welche Rechnungen sind offen?" }, emit));
+    expect(requests.map((r) => r.tool_choice)).toEqual(["required", "required", "auto"]);
+    expect(events.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text).join("")).toBe("Eine offen.");
+    expect(conversationDetail(db, c.id).messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    // the second refusal is kept (and shown at once)
+    scripts.push(text("Nein."), text("Immer noch nein."));
+    const again = await collect((emit) => sendMessage(deps, c.id, { text: "Welche Angebote sind offen?" }, emit));
+    expect(requests.slice(3).map((r) => r.tool_choice)).toEqual(["required", "required"]);
+    expect(again.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text).join("")).toBe("Immer noch nein.");
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("Immer noch nein.");
+  });
+
   test("reasoning on: enable_thinking per request, thinking event once", async () => {
     updateChatSettings(db, { ...DEFAULT_CHAT_SETTINGS, reasoning: true });
     const c = createConversation(db);
@@ -457,6 +472,7 @@ describe("tools", () => {
     expect(names({ userTexts: ["Wie hoch sind meine Fixkosten?"] })).toEqual([...core, "list_expenses", "list_fixed_costs", "create_expense"]);
     expect(names({ userTexts: ["Welche Bankumsätze sind noch nicht zugeordnet?"] })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
     expect(names({ userTexts: ["Was ist meine UVA-Zahllast?"] })).toEqual([...core, "get_forecast", "get_tax_report"]);
+    expect(names({ userTexts: ["Ordne die Zahlung von Alpen zu"] })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
     // page context, recent tools and the previous message keep a group for follow-ups
     expect(names({ userTexts: ["ja"], contextPath: "/bank" })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
     expect(names({ userTexts: ["ja, mach"], recentTools: ["create_client"] })).toEqual([...core, "list_clients", "create_client"]);

@@ -137,7 +137,7 @@ export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: Re
   },
   bank: {
     words:
-      /bank|konto|kontoauszug|buchung|zuordn|zugeordnet|abgleich|zahlungseingang|geldeingang|überweis|ueberweis|lastschrift|\biban\b|umsätze zu|umsatz zu|bankumsatz|bankumsätze|camt|kontobewegung/,
+      /bank|konto|kontoauszug|buchung|zuordn|zugeordnet|\bordne|\bzahlung(en)?\b|eingegangen|abgleich|zahlungseingang|geldeingang|überweis|ueberweis|lastschrift|\biban\b|umsätze zu|umsatz zu|bankumsatz|bankumsätze|camt|kontobewegung/,
     paths: /^\/bank\b/,
   },
   finance: {

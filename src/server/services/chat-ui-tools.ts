@@ -146,10 +146,37 @@ async function lookupRecord(host: ToolHost, db: DbOrTx, kind: string, id: number
   }
 }
 
+/** search result type → record kind (see TARGETS) */
+const SEARCH_KINDS: Record<string, string> = {
+  invoice: "document",
+  offer: "document",
+  credit_note: "document",
+  client: "client",
+  expense: "expense",
+  reminder: "reminder",
+  recurring: "recurring",
+  asset: "asset",
+};
+
+/**
+ * The record id behind `number` (or a non-numeric `id`, which small models fill with "RE-2026-0004"): the first
+ * search hit of that kind. Lets the model open a record by its number in one call. undefined = no number given.
+ */
+async function idFromNumber(host: ToolHost, args: Record<string, unknown>, kind: string): Promise<number | null | undefined> {
+  const raw = typeof args.number === "string" && args.number.trim() ? args.number : typeof args.id === "string" && !/^\d+$/.test(args.id.trim()) ? args.id : null;
+  if (!raw) return undefined;
+  const res = await host.call("search", { query: raw.trim(), limit: 5 }).catch(() => null);
+  const results = res && !res.isError && Array.isArray(res.structured?.results) ? (res.structured.results as { type: string; id: number }[]) : [];
+  return results.find((r) => SEARCH_KINDS[r.type] === kind)?.id ?? null;
+}
+
 async function pdfTarget(host: ToolHost, db: DbOrTx, args: Record<string, unknown>) {
-  const id = positiveId(args.id);
-  if (!id) return { error: "id fehlt (Beleg-id aus search/list_documents oder Mahnungs-id)" };
   const t = target(args.type ?? "document");
+  const kind = t === "reminder" ? "reminder" : "document";
+  const byNumber = await idFromNumber(host, args, kind);
+  if (byNumber === null) return { error: `„${String(args.number ?? args.id)}“ nicht gefunden – die id mit search ermitteln` };
+  const id = byNumber ?? positiveId(args.id);
+  if (!id) return { error: "id oder number fehlt (Beleg-id aus search/list_documents, Mahnungs-id oder die Nummer wie RE-2026-0004)" };
   if (t === "reminder") {
     const r = db.select({ id: reminders.id, number: reminders.number }).from(reminders).where(eq(reminders.id, id)).get();
     if (!r) return { error: `Mahnung id ${id} nicht gefunden` };
@@ -166,10 +193,10 @@ async function pdfTarget(host: ToolHost, db: DbOrTx, args: Record<string, unknow
 const PDF_ARGS = {
   type: "object",
   properties: {
-    id: { type: "integer", description: "document id (invoice/offer/credit note) or reminder id – never the number like RE-2026-0004; find it with search" },
+    id: { type: "integer", description: "document id (invoice/offer/credit note) or reminder id from a tool result" },
+    number: { type: "string", description: 'or the number instead of the id, e.g. "RE-2026-0004" (drafts have none: use the id)' },
     type: { type: "string", enum: ["document", "reminder"], description: "document (default) or reminder (Mahnung)" },
   },
-  required: ["id"],
 };
 
 const ui = (name: string, description: string, inputSchema: Record<string, unknown>): ChatTool => ({
@@ -185,7 +212,7 @@ export const UI_TOOLS: ChatTool[] = [
   ui(
     "open_in_app",
     'Use when the user says "öffne", "geh zu", "zeig mir … in der App", "bring mich zu". Opens a page or a record in the ' +
-      "nesev app for the user (navigation, nothing is changed). With `id`: that record " +
+      "nesev app for the user (navigation, nothing is changed). With `id` or `number`: that record " +
       "(document = invoice/offer/credit note by document id, client, expense, reminder, recurring_invoice, asset; find ids " +
       "with search). Without `id`: the list page of `what` or one of dashboard, bank, forecast (Prognose), tax (Steuern: " +
       "UVA/ZM/EAR), fixed_cost (Fixkosten), article, export, templates, settings.",
@@ -193,7 +220,8 @@ export const UI_TOOLS: ChatTool[] = [
       type: "object",
       properties: {
         what: { type: "string", enum: TARGET_KEYS, description: "record type or page" },
-        id: { type: "integer", description: "record id from a tool result (omit to open the page)" },
+        id: { type: "integer", description: "record id from a tool result (omit both id and number to open the page)" },
+        number: { type: "string", description: 'or the record number instead of the id, e.g. "RE-2026-0004", "K-0001", "ER-2026-0003"' },
       },
       required: ["what"],
     },
@@ -218,8 +246,10 @@ export async function callUiTool(host: ToolHost, db: DbOrTx, name: string, args:
     const t = target(args.what);
     if (!t) return error(`Unbekanntes Ziel „${String(args.what)}“. Möglich: ${TARGET_KEYS.join(", ")}`);
     const spec = TARGETS[t];
-    const id = args.id === undefined || args.id === null ? null : positiveId(args.id);
-    if (args.id !== undefined && args.id !== null && !id) return error(`Ungültige id „${String(args.id)}“ – eine Zahl aus einem Werkzeug-Ergebnis angeben`);
+    const byNumber = spec.record ? await idFromNumber(host, args, spec.record) : undefined;
+    if (byNumber === null) return error(`${spec.label}: „${String(args.number ?? args.id)}“ nicht gefunden – die id mit search ermitteln`);
+    const id = byNumber ?? (args.id === undefined || args.id === null ? null : positiveId(args.id));
+    if (byNumber === undefined && args.id !== undefined && args.id !== null && !id) return error(`Ungültige id „${String(args.id)}“ – eine Zahl aus einem Werkzeug-Ergebnis angeben`);
     if (id && spec.record) {
       const rec = await lookupRecord(host, db, spec.record, id);
       if (!rec) return error(`${spec.label}: id ${id} nicht gefunden – die id mit search ermitteln`);
