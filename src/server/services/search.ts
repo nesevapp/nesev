@@ -18,6 +18,7 @@ import {
   articles,
   clients,
   documents,
+  expenseLines,
   expenses,
   fixedAssets,
   recurringExpenses,
@@ -33,6 +34,7 @@ import {
 //   A letter prefix limits the number match to its type (RE, AN, GS, MA, ER, K, A, AV).
 // - Inputs that parse as money ("1.234,56", "1234.56", "500 €") also match gross/net amounts.
 // - Rank per group: exact number (0) → number of any year (1) → amount (2) → text (3), then newest first.
+// - Multi-word queries without a hit as a whole are read word by word (see "multi-word queries" below).
 
 export const SEARCH_RESULT_TYPES = [
   "client",
@@ -72,7 +74,7 @@ export interface SearchResult {
   meta: string;
   /** frontend route (href) that opens the result */
   path: string;
-  /** 0 = exact number, 1 = number of any year, 2 = amount, 3 = text */
+  /** 0 = exact number, 1 = number of any year, 2 = amount, 3 = text; 3 + n = n words of the query not matched */
   rank: number;
 }
 
@@ -187,21 +189,123 @@ const amountMatch = (p: ParsedQuery, ...columns: unknown[]): SQL | null =>
 
 const joinMeta = (...parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(" · ");
 
+// ── multi-word queries ─────────────────────────────────────────────────────────
+// A query with several words that finds nothing as a whole ("Alpen Entwurf", "offene Rechnungen Alpen") is
+// read word by word: words naming a record type or state filter the results, the rest is matched as a phrase,
+// then with every word (each may hit another field), then with any word (ranked by how many matched).
+
+export const SEARCH_STATUSES = ["draft", "open", "paid", "overdue"] as const;
+export type SearchStatus = (typeof SEARCH_STATUSES)[number];
+
+/** Folded (with digraphs) type and state words → filter. */
+const FILTER_WORDS: Record<string, { type?: SearchResultType; status?: SearchStatus }> = {};
+const addWords = (words: string, f: { type?: SearchResultType; status?: SearchStatus }) => {
+  for (const w of words.split(" ")) FILTER_WORDS[foldText(w, true)] = f;
+};
+addWords("entwurf entwürfe entwurfs", { status: "draft" });
+addWords("offen offene offenen offener offenes unbezahlt unbezahlte unbezahlten", { status: "open" });
+addWords("bezahlt bezahlte bezahlten beglichen", { status: "paid" });
+addWords("überfällig überfällige überfälligen überfälliger", { status: "overdue" });
+addWords("rechnung rechnungen", { type: "invoice" });
+addWords("angebot angebote angeboten", { type: "offer" });
+addWords("gutschrift gutschriften", { type: "credit_note" });
+addWords("mahnung mahnungen", { type: "reminder" });
+addWords("serienrechnung serienrechnungen", { type: "recurring" });
+addWords("ausgabe ausgaben beleg belege eingangsrechnung eingangsrechnungen", { type: "expense" });
+addWords("fixkosten", { type: "fixed_cost" });
+addWords("anlage anlagen anlagegut", { type: "asset" });
+addWords("kunde kunden kundin", { type: "client" });
+addWords("artikel", { type: "article" });
+
+/** Filler words dropped from multi-word queries ("Rechnungen für Alpen"). */
+const STOP_WORDS = new Set(
+  "für von vom mit und oder der die das den dem des ein eine einer einen im in an am zu zum zur bei alle aller meine mein".split(" ").map((w) => foldText(w, true)),
+);
+
+export interface QueryWords {
+  /** words left for the text match */
+  words: string[];
+  types: SearchResultType[];
+  statuses: SearchStatus[];
+}
+
+export function parseWords(term: string): QueryWords {
+  const out: QueryWords = { words: [], types: [], statuses: [] };
+  for (const word of term.split(" ")) {
+    const folded = foldText(word, true);
+    const f = FILTER_WORDS[folded];
+    if (f?.type && !out.types.includes(f.type)) out.types.push(f.type);
+    if (f?.status && !out.statuses.includes(f.status)) out.statuses.push(f.status);
+    if (!f && !STOP_WORDS.has(folded)) out.words.push(word);
+  }
+  return out;
+}
+
+/**
+ * How one search runs: `phrase` matches parts[0] as a whole (the classic search), `all` needs every part to match
+ * (each in any field), `any` at least one, `list` matches everything (only with a status/type filter).
+ */
+interface TermQuery {
+  mode: "phrase" | "all" | "any" | "list";
+  parts: ParsedQuery[];
+  statuses: SearchStatus[];
+}
+
+interface Match {
+  where: SQL;
+  rank: SQL<number>;
+}
+type Cond = (p: ParsedQuery) => Match;
+
+/** where + rank of a query: per-part conditions combined by mode. `any` ranks 3 + the number of words missed. */
+function combine(q: TermQuery, cond: Cond): Match {
+  if (q.mode === "list") return { where: sql`1`, rank: sql<number>`3` };
+  const ms = q.parts.map(cond);
+  if (q.mode === "phrase" || ms.length === 1) return ms[0]!;
+  if (q.mode === "all") return { where: and(...ms.map((m) => m.where))!, rank: sql<number>`min(${sql.join(ms.map((m) => m.rank), sql`, `)})` };
+  const hits = sql.join(ms.map((m) => sql`(case when ${m.where} then 1 else 0 end)`), sql` + `);
+  return { where: or(...ms.map((m) => m.where))!, rank: sql<number>`${3 + ms.length} - (${hits})` };
+}
+
+/** Status filter of a type: undefined = none requested, null = the type has none of the requested states. */
+type StatusFilter = SQL | undefined | null;
+function statusFilter(statuses: SearchStatus[], conds: Partial<Record<SearchStatus, SQL>>): StatusFilter {
+  if (!statuses.length) return undefined;
+  const parts = statuses.map((s) => conds[s]).filter((c): c is SQL => !!c);
+  return parts.length ? or(...parts)! : null;
+}
+
 // ── per-type searches ──────────────────────────────────────────────────────────
 
 const DOC_PATHS: Record<DocumentType, string> = { offer: "/offers", invoice: "/invoices", credit_note: "/credit-notes" };
+const docSnapshotName = sql`json_extract(${documents.clientSnapshot}, '$.name')`;
 
-function searchDocuments(db: DbOrTx, p: ParsedQuery, type: DocumentType, limit: number): SearchResult[] {
-  const nums = yearNumberMatch(p, type, documents.number);
-  const amount = amountMatch(p, documents.grossCents, documents.netCents);
-  const snapshotName = sql`json_extract(${documents.clientSnapshot}, '$.name')`;
-  const where = or(
-    rawContains(p.term, documents.number),
-    textMatch(p.term, [documents.title, clients.name, snapshotName]),
-    nums?.seq,
-    amount ?? undefined,
-  );
-  const rank = rankSql(nums?.exact ?? null, nums?.seq ?? null, amount);
+const docCond =
+  (type: DocumentType): Cond =>
+  (p) => {
+    const nums = yearNumberMatch(p, type, documents.number);
+    const amount = amountMatch(p, documents.grossCents, documents.netCents);
+    return {
+      where: or(rawContains(p.term, documents.number), textMatch(p.term, [documents.title, clients.name, docSnapshotName]), nums?.seq, amount ?? undefined)!,
+      rank: rankSql(nums?.exact ?? null, nums?.seq ?? null, amount),
+    };
+  };
+
+function docStatus(type: DocumentType, statuses: SearchStatus[], today: string): StatusFilter {
+  const issued = sql`${documents.status} in ('final', 'sent')`;
+  return statusFilter(statuses, {
+    draft: eq(documents.status, "draft"),
+    open: type === "credit_note" ? undefined : issued,
+    paid: type === "invoice" ? eq(documents.status, "paid") : undefined,
+    overdue: type === "invoice" ? sql`${issued} and ${documents.dueDate} < ${today}` : undefined,
+  });
+}
+
+function searchDocuments(db: DbOrTx, q: TermQuery, type: DocumentType, limit: number): SearchResult[] | null {
+  const today = todayIso();
+  const status = docStatus(type, q.statuses, today);
+  if (status === null) return null;
+  const { where, rank } = combine(q, docCond(type));
   const rows = db
     .select({
       id: documents.id,
@@ -212,16 +316,15 @@ function searchDocuments(db: DbOrTx, p: ParsedQuery, type: DocumentType, limit: 
       dueDate: documents.dueDate,
       grossCents: documents.grossCents,
       clientName: clients.name,
-      snapshotName: sql<string | null>`${snapshotName}`,
+      snapshotName: sql<string | null>`${docSnapshotName}`,
       rank,
     })
     .from(documents)
     .innerJoin(clients, eq(clients.id, documents.clientId))
-    .where(and(eq(documents.type, type), where))
+    .where(and(eq(documents.type, type), where, status))
     .orderBy(rank, sql`${documents.issueDate} desc`, sql`${documents.id} desc`)
     .limit(limit)
     .all();
-  const today = todayIso();
   return rows.map((r) => ({
     type,
     id: r.id,
@@ -237,16 +340,23 @@ function searchDocuments(db: DbOrTx, p: ParsedQuery, type: DocumentType, limit: 
   }));
 }
 
-function searchClients(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const clientCond: Cond = (p) => {
   const number = p.prefix === null || p.prefix === "K" ? parseClientNumber(p.term) : null;
   const exact = number !== null && p.year === null ? sql`${clients.number} = ${number}` : null;
   const uidCompact = sql`replace(${clients.uid}, ' ', '')`;
-  const where = or(
-    textMatch(p.term, [clients.name, clients.contactPerson, clients.email, clients.city]),
-    rawContains(p.term.replace(/\s/g, ""), uidCompact),
-    exact ?? undefined,
-  );
-  const rank = rankSql(exact, null, null);
+  return {
+    where: or(
+      textMatch(p.term, [clients.name, clients.contactPerson, clients.email, clients.city]),
+      rawContains(p.term.replace(/\s/g, ""), uidCompact),
+      exact ?? undefined,
+    )!,
+    rank: rankSql(exact, null, null),
+  };
+};
+
+function searchClients(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  if (q.statuses.length) return null;
+  const { where, rank } = combine(q, clientCond);
   const rows = db
     .select({
       id: clients.id,
@@ -275,17 +385,32 @@ function searchClients(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[
   }));
 }
 
-function searchExpenses(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const expenseCond: Cond = (p) => {
   const nums = yearNumberMatch(p, "expense", expenses.number);
   const amount = amountMatch(p, expenses.grossCents, expenses.netCents);
-  const where = or(
-    rawContains(p.term, expenses.number),
-    rawContains(p.term, expenses.supplierInvoiceNumber),
-    textMatch(p.term, [expenses.supplierName, expenses.description]),
-    nums?.seq,
-    amount ?? undefined,
-  );
-  const rank = rankSql(nums?.exact ?? null, nums?.seq ?? null, amount);
+  return {
+    where: or(
+      rawContains(p.term, expenses.number),
+      rawContains(p.term, expenses.supplierInvoiceNumber),
+      textMatch(p.term, [expenses.supplierName, expenses.description]),
+      nums?.seq,
+      amount ?? undefined,
+    )!,
+    rank: rankSql(nums?.exact ?? null, nums?.seq ?? null, amount),
+  };
+};
+
+function searchExpenses(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  // "Entwurf" = unvollständig (no supplier or no lines), like the expense list
+  const incomplete = sql`(${expenses.supplierName} = '' or not exists (select 1 from ${expenseLines} where ${expenseLines.expenseId} = ${expenses.id}))`;
+  const status = statusFilter(q.statuses, {
+    draft: incomplete,
+    open: sql`${expenses.paidAt} is null and not ${incomplete}`,
+    paid: sql`${expenses.paidAt} is not null`,
+    overdue: sql`${expenses.paidAt} is null and ${expenses.dueDate} < ${todayIso()}`,
+  });
+  if (status === null) return null;
+  const { where, rank } = combine(q, expenseCond);
   const rows = db
     .select({
       id: expenses.id,
@@ -299,7 +424,7 @@ function searchExpenses(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult
       rank,
     })
     .from(expenses)
-    .where(where)
+    .where(and(where, status))
     .orderBy(rank, sql`${expenses.issueDate} desc`, sql`${expenses.id} desc`)
     .limit(limit)
     .all();
@@ -314,16 +439,20 @@ function searchExpenses(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult
   }));
 }
 
-function searchReminders(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const reminderSnapshotName = sql`json_extract(${reminders.clientSnapshot}, '$.name')`;
+
+const reminderCond: Cond = (p) => {
   const nums = yearNumberMatch(p, "reminder", reminders.number);
-  const snapshotName = sql`json_extract(${reminders.clientSnapshot}, '$.name')`;
-  const where = or(
-    rawContains(p.term, reminders.number),
-    rawContains(p.term, documents.number),
-    textMatch(p.term, [clients.name, snapshotName]),
-    nums?.seq,
-  );
-  const rank = rankSql(nums?.exact ?? null, nums?.seq ?? null, null);
+  return {
+    where: or(rawContains(p.term, reminders.number), rawContains(p.term, documents.number), textMatch(p.term, [clients.name, reminderSnapshotName]), nums?.seq)!,
+    rank: rankSql(nums?.exact ?? null, nums?.seq ?? null, null),
+  };
+};
+
+function searchReminders(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  const status = statusFilter(q.statuses, { draft: eq(reminders.status, "draft") });
+  if (status === null) return null;
+  const { where, rank } = combine(q, reminderCond);
   const rows = db
     .select({
       id: reminders.id,
@@ -333,13 +462,13 @@ function searchReminders(db: DbOrTx, p: ParsedQuery, limit: number): SearchResul
       totalCents: sql<number>`${reminders.openCents} + ${reminders.feeCents} + ${reminders.interestCents}`,
       invoiceNumber: documents.number,
       clientName: clients.name,
-      snapshotName: sql<string | null>`${snapshotName}`,
+      snapshotName: sql<string | null>`${reminderSnapshotName}`,
       rank,
     })
     .from(reminders)
     .innerJoin(documents, eq(documents.id, reminders.invoiceId))
     .innerJoin(clients, eq(clients.id, documents.clientId))
-    .where(where)
+    .where(and(where, status))
     .orderBy(rank, sql`${reminders.issueDate} desc`, sql`${reminders.id} desc`)
     .limit(limit)
     .all();
@@ -354,7 +483,11 @@ function searchReminders(db: DbOrTx, p: ParsedQuery, limit: number): SearchResul
   }));
 }
 
-function searchRecurring(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const recurringCond: Cond = (p) => ({ where: textMatch(p.term, [recurringInvoices.name, clients.name]), rank: sql<number>`3` });
+
+function searchRecurring(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  if (q.statuses.length) return null;
+  const { where, rank } = combine(q, recurringCond);
   const rows = db
     .select({
       id: recurringInvoices.id,
@@ -362,11 +495,12 @@ function searchRecurring(db: DbOrTx, p: ParsedQuery, limit: number): SearchResul
       active: recurringInvoices.active,
       nextRunDate: recurringInvoices.nextRunDate,
       clientName: clients.name,
+      rank,
     })
     .from(recurringInvoices)
     .innerJoin(clients, eq(clients.id, recurringInvoices.clientId))
-    .where(textMatch(p.term, [recurringInvoices.name, clients.name]))
-    .orderBy(sql`${recurringInvoices.active} desc`, sql`${recurringInvoices.name} collate nocase`)
+    .where(where)
+    .orderBy(rank, sql`${recurringInvoices.active} desc`, sql`${recurringInvoices.name} collate nocase`)
     .limit(limit)
     .all();
   return rows.map((r) => ({
@@ -376,13 +510,21 @@ function searchRecurring(db: DbOrTx, p: ParsedQuery, limit: number): SearchResul
     sublabel: r.clientName,
     meta: r.active ? joinMeta(r.nextRunDate && `nächste ${formatDate(r.nextRunDate)}`) : "pausiert",
     path: `/recurring/${r.id}`,
-    rank: 3,
+    rank: r.rank,
   }));
 }
 
-function searchFixedCosts(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const fixedCostCond: Cond = (p) => {
   const amount = amountMatch(p, recurringExpenses.grossCents);
-  const rank = rankSql(null, null, amount);
+  return {
+    where: or(textMatch(p.term, [recurringExpenses.name, recurringExpenses.supplierName]), amount ?? undefined)!,
+    rank: rankSql(null, null, amount),
+  };
+};
+
+function searchFixedCosts(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  if (q.statuses.length) return null;
+  const { where, rank } = combine(q, fixedCostCond);
   const rows = db
     .select({
       id: recurringExpenses.id,
@@ -393,7 +535,7 @@ function searchFixedCosts(db: DbOrTx, p: ParsedQuery, limit: number): SearchResu
       rank,
     })
     .from(recurringExpenses)
-    .where(or(textMatch(p.term, [recurringExpenses.name, recurringExpenses.supplierName]), amount ?? undefined))
+    .where(where)
     .orderBy(rank, sql`${recurringExpenses.active} desc`, sql`${recurringExpenses.name} collate nocase`)
     .limit(limit)
     .all();
@@ -408,10 +550,15 @@ function searchFixedCosts(db: DbOrTx, p: ParsedQuery, limit: number): SearchResu
   }));
 }
 
-function searchAssets(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const assetCond: Cond = (p) => {
   const exact = intNumberMatch(p, "AV", fixedAssets.number);
   const amount = amountMatch(p, fixedAssets.costCents);
-  const rank = rankSql(exact, null, amount);
+  return { where: or(textMatch(p.term, [fixedAssets.name]), exact ?? undefined, amount ?? undefined)!, rank: rankSql(exact, null, amount) };
+};
+
+function searchAssets(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  if (q.statuses.length) return null;
+  const { where, rank } = combine(q, assetCond);
   const rows = db
     .select({
       id: fixedAssets.id,
@@ -423,7 +570,7 @@ function searchAssets(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[]
       rank,
     })
     .from(fixedAssets)
-    .where(or(textMatch(p.term, [fixedAssets.name]), exact ?? undefined, amount ?? undefined))
+    .where(where)
     .orderBy(rank, sql`${fixedAssets.acquisitionDate} desc`)
     .limit(limit)
     .all();
@@ -438,10 +585,15 @@ function searchAssets(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[]
   }));
 }
 
-function searchArticles(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult[] {
+const articleCond: Cond = (p) => {
   const number = p.prefix === null || p.prefix === "A" ? parseArticleNumber(p.term) : null;
   const exact = number !== null && p.year === null ? sql`${articles.number} = ${number}` : null;
-  const rank = rankSql(exact, null, null);
+  return { where: or(textMatch(p.term, [articles.title]), exact ?? undefined)!, rank: rankSql(exact, null, null) };
+};
+
+function searchArticles(db: DbOrTx, q: TermQuery, limit: number): SearchResult[] | null {
+  if (q.statuses.length) return null;
+  const { where, rank } = combine(q, articleCond);
   const rows = db
     .select({
       id: articles.id,
@@ -453,7 +605,7 @@ function searchArticles(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult
       rank,
     })
     .from(articles)
-    .where(or(textMatch(p.term, [articles.title]), exact ?? undefined))
+    .where(where)
     .orderBy(rank, sql`${articles.archivedAt} is not null`, sql`${articles.usageCount} desc`, sql`${articles.title} collate nocase`)
     .limit(limit)
     .all();
@@ -473,26 +625,55 @@ function searchArticles(db: DbOrTx, p: ParsedQuery, limit: number): SearchResult
 
 // ── entry point ────────────────────────────────────────────────────────────────
 
-export function search(db: DbOrTx, q: string, limit = 6): SearchResponse {
-  const p = parseQuery(q);
-  if (!p.term) return { q, groups: [] };
-  const byType: Record<SearchResultType, () => SearchResult[]> = {
-    client: () => searchClients(db, p, limit),
-    invoice: () => searchDocuments(db, p, "invoice", limit),
-    offer: () => searchDocuments(db, p, "offer", limit),
-    credit_note: () => searchDocuments(db, p, "credit_note", limit),
-    reminder: () => searchReminders(db, p, limit),
-    recurring: () => searchRecurring(db, p, limit),
-    expense: () => searchExpenses(db, p, limit),
-    fixed_cost: () => searchFixedCosts(db, p, limit),
-    asset: () => searchAssets(db, p, limit),
-    article: () => searchArticles(db, p, limit),
+/** All groups of one query, optionally limited to some types; groups with a number/amount hit first. */
+function runGroups(db: DbOrTx, q: TermQuery, types: SearchResultType[], limit: number): SearchGroup[] {
+  const byType: Record<SearchResultType, () => SearchResult[] | null> = {
+    client: () => searchClients(db, q, limit),
+    invoice: () => searchDocuments(db, q, "invoice", limit),
+    offer: () => searchDocuments(db, q, "offer", limit),
+    credit_note: () => searchDocuments(db, q, "credit_note", limit),
+    reminder: () => searchReminders(db, q, limit),
+    recurring: () => searchRecurring(db, q, limit),
+    expense: () => searchExpenses(db, q, limit),
+    fixed_cost: () => searchFixedCosts(db, q, limit),
+    asset: () => searchAssets(db, q, limit),
+    article: () => searchArticles(db, q, limit),
   };
-  const groups = SEARCH_RESULT_TYPES.map((type) => ({ type, label: SEARCH_GROUP_LABELS[type], results: byType[type]() }))
+  return SEARCH_RESULT_TYPES.filter((type) => !types.length || types.includes(type))
+    .map((type) => ({ type, label: SEARCH_GROUP_LABELS[type], results: byType[type]() ?? [] }))
     .filter((g) => g.results.length > 0)
     .map((g, index) => ({ g, index, best: g.results[0]!.rank }))
     // groups holding a number/amount hit come first; otherwise the fixed order above
     .sort((a, b) => a.best - b.best || a.index - b.index)
     .map(({ g }) => g);
-  return { q, groups };
+}
+
+/** Text words under a filter: phrase, then every word, then any word; no words = everything the filter allows. */
+function wordSearch(db: DbOrTx, words: string[], types: SearchResultType[], statuses: SearchStatus[], limit: number, skipPhrase = false): SearchGroup[] {
+  if (!words.length) return types.length || statuses.length ? runGroups(db, { mode: "list", parts: [], statuses }, types, limit) : [];
+  const phrase = skipPhrase ? [] : runGroups(db, { mode: "phrase", parts: [parseQuery(words.join(" "))], statuses }, types, limit);
+  if (phrase.length || words.length === 1) return phrase;
+  const parts = words.map(parseQuery);
+  const all = runGroups(db, { mode: "all", parts, statuses }, types, limit);
+  return all.length ? all : runGroups(db, { mode: "any", parts, statuses }, types, limit);
+}
+
+export function search(db: DbOrTx, q: string, limit = 6): SearchResponse {
+  const p = parseQuery(q);
+  if (!p.term) return { q, groups: [] };
+  const groups = runGroups(db, { mode: "phrase", parts: [p], statuses: [] }, [], limit);
+  // single words, numbers and amounts ("re 2026 12", "€ 1.200") stay whole
+  if (groups.length || !p.term.includes(" ") || p.seq !== null || p.amountCents !== null) return { q, groups };
+
+  const { words, types, statuses } = parseWords(p.term);
+  if (types.length || statuses.length) {
+    const filtered = wordSearch(db, words, types, statuses, limit);
+    if (filtered.length) return { q, groups: filtered };
+    // the filter left nothing: the same words unfiltered
+    const unfiltered = wordSearch(db, words, [], [], limit);
+    if (unfiltered.length) return { q, groups: unfiltered };
+  }
+  // the type words may be part of a name after all
+  const all = p.term.split(" ").filter((w) => !STOP_WORDS.has(foldText(w, true)));
+  return { q, groups: wordSearch(db, all, [], [], limit, all.join(" ") === p.term) };
 }

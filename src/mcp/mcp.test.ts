@@ -162,6 +162,14 @@ describe("tools", () => {
     expect(hit.link).toBe(`${WEB_URL}/invoices/${ids.documents.overdueInvoice}`);
   });
 
+  test("search combines a name with type/state words", async () => {
+    const drafts = await callTool("search", { query: "Alpen Entwurf" });
+    expect(drafts.data.results.map((r: Data) => [r.type, r.id])).toEqual([["invoice", ids.documents.draftInvoice]]);
+    const adobe = await callTool("search", { query: "Adobe Ausgabe" });
+    expect(adobe.data.results.map((r: Data) => [r.type, r.id])).toEqual([["expense", ids.expenses.adobe]]);
+    expect((await callTool("search", { query: "Xyzzy Quux" })).text).toContain("Keine Treffer");
+  });
+
   test("get_document: items, credit note, open amount, frozen PDF", async () => {
     const { data, text } = await callTool("get_document", { id: ids.documents.overdueInvoice });
     expect(data.number).toMatch(/^RE-\d{4}-0001$/);

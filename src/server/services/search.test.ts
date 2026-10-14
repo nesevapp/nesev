@@ -11,7 +11,7 @@ import {
   recurringExpenses,
   reminders,
 } from "../db/schema";
-import { foldText, parseQuery, search, type SearchResultType } from "./search";
+import { foldText, parseQuery, parseWords, search, type SearchResultType } from "./search";
 
 let clientNo = 0;
 function addClient(db: Db, over: Partial<NewClient> = {}) {
@@ -238,6 +238,94 @@ describe("search", () => {
     expect(ids(search(db, "AV-7"), "asset")).toEqual([asset.id]);
     expect(ids(search(db, "macbook"), "asset")).toEqual([asset.id]);
     expect(search(db, "macbook").groups[0]!.results[0]).toMatchObject({ sublabel: "AV-0007", path: `/assets/${asset.id}` });
+  });
+
+  test("single words keep the classic ranking and are never filters", () => {
+    const { db, inv12, inv12old, inv3, offer12, credit, alpen } = seed();
+    const res = search(db, "alpen");
+    expect(groupTypes(res)).toEqual(["client", "invoice", "offer", "credit_note", "reminder"]);
+    // newest first, same date → higher id first
+    expect(ids(res, "invoice")).toEqual([inv3.id, inv12.id, inv12old.id]);
+    expect(ids(res, "offer")).toEqual([offer12.id]);
+    expect(ids(res, "credit_note")).toEqual([credit.id]);
+    expect(ids(res, "client")).toEqual([alpen.id]);
+    expect(res.groups.flatMap((g) => g.results).every((r) => r.rank === 3)).toBe(true);
+    // a type word on its own is plain text
+    expect(search(db, "Entwurf").groups).toEqual([]);
+    expect(search(db, "Rechnung").groups).toEqual([]);
+  });
+
+  test("parseWords: type and state words, umlaut spellings, filler words", () => {
+    expect(parseWords("offene Rechnungen für Alpen")).toEqual({ words: ["Alpen"], types: ["invoice"], statuses: ["open"] });
+    expect(parseWords("Entwürfe ueberfaellige Belege")).toEqual({ words: [], types: ["expense"], statuses: ["draft", "overdue"] });
+    expect(parseWords("Kundin Müller")).toEqual({ words: ["Müller"], types: ["client"], statuses: [] });
+  });
+
+  test('"Alpen Entwurf": the drafts of the client, documents only', () => {
+    const { db, alpen, draft } = seed();
+    const invDraft = addDoc(db, alpen.id, { status: "draft", number: null, title: "Erweiterung" });
+    const offerDraft = addDoc(db, alpen.id, { type: "offer", status: "draft", number: null });
+    const res = search(db, "Alpen Entwurf");
+    expect(groupTypes(res)).toEqual(["invoice", "offer"]);
+    expect(ids(res, "invoice")).toEqual([invDraft.id]);
+    expect(ids(res, "offer")).toEqual([offerDraft.id]);
+    expect(ids(res, "invoice")).not.toContain(draft.id);
+    expect(ids(search(db, "Entwürfe Alpen"), "invoice")).toEqual([invDraft.id]);
+  });
+
+  test('"Adobe Ausgabe" and "Rechnung Alpen": the type word limits the groups', () => {
+    const { db, alpen, inv12, inv12old, inv3 } = seed();
+    const adobe = db.insert(expenses).values({ number: "ER-2026-0020", supplierName: "Adobe Systems", issueDate: "2026-03-05" }).returning().get();
+    addDoc(db, alpen.id, { number: "RE-2026-0030", title: "Adobe-Schulung" });
+    const exp = search(db, "Adobe Ausgabe");
+    expect(groupTypes(exp)).toEqual(["expense"]);
+    expect(ids(exp, "expense")).toEqual([adobe.id]);
+
+    const inv = search(db, "Rechnung Alpen");
+    expect(groupTypes(inv)).toEqual(["invoice"]);
+    expect(ids(inv, "invoice")).toEqual(expect.arrayContaining([inv12.id, inv12old.id, inv3.id]));
+  });
+
+  test('"offene Rechnungen Alpen": state filter; a filter without hits falls back to the unfiltered words', () => {
+    const { db, alpen, inv12, inv12old, inv3, expense } = seed();
+    const paid = addDoc(db, alpen.id, { number: "RE-2026-0040", status: "paid" });
+    const draft = addDoc(db, alpen.id, { status: "draft", number: null });
+    const open = search(db, "offene Rechnungen Alpen");
+    expect(groupTypes(open)).toEqual(["invoice"]);
+    expect(ids(open, "invoice").sort()).toEqual([inv12.id, inv12old.id, inv3.id].sort());
+    expect(ids(open, "invoice")).not.toContain(paid.id);
+    expect(ids(open, "invoice")).not.toContain(draft.id);
+    expect(ids(search(db, "bezahlte Rechnungen Alpen"), "invoice")).toEqual([paid.id]);
+    // only type/state words: everything the filter allows
+    expect(groupTypes(search(db, "offene Angebote"))).toEqual(["offer"]);
+    // the seeded expense has no lines (unvollständig = Entwurf), so it isn't "offen"
+    expect(ids(search(db, "Ausgaben Entwurf"), "expense")).toEqual([expense.id]);
+    expect(search(db, "offene Ausgaben").groups).toEqual([]);
+    // the Telekom expense is unpaid: "bezahlt" leaves nothing, so the plain "Telekom" hits come back
+    expect(ids(search(db, "Telekom bezahlt"), "expense")).toEqual([expense.id]);
+  });
+
+  test("token fallback: every word first (across fields), then any word ranked by matches", () => {
+    const { db, inv3, draft, alpen } = seed();
+    // client name + title of one invoice
+    const both = search(db, "Alpen Wartung");
+    expect(groupTypes(both)).toEqual(["invoice"]);
+    expect(ids(both, "invoice")).toEqual([inv3.id]);
+    expect(both.groups[0]!.results[0]!.rank).toBe(3);
+    // client name + invoice number
+    expect(ids(search(db, "Alpen 0003"), "invoice")).toEqual([inv3.id]);
+    // no invoice has both words: any word, each with one of two words → rank 4
+    const any = search(db, "Wartung Brot");
+    expect(ids(any, "invoice").sort()).toEqual([inv3.id, draft.id].sort());
+    expect(any.groups[0]!.results.every((r) => r.rank === 4)).toBe(true);
+    expect(ids(search(db, "Alpen Niemandsland"), "client")).toEqual([alpen.id]);
+  });
+
+  test("a query nothing matches returns no groups", () => {
+    const { db } = seed();
+    expect(search(db, "Xyzzy Quux").groups).toEqual([]);
+    expect(search(db, "Xyzzy Rechnung").groups).toEqual([]);
+    expect(search(db, "für die").groups).toEqual([]);
   });
 
   test("limit per group", () => {

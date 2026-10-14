@@ -32,7 +32,8 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
         "Global search across nesev: clients, invoices, offers, credit notes, reminders (Mahnungen), recurring invoices, " +
         "expenses, fixed costs (Fixkosten), assets (Anlagen) and articles. Use it first to find ids for the get_* tools. " +
         "Matches names/text (umlaut-insensitive), numbers in any spelling (RE-2026-0012, re12, 12, K-0003) and amounts " +
-        '("1.234,56", "500 €"). Returns results grouped by type with id, label, details and a web link.',
+        '("1.234,56", "500 €"). A name may be combined with type/state words: "Alpen Entwurf", "offene Rechnungen ' +
+        'Alpen", "Adobe Ausgabe". Returns results grouped by type with id, label, details and a web link.',
       input: z.object({
         query: z.string().trim().min(1).max(200).describe("search text, number or amount"),
         limit: z.number().int().min(1).max(20).default(6).describe("max results per group (default 6)"),
