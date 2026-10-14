@@ -44,8 +44,8 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
       description:
         "Latest receipt analysis (OCR + field extraction) of an expense: status, and when done the suggested fields " +
         "(supplier, UID, invoice number, dates, gross amount, category, VAT treatment, tax lines) with confidence 0..1 " +
-        "and source, plus warnings. Suggestions are never applied automatically; to use them, update the expense in the " +
-        "web app. `stale` means the receipt was replaced after the analysis.",
+        "and source, plus warnings. Suggestions are never applied automatically; apply_receipt_analysis saves the fields " +
+        "the user approves. `stale` means the receipt was replaced after the analysis.",
       input: z.object({ expenseId: z.number().int().positive() }),
       output: z.object({
         expenseId: z.number().int(),

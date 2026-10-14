@@ -7,10 +7,12 @@ import {
   defaultVatTreatment,
   EXPENSE_CATEGORY_KEYS,
   expenseTaxCents,
+  isSelfAssessed,
   netFromGross,
   RECEIPT_MAX_BYTES,
   RECEIPT_MIME_TYPES,
   VAT_TREATMENTS,
+  type VatTreatment,
 } from "../../shared/expenses";
 import { ApiError, call, idParam } from "../api";
 import { euroAmount, isoDate } from "../format";
@@ -50,6 +52,18 @@ export async function readReceiptFile(path: string): Promise<File> {
   return new File([bytes], basename(full), { type: MIME_BY_EXT[ext] });
 }
 
+/**
+ * Net and VAT of a line entered as net or gross. For self-assessed treatments (reverse charge, ig. Erwerb) the
+ * gross is the amount payable, which equals the net; the VAT comes on top (see src/shared/expenses.ts).
+ */
+export function lineAmounts(net: number | undefined, gross: number | undefined, rateBp: number, treatment: VatTreatment) {
+  if (gross === undefined || isSelfAssessed(treatment)) {
+    const netCents = gross ?? net!;
+    return { netCents, taxCents: expenseTaxCents(netCents, rateBp) };
+  }
+  return netFromGross(gross, rateBp);
+}
+
 export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
   defineTool(
     server,
@@ -59,7 +73,8 @@ export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
       group: "expenses",
       description:
         "Record an expense (Eingangsrechnung / Beleg). Lines carry the EAR category, net amount OR gross amount in euros, " +
-        "VAT rate (20/13/10/0 %; for reverse charge / ig. Erwerb the Austrian rate that is self-assessed) and the " +
+        "VAT rate (20/13/10/0 %; for reverse charge / ig. Erwerb the Austrian rate that is self-assessed, and gross = " +
+        "net = amount payable) and the " +
         "deductible share in % (default 100). VAT treatment defaults from supplier country and UID like in the UI " +
         "(AT → domestic, EU with UID → reverse_charge, non-EU → reverse_charge). paidAt marks it paid. Optional: " +
         "receiptPath = absolute path of a local PDF/JPG/PNG/WebP (≤ 20 MB) that is attached as the receipt; " +
@@ -107,9 +122,8 @@ export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
         const where = `Zeile ${i + 1}`;
         if ((l.net === undefined) === (l.gross === undefined)) throw new ToolError(`${where}: net oder gross angeben (genau eines)`);
         const rate = vatTreatment === "none" ? 0 : taxRateBp(l.taxRate, where);
-        const fromGross = l.gross !== undefined ? netFromGross(l.gross, rate) : null;
-        const netCents = fromGross ? fromGross.netCents : l.net!;
-        const taxCents = l.tax ?? (fromGross ? fromGross.taxCents : expenseTaxCents(netCents, rate));
+        const { netCents, taxCents: computed } = lineAmounts(l.net, l.gross, rate, vatTreatment);
+        const taxCents = l.tax ?? computed;
         return {
           category: l.category,
           description: l.description ?? "",

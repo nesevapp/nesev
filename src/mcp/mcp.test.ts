@@ -433,6 +433,15 @@ describe("write tools", () => {
       receiptPath: join(FIXTURES, "receipt.pdf"),
     });
     expect(rc.data).toMatchObject({ vatTreatment: "reverse_charge", gross: { cents: 1000 }, tax: { cents: 200 } });
+    // self-assessed: the gross input is the amount payable (= net), the VAT comes on top
+    const rcGross = await callTool("create_expense", {
+      supplierName: "Hetzner Online GmbH",
+      supplierCountry: "DE",
+      supplierUid: "DE812871812",
+      issueDate: slot,
+      lines: [{ category: "software_abos", gross: 12, taxRate: 20 }],
+    });
+    expect(rcGross.data).toMatchObject({ vatTreatment: "reverse_charge", net: { cents: 1200 }, tax: { cents: 240 }, gross: { cents: 1200 } });
 
     const missing = await callTool("create_expense", { supplierName: "X", issueDate: slot, lines: [{ category: "buero", net: 1 }], receiptPath: "/nonexistent/beleg.pdf" });
     expect(missing.text).toContain("Belegdatei nicht gefunden");
@@ -441,7 +450,7 @@ describe("write tools", () => {
     const both = await callTool("create_expense", { supplierName: "X", issueDate: slot, lines: [{ category: "buero", net: 1, gross: 1 }] });
     expect(both.text).toContain("net oder gross");
     // failed calls created nothing
-    expect((await callTool("list_expenses", { limit: 500 })).data.total).toBe(before + 2);
+    expect((await callTool("list_expenses", { limit: 500 })).data.total).toBe(before + 3);
   });
 
   test("receipt analysis: read, unreachable server, fake server, data mismatch", async () => {
@@ -786,6 +795,18 @@ describe("record tools (updates, fixed costs, assets)", () => {
     expect((await callTool("link_expense_to_fixed_cost", { expenseId, fixedCostId: fc.data.id, scheduledDate: `${year}-04-16` })).text).toContain("Kein geplanter Zahlungstermin");
     expect((await callTool("link_expense_to_fixed_cost", { expenseId, scheduledDate: `${year}-04-15` })).text).toContain("nur zusammen mit fixedCostId");
     expect((await callTool("link_expense_to_fixed_cost", { expenseId: ids.expenses.telekom })).text).toContain("Kein freier passender Fixkosten-Termin");
+
+    // duplicates: same name (case-insensitive) or same supplier and amount
+    const byName = await callTool("create_fixed_cost", { name: "büromiete", category: "miete", gross: 1, startDate: `${year}-01-01` });
+    expect(byName.isError).toBe(true);
+    expect(byName.text).toContain("Ähnliche Fixkosten");
+    expect(byName.text).toContain(`fixed cost id ${ids.fixedCost}`);
+    const bySupplier = await callTool("create_fixed_cost", { name: "Server 2", supplierName: "hetzner online gmbh", category: "software_abos", gross: 24, startDate: `${year}-01-01` });
+    expect(bySupplier.text).toContain(`fixed cost id ${fc.data.id}`);
+    const count = (await callTool("list_fixed_costs")).data.fixedCosts.length;
+    const forced = await callTool("create_fixed_cost", { name: "Server 2", supplierName: "Hetzner Online GmbH", category: "software_abos", gross: 24, startDate: `${year}-01-01`, allowDuplicate: true });
+    expect(forced.isError).toBeFalsy();
+    expect((await callTool("list_fixed_costs")).data.fixedCosts.length).toBe(count + 1);
   });
 
   test("create_asset from an expense's anlagen line and by hand, with the AfA plan", async () => {

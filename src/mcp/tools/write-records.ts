@@ -9,8 +9,6 @@ import {
   type ExpenseCategoryKey,
   expenseTaxCents,
   getExpenseCategory,
-  isSelfAssessed,
-  netFromGross,
   VAT_TREATMENT_SHORT_LABELS,
   VAT_TREATMENTS,
   type VatTreatment,
@@ -27,6 +25,7 @@ import { taxRateBp, taxRateInput } from "../inputs";
 import { CHANGES_STATE, CREATES, defineTool, type ToolContext, ToolError } from "../tool";
 import { ClientDetail, clientDetail } from "./clients";
 import { ExpenseDetail, expenseDetail } from "./expenses";
+import { lineAmounts } from "./write-expenses";
 
 // Changes to existing records (clients, expenses, receipt suggestions), Fixkosten and assets (Anlagen).
 
@@ -76,20 +75,17 @@ const lineInput = z.object({
   deductiblePercent: z.number().min(0).max(100).optional().describe("default: category default"),
 });
 
-/** Model lines → API lines. For self-assessed treatments `gross` is the amount payable (= net), see shared/expenses.ts. */
+/** Model lines → API lines (`gross` of self-assessed treatments = net, see lineAmounts). */
 function buildLines(lines: z.output<typeof lineInput>[], treatment: VatTreatment): ApiLine[] {
   return lines.map((l, i) => {
     const where = `Zeile ${i + 1}`;
     if ((l.net === undefined) === (l.gross === undefined)) throw new ToolError(`${where}: net oder gross angeben (genau eines)`);
     const rate = treatment === "none" ? 0 : taxRateBp(l.taxRate, where);
-    const split = l.gross === undefined ? null : isSelfAssessed(treatment) ? { netCents: l.gross, taxCents: expenseTaxCents(l.gross, rate) } : netFromGross(l.gross, rate);
-    const netCents = split ? split.netCents : l.net!;
     return {
       category: l.category,
       description: l.description ?? "",
-      netCents,
+      ...lineAmounts(l.net, l.gross, rate, treatment),
       taxRateBp: rate,
-      taxCents: split ? split.taxCents : expenseTaxCents(netCents, rate),
       deductibleBp: l.deductiblePercent !== undefined ? Math.round(l.deductiblePercent * 100) : (getExpenseCategory(l.category)?.defaultDeductibleBp ?? 10000),
     };
   });
@@ -388,7 +384,8 @@ export function registerRecordWriteTools(server: McpServer, ctx: ToolContext) {
       description:
         "Create a fixed cost (Fixkosten: recurring outgoing payment such as rent, SVS, a subscription) for the " +
         "forecast. gross = amount per payment in euros, taxRate = VAT % contained in it (0 if none). Interval: " +
-        "intervalCount × intervalUnit (3 × month = quarterly). startDate = first payment; later ones keep its day.",
+        "intervalCount × intervalUnit (3 × month = quarterly). startDate = first payment; later ones keep its day. " +
+        "Refuses likely duplicates (same name, or same supplier and amount) unless allowDuplicate: true.",
       input: z.object({
         name: z.string().trim().min(1).max(200),
         supplierName: z.string().trim().max(200).optional(),
@@ -400,12 +397,25 @@ export function registerRecordWriteTools(server: McpServer, ctx: ToolContext) {
         startDate: isoDate,
         endDate: isoDate.optional(),
         notes: z.string().max(5000).optional(),
+        allowDuplicate: z.boolean().default(false).describe("create even if a similar fixed cost exists"),
       }),
       output: FixedCost,
       annotations: CREATES,
     },
-    async ({ gross, taxRate, supplierName, endDate, notes, ...rest }) => {
+    async ({ gross, taxRate, supplierName, endDate, notes, allowDuplicate, ...rest }) => {
       if (gross <= 0) throw new ToolError("Betrag muss größer als 0 sein");
+      const taxCents = containedTaxCents(gross, taxRateBp(taxRate, "Fixkosten"));
+      if (!allowDuplicate) {
+        const fold = (s: string) => s.trim().toLowerCase();
+        const supplier = fold(supplierName ?? "");
+        const dupes = (await call(ctx.api.recurringExpenses.index.$get())).filter(
+          (r) => r.active && !r.ended && (fold(r.name) === fold(rest.name) || (supplier && fold(r.supplierName) === supplier && r.grossCents === gross)),
+        );
+        if (dupes.length) {
+          const list = dupes.map((r) => `${r.name} (fixed cost id ${r.id}, ${eur(r.grossCents)} ${intervalLabel(r)})`).join("; ");
+          throw new ToolError(`Ähnliche Fixkosten gibt es schon, nichts angelegt: ${list}. Bestehende verwenden oder mit allowDuplicate: true erneut aufrufen.`);
+        }
+      }
       const r = await call(
         ctx.api.recurringExpenses.index.$post({
           json: {
@@ -414,7 +424,7 @@ export function registerRecordWriteTools(server: McpServer, ctx: ToolContext) {
             active: true,
             endDate: endDate ?? null,
             grossCents: gross,
-            taxCents: containedTaxCents(gross, taxRateBp(taxRate, "Fixkosten")),
+            taxCents,
             notes: notes ?? "",
           },
         }),
