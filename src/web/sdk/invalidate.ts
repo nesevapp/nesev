@@ -28,7 +28,7 @@ const affects = {
     keys.tax.all,
   ],
   /** Expense writes: lists, supplier suggestions, EAR/UVA and the bank's match candidates. */
-  expenses: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all],
+  expenses: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.dashboard.all, keys.assets.all],
   /** New or replaced receipt file: also earlier analysis results. */
   expenseReceipt: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.receipts.all],
   receipts: [keys.receipts.all],
@@ -47,6 +47,10 @@ const affects = {
     keys.tax.all,
   ],
   backups: [keys.export.backups],
+  /** Fixkosten: projected outflows in the forecast. */
+  recurringExpenses: [keys.recurringExpenses.all, keys.forecast.all],
+  /** Anlagen: AfA changes the EAR, the dashboard result and the expense hints. */
+  assets: [keys.assets.all, keys.tax.all, keys.dashboard.all, keys.expenses.lists],
 } satisfies Record<string, readonly QueryKey[]>;
 
 export type Change = keyof typeof affects;

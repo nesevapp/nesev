@@ -94,6 +94,19 @@ export const keys = {
     candidates: (filter: object) => ["bank", "candidates", filter] as const,
     documentPayments: (documentId: number) => ["bank", "payments", "document", documentId] as const,
   },
+  recurringExpenses: {
+    all: ["recurring-expenses"] as const,
+    list: ["recurring-expenses", "list"] as const,
+  },
+  assets: {
+    all: ["assets"] as const,
+    list: (filter: object) => ["assets", "list", filter] as const,
+    detail: (id: number) => ["assets", "detail", id] as const,
+  },
+  search: {
+    all: ["search"] as const,
+    query: (q: string) => ["search", q] as const,
+  },
   tax: {
     all: ["tax"] as const,
     uva: (period: string | undefined, euIn021: boolean) => ["tax", "uva", period ?? "default", euIn021] as const,

@@ -66,6 +66,11 @@ export const settings = sqliteTable("settings", {
   units: text("units", { mode: "json" }).$type<string[]>(),
   /** receipt analysis config (JSON: mode, llama.cpp paths, ...; shape = OcrSettings, unknown keys ignored); null → defaults */
   ocrSettings: text("ocr_settings", { mode: "json" }).$type<unknown>(),
+  /** forecast: account balance entered by the user and the date it refers to; null → forecast without balance */
+  cashBalanceCents: integer("cash_balance_cents"),
+  cashBalanceDate: text("cash_balance_date"),
+  /** forecast: quarterly income tax prepayment (ESt-Vorauszahlung, due 15.2./15.5./15.8./15.11.); 0 = none */
+  incomeTaxPrepaymentCents: integer("income_tax_prepayment_cents").notNull().default(0),
   ...timestamps,
 });
 
@@ -484,6 +489,64 @@ export const bankMatches = sqliteTable(
   ],
 );
 
+/**
+ * Recurring outgoing payments (Fixkosten: SVS, rent, subscriptions, insurance). Used by the forecast only;
+ * nothing is booked automatically. Schedule semantics like recurringInvoices (anchored day of month).
+ */
+export const recurringExpenses = sqliteTable(
+  "recurring_expenses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** label, e.g. "SVS Beiträge" */
+    name: text("name").notNull(),
+    supplierName: str("supplier_name"),
+    /** expense category key (src/shared/expenses.ts) */
+    category: text("category").notNull().default("sonstiges"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    intervalUnit: text("interval_unit").$type<"month" | "year">().notNull().default("month"),
+    intervalCount: integer("interval_count").notNull().default(1),
+    /** first payment date; later ones are anchored to its day of month */
+    startDate: text("start_date").notNull(),
+    /** last possible payment date; null = open-ended */
+    endDate: text("end_date"),
+    /** amount leaving the account per payment */
+    grossCents: integer("gross_cents").notNull().default(0),
+    /** deductible input VAT contained in grossCents (reduces the VAT payable in the forecast) */
+    taxCents: integer("tax_cents").notNull().default(0),
+    notes: str("notes"),
+    ...timestamps,
+  },
+  (t) => [index("recurring_expenses_active_idx").on(t.active)],
+);
+
+/**
+ * Anlagenverzeichnis: assets over the GWG limit, depreciated straight-line (AfA) over their useful life.
+ * Expense lines with category "anlagen" are capitalized (not expensed); the AfA from this table replaces them.
+ */
+export const fixedAssets = sqliteTable(
+  "fixed_assets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** running asset number shown to the user (AV-0001) */
+    number: integer("number").notNull(),
+    name: text("name").notNull(),
+    /** expense the asset was bought with (optional) */
+    expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+    acquisitionDate: text("acquisition_date").notNull(),
+    /** Inbetriebnahme; decides full vs. half-year AfA in the first year */
+    inServiceDate: text("in_service_date").notNull(),
+    /** Anschaffungskosten (net, plus non-deductible VAT) */
+    costCents: integer("cost_cents").notNull(),
+    usefulLifeYears: integer("useful_life_years").notNull(),
+    /** sold / scrapped; remaining book value is written off in that year */
+    disposalDate: text("disposal_date"),
+    disposalProceedsCents: integer("disposal_proceeds_cents"),
+    notes: str("notes"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("fixed_assets_number_uq").on(t.number), index("fixed_assets_expense_idx").on(t.expenseId)],
+);
+
 export const numberSequences = sqliteTable(
   "number_sequences",
   {
@@ -518,5 +581,9 @@ export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type NewBankTransaction = typeof bankTransactions.$inferInsert;
 export type BankMatch = typeof bankMatches.$inferSelect;
 export type NewReminder = typeof reminders.$inferInsert;
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+export type NewRecurringExpense = typeof recurringExpenses.$inferInsert;
+export type FixedAsset = typeof fixedAssets.$inferSelect;
+export type NewFixedAsset = typeof fixedAssets.$inferInsert;
 export type NewPdfTemplate = typeof pdfTemplates.$inferInsert;
 

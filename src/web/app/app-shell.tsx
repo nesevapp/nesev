@@ -2,6 +2,8 @@ import { Link, Outlet } from "@tanstack/react-router";
 import {
   Archive,
   Calculator,
+  CalendarClock,
+  HardDrive,
   BellRing,
   FileText,
   Landmark,
@@ -28,6 +30,8 @@ interface NavItem {
     | "/reminders"
     | "/recurring"
     | "/expenses"
+    | "/fixed-costs"
+    | "/assets"
     | "/bank"
     | "/tax"
     | "/clients"
@@ -60,6 +64,8 @@ const NAV: { title?: string; items: NavItem[] }[] = [
     title: "Finanzen",
     items: [
       { to: "/expenses", label: "Ausgaben", icon: ReceiptEuro },
+      { to: "/fixed-costs", label: "Fixkosten", icon: CalendarClock },
+      { to: "/assets", label: "Anlagen", icon: HardDrive },
       { to: "/bank", label: "Bank", icon: Landmark },
       { to: "/tax", label: "Steuern", icon: Calculator },
     ],

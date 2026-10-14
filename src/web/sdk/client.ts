@@ -14,6 +14,9 @@ import type settingsApp from "@server/routes/settings";
 import type taxApp from "@server/routes/tax";
 import type templatesApp from "@server/routes/templates";
 import type unitsApp from "@server/routes/units";
+import type recurringExpensesApp from "@server/routes/recurring-expenses";
+import type assetsApp from "@server/routes/assets";
+import type searchApp from "@server/routes/search";
 
 /**
  * One typed hc client per route module, each typed against that module only (not the merged AppType),
@@ -38,6 +41,9 @@ export const reminders = hc<typeof remindersApp>(`${base}/reminders`);
 export const settings = hc<typeof settingsApp>(`${base}/settings`);
 export const tax = hc<typeof taxApp>(`${base}/tax`);
 export const templates = hc<typeof templatesApp>(`${base}/templates`);
+export const recurringExpenses = hc<typeof recurringExpensesApp>(`${base}/recurring-expenses`);
+export const assets = hc<typeof assetsApp>(`${base}/assets`);
+export const search = hc<typeof searchApp>(`${base}/search`);
 export const units = hc<typeof unitsApp>(`${base}/units`);
 
 /** parseResponse() returns the typed JSON body and throws DetailedError on non-2xx. */

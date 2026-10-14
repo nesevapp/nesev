@@ -21,3 +21,6 @@ export * from "./expenses";
 export * from "./receipts";
 export * from "./bank";
 export * from "./tax";
+export * from "./recurring-expenses";
+export * from "./assets";
+export * from "./search";

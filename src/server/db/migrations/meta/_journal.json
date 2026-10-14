@@ -43,6 +43,13 @@
       "when": 1791931821586,
       "tag": "0005_receipt_analyses",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791976878032,
+      "tag": "0006_fixed_costs_assets",
+      "breakpoints": true
     }
   ]
 }

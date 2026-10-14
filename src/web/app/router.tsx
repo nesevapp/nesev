@@ -6,7 +6,9 @@ import { bankRoutes } from "@/features/bank/routes";
 import { clientsRoutes } from "@/features/clients/routes";
 import { dashboardRoutes } from "@/features/dashboard/routes";
 import { documentsRoutes } from "@/features/documents/routes";
+import { assetsRoutes } from "@/features/assets/routes";
 import { expensesRoutes } from "@/features/expenses/routes";
+import { fixedCostsRoutes } from "@/features/fixed-costs/routes";
 import { exportRoutes } from "@/features/export/routes";
 import { forecastRoutes } from "@/features/forecast/routes";
 import { recurringRoutes } from "@/features/recurring/routes";
@@ -26,6 +28,8 @@ const routeTree = rootRoute.addChildren([
   ...recurringRoutes,
   ...forecastRoutes,
   ...expensesRoutes,
+  ...fixedCostsRoutes,
+  ...assetsRoutes,
   ...bankRoutes,
   ...taxRoutes,
   ...clientsRoutes,
