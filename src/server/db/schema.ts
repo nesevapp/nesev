@@ -64,7 +64,7 @@ export const settings = sqliteTable("settings", {
   vatPeriod: text("vat_period").$type<"monthly" | "quarterly">().notNull().default("quarterly"),
   /** units offered in line-item dropdowns (JSON string[]); null → DEFAULT_UNITS */
   units: text("units", { mode: "json" }).$type<string[]>(),
-  /** receipt analysis config (JSON: Ollama URL, model, ...; shape owned by the receipt-ocr feature); null → defaults */
+  /** receipt analysis config (JSON: mode, llama.cpp paths, ...; shape = OcrSettings, unknown keys ignored); null → defaults */
   ocrSettings: text("ocr_settings", { mode: "json" }).$type<unknown>(),
   ...timestamps,
 });

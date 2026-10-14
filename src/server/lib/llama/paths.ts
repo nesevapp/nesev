@@ -2,9 +2,9 @@ import { accessSync, constants, type Dirent, readdirSync, realpathSync, statSync
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-// llama.cpp provider: find the llama-server binary and local GGUF models. Nothing is downloaded here –
-// models come from Unsloth Studio, LM Studio or a one-off `llama-server -hf <repo>:<quant>`, which stores the
-// file in the Hugging Face cache (~/.cache/huggingface/hub) that we scan.
+// Find the llama-server binary and local GGUF models. Nothing is downloaded here – models come from a one-off
+// `llama-server -hf <repo>:<quant>`, which stores the file in the Hugging Face cache (~/.cache/huggingface/hub),
+// or from other local tools (Unsloth, LM Studio) whose model folders we scan as well.
 
 /** File system access, injectable for tests. */
 export interface FsDeps {
@@ -74,7 +74,7 @@ export type BinarySource = "configured" | "unsloth" | "path" | "homebrew";
 
 export const BINARY_SOURCE_LABELS: Record<BinarySource, string> = {
   configured: "eingestellt",
-  unsloth: "Unsloth Studio",
+  unsloth: "Unsloth-Build (~/.unsloth)",
   path: "PATH",
   homebrew: "Homebrew",
 };
@@ -82,7 +82,7 @@ export const BINARY_SOURCE_LABELS: Record<BinarySource, string> = {
 export type BinaryLookup = { path: string; source: BinarySource } | { path: null; error: string };
 
 export const binaryInstallHint = () =>
-  "llama-server nicht gefunden – Unsloth Studio installieren (bringt llama.cpp mit) oder `brew install llama.cpp`";
+  "llama-server nicht gefunden – `brew install llama.cpp` oder den Pfad zu llama-server eintragen";
 
 /** Configured path, else the first of: Unsloth's build, `llama-server` on PATH, /opt/homebrew/bin. */
 export function findLlamaServer(configured: string, fs: FsDeps = nodeFs): BinaryLookup {

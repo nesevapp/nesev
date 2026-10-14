@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { AbortedError } from "../ocr/run";
 import { modelAlias } from "./paths";
 
-// Process manager for the llama.cpp provider: nesev starts llama-server itself when the receipt worker needs a
+// Process manager for llama.cpp: nesev starts llama-server itself when the receipt worker needs a
 // model, reuses it for the whole batch and stops it afterwards (or after an idle timeout).
 //
 // - Binds 127.0.0.1 on a free port chosen here; a random per-process API key is passed via LLAMA_API_KEY
@@ -23,7 +23,7 @@ export interface LlamaConfig {
 }
 
 export interface LlamaEndpoint {
-  /** OpenAI-compatible base URL incl. /v1 */
+  /** API base URL incl. /v1 (chat completions) */
   baseUrl: string;
   apiKey: string;
   port: number;

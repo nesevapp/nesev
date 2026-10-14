@@ -8,7 +8,6 @@ import { DATA_DIR } from "../lib/paths";
 import { AbortedError } from "../lib/ocr/run";
 import { analyzeReceipt, type AnalyzeOutput } from "./receipt-pipeline";
 import { getLlamaServer } from "./receipt-llama";
-import { unloadModel } from "./receipt-ollama";
 import { getOcrSettings } from "./receipt-settings";
 import { getSettings } from "./settings";
 
@@ -220,8 +219,6 @@ export function failRun(db: DbOrTx, id: number, error: string): void {
 
 export interface RunContext {
   signal: AbortSignal;
-  /** no further runs are queued: the model may be unloaded right after this one */
-  lastInBatch: boolean;
 }
 
 export type RunFn = (db: DbOrTx, row: ReceiptAnalysis, ctx: RunContext) => Promise<AnalyzeOutput>;
@@ -233,8 +230,8 @@ export class ReceiptWorker {
   constructor(
     private readonly db: DbOrTx,
     private readonly run: RunFn,
-    /** after the queue ran empty; `usedModels` = models that received a request */
-    private readonly onBatchEnd?: (usedModels: Set<string>) => Promise<void>,
+    /** after the queue ran empty (stops llama-server) */
+    private readonly onBatchEnd?: () => Promise<void>,
   ) {}
 
   get busy(): boolean {
@@ -260,15 +257,13 @@ export class ReceiptWorker {
   }
 
   private async process(): Promise<void> {
-    const usedModels = new Set<string>();
     for (;;) {
       const row = claimNext(this.db);
       if (!row) break;
       const controller = new AbortController();
       this.current = { id: row.id, controller };
       try {
-        const out = await this.run(this.db, row, { signal: controller.signal, lastInBatch: countQueued(this.db) === 0 });
-        if (out.usedModel && out.model) usedModels.add(out.model);
+        const out = await this.run(this.db, row, { signal: controller.signal });
         finishRun(this.db, row.id, out);
       } catch (err) {
         if (!(err instanceof AbortedError) && !controller.signal.aborted) {
@@ -279,19 +274,18 @@ export class ReceiptWorker {
         this.current = null;
       }
     }
-    if (this.onBatchEnd) await this.onBatchEnd(usedModels).catch(() => {});
+    if (this.onBatchEnd) await this.onBatchEnd().catch(() => {});
   }
 }
 
 /** The production run: current receipt file, OCR settings, own company data as context. */
-export const runAnalysis: RunFn = async (db, row, { signal, lastInBatch }) => {
+export const runAnalysis: RunFn = async (db, row, { signal }) => {
   if (!row.attachmentPath) throw new Error("Kein Beleg vorhanden");
   const settings = getOcrSettings(db);
   const company = getSettings(db);
   return analyzeReceipt({
     file: join(DATA_DIR, row.attachmentPath),
     settings,
-    keepAlive: settings.provider === "ollama" && settings.unloadAfterBatch && lastInBatch ? 0 : "10m",
     context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban },
     signal,
     db,
@@ -303,17 +297,12 @@ const WORKER_KEY = Symbol.for("nesev.receiptWorker");
 /** Process-wide worker (kept across `bun --hot` reloads). */
 export function getReceiptWorker(db: DbOrTx): ReceiptWorker {
   const g = globalThis as { [WORKER_KEY]?: ReceiptWorker };
-  g[WORKER_KEY] ??= new ReceiptWorker(db, runAnalysis, async (models) => {
-    const settings = getOcrSettings(db);
-    // llama.cpp: nesev's own llama-server – stop it now, or after 5 min idle (a new batch reuses it)
+  g[WORKER_KEY] ??= new ReceiptWorker(db, runAnalysis, async () => {
+    // nesev's own llama-server: stop it now, or after 5 min idle (a new batch reuses it)
     const llama = getLlamaServer();
-    if (llama.activeKey()) {
-      if (settings.provider === "llamacpp" && !settings.unloadAfterBatch) llama.scheduleIdleStop();
-      else await llama.stop();
-    }
-    // OpenAI-compatible servers (Unsloth Studio, …) manage loading in their own UI: nothing to unload
-    if (settings.provider !== "ollama" || !settings.unloadAfterBatch) return;
-    for (const model of models) await unloadModel(settings.ollamaUrl, model);
+    if (!llama.activeKey()) return;
+    if (getOcrSettings(db).unloadAfterBatch) await llama.stop();
+    else llama.scheduleIdleStop();
   });
   return g[WORKER_KEY];
 }

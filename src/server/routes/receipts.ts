@@ -7,7 +7,7 @@ import { DB_PATH } from "../lib/paths";
 import { discoverModels } from "../lib/llama/paths";
 import { validate } from "../lib/validate";
 import { getLlamaServer, syncLlamaServer, testLlama } from "../services/receipt-llama";
-import { LlmError } from "../services/receipt-ollama";
+import { LlmError } from "../services/receipt-llm";
 import {
   cancelAnalysis,
   enqueueAnalyses,
@@ -26,7 +26,7 @@ const idParam = validate("param", z.object({ id: z.coerce.number().int().positiv
 
 if (DB_PATH !== ":memory:") {
   initReceiptQueue(db);
-  // llama.cpp provider: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
+  // llama-server: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
   getLlamaServer();
 }
 
@@ -55,7 +55,7 @@ const app = new Hono()
   .get("/settings", (c) => c.json(getOcrSettings(db)))
   .put("/settings", validate("json", ocrSettingsSchema), async (c) => {
     const saved = updateOcrSettings(db, c.req.valid("json"));
-    // an idle llama-server started for other settings (model, context, provider) is stopped
+    // an idle llama-server started for other settings (model, context, LLM off) is stopped
     await syncLlamaServer(saved, getReceiptWorker(db).busy);
     return c.json(saved);
   })
@@ -74,10 +74,7 @@ const app = new Hono()
       throw err;
     }
   })
-  /**
-   * Health of the components: Swift helper, Tesseract and the active model server (Ollama: installed models;
-   * OpenAI-compatible: loaded models). provider/url/apiKey/model test unsaved form values.
-   */
+  /** Health of the components: Swift helper, Tesseract and llama.cpp; the paths in the query test unsaved form values. */
   .get("/status", validate("query", ocrProbeQuerySchema), async (c) => c.json(await componentStatus(db, c.req.valid("query"))))
   /** Compile the Swift OCR helper now (otherwise it is compiled on the first analysis). */
   .post("/helper/build", async (c) => {

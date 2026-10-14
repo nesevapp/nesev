@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { OcrSettings } from "../../shared/receipts";
 import { AbortedError } from "../lib/ocr/run";
 import {
@@ -26,18 +26,16 @@ import {
   unregister,
 } from "../lib/llama/server";
 import { DATA_DIR } from "../lib/paths";
-import { LlmError } from "./receipt-ollama";
-import { extractWithOpenAi } from "./receipt-openai";
+import { extractFields, LlmError } from "./receipt-llm";
 
-// llama.cpp provider ("von nesev gestartet"): settings → llama-server config, the process-wide server manager,
-// status for the settings page and the explicit "Testen" run. The analysis itself goes through the
-// OpenAI-compatible client against the server nesev started (see receipt-pipeline.ts).
+// The local model runs in a llama.cpp llama-server that nesev starts itself: settings → llama-server config
+// (incl. the automatic model choice), the process-wide server manager, status for the settings page and the
+// explicit "Testen" run. The analysis talks to the server via receipt-llm.ts (see receipt-pipeline.ts).
 
 export class LlamaCppError extends LlmError {}
 
 export const llamaDownloadHint = () =>
-  "Modell herunterladen: in Unsloth Studio laden oder einmal `llama-server -hf unsloth/Qwen3.5-4B-GGUF:Q4_K_M` ausführen (danach mit Strg+C beenden) – die Datei landet in ~/.cache/huggingface/hub";
-export const llamaNoModelMessage = () => "Kein Modell gewählt – in den Einstellungen unter Belegerkennung eine GGUF-Datei auswählen";
+  "Kein Modell gefunden – einmal `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` ausführen (lädt Modell und mmproj, danach mit Strg+C beenden); die Dateien landen in ~/.cache/huggingface/hub";
 export const llamaNoVisionMessage = () =>
   "Vision-Modus braucht eine mmproj-Datei (keine neben dem Modell gefunden) – mmproj-Pfad eintragen oder Modus „Text“ wählen";
 
@@ -51,31 +49,59 @@ export interface LlamaOverrides {
 
 export interface ResolvedLlama {
   binary: { path: string; source: BinarySource } | { path: null; error: string };
+  /** configured model, or the auto-picked one ("" when none is configured and none was found) */
   model: string;
+  /** the model was picked automatically (empty llamaModelPath) */
+  auto: GgufModel | null;
   /** configured, or auto-detected next to the model (auto = true) */
   mmproj: string | null;
   mmprojAuto: boolean;
   contextSize: number;
 }
 
-export function resolveLlama(settings: OcrSettings, o: LlamaOverrides = {}, fs: FsDeps = nodeFs): ResolvedLlama {
-  const model = expandHome(o.modelPath ?? settings.llamaModelPath, fs.home);
+/** preferred default model: Qwen3.5 4B reads text and images well and fits in a few GB */
+const PREFERRED_MODEL = /Qwen3\.5-4B/i;
+
+/** Default when no model is configured: a Qwen3.5-4B GGUF (one with mmproj first), else the first one found. */
+export function autoPickModel(models: readonly GgufModel[]): GgufModel | null {
+  const preferred = models.filter((m) => PREFERRED_MODEL.test(m.name) || PREFERRED_MODEL.test(basename(m.path)));
+  return preferred.find((m) => m.mmproj) ?? preferred[0] ?? models[0] ?? null;
+}
+
+/** "unsloth/Qwen3.5-4B-GGUF · UD-Q4_K_XL" */
+export const ggufLabel = (m: GgufModel) => [m.name, m.quant].filter(Boolean).join(" · ");
+
+export function resolveLlama(
+  settings: OcrSettings,
+  o: LlamaOverrides = {},
+  fs: FsDeps = nodeFs,
+  discover: () => GgufModel[] = () => discoverModels(fs),
+): ResolvedLlama {
+  const configured = expandHome(o.modelPath ?? settings.llamaModelPath, fs.home);
+  const auto = configured ? null : autoPickModel(discover());
+  const model = configured || auto?.path || "";
   const configuredMmproj = expandHome(o.mmprojPath ?? settings.llamaMmprojPath, fs.home);
-  const auto = !configuredMmproj && model ? findMmproj(model, fs) : null;
+  const autoMmproj = !configuredMmproj && model ? findMmproj(model, fs) : null;
   return {
     binary: findLlamaServer(o.serverPath ?? settings.llamaServerPath, fs),
     model,
-    mmproj: configuredMmproj || auto,
-    mmprojAuto: !configuredMmproj && !!auto,
+    auto,
+    mmproj: configuredMmproj || autoMmproj,
+    mmprojAuto: !configuredMmproj && !!autoMmproj,
     contextSize: o.contextSize ?? settings.llamaContextSize,
   };
 }
 
 /** Config to start llama-server with; throws LlamaCppError (→ rules-only) when something is missing. */
-export function llamaConfigFor(settings: OcrSettings, o: LlamaOverrides = {}, fs: FsDeps = nodeFs): LlamaConfig {
-  const r = resolveLlama(settings, o, fs);
+export function llamaConfigFor(
+  settings: OcrSettings,
+  o: LlamaOverrides = {},
+  fs: FsDeps = nodeFs,
+  discover?: () => GgufModel[],
+): LlamaConfig {
+  const r = resolveLlama(settings, o, fs, discover);
   if (r.binary.path === null) throw new LlamaCppError(r.binary.error, "unreachable");
-  if (!r.model) throw new LlamaCppError(llamaNoModelMessage(), "model_missing");
+  if (!r.model) throw new LlamaCppError(llamaDownloadHint(), "model_missing");
   if (!fs.isFile(r.model)) throw new LlamaCppError(`Modelldatei nicht gefunden: ${r.model}`, "model_missing");
   if (settings.mode === "vision" && !r.mmproj) throw new LlamaCppError(llamaNoVisionMessage(), "no_vision");
   // text mode never loads the projector (saves memory and load time)
@@ -113,7 +139,7 @@ export async function syncLlamaServer(settings: OcrSettings, workerBusy: boolean
   const active = manager.activeKey();
   if (!active || workerBusy) return;
   let wanted: string | null = null;
-  if (settings.llmEnabled && settings.provider === "llamacpp") {
+  if (settings.llmEnabled) {
     try {
       wanted = configKey(llamaConfigFor(settings));
     } catch {
@@ -127,7 +153,8 @@ export async function syncLlamaServer(settings: OcrSettings, workerBusy: boolean
 
 export interface LlamaCppStatus {
   binary: { path: string | null; source: string | null; version: string | null; error?: string };
-  model: { path: string; label: string; exists: boolean; sizeBytes: number | null; hint?: string };
+  /** label: "Qwen3.5-4B-UD-Q4_K_XL" (configured) or "unsloth/Qwen3.5-4B-GGUF · UD-Q4_K_XL" (auto = picked automatically) */
+  model: { path: string; label: string; auto: boolean; exists: boolean; sizeBytes: number | null; hint?: string };
   mmproj: { path: string | null; auto: boolean; exists: boolean };
   /** the vision mode can run (a projector is available) */
   vision: boolean;
@@ -135,6 +162,8 @@ export interface LlamaCppStatus {
   server: LlamaServerState;
   /** GGUFs found on disk (count; the list comes from GET /llamacpp/models) */
   discovered: number;
+  /** the model used when the model path is left empty */
+  autoModel: { path: string; label: string } | null;
 }
 
 const versionCache = new Map<string, { mtime: number; version: string | null }>();
@@ -165,20 +194,23 @@ export async function llamaCppStatus(
   manager: LlamaServerManager = getLlamaServer(),
   models: GgufModel[] = discoverModels(fs),
 ): Promise<LlamaCppStatus> {
-  const r = resolveLlama(settings, o, fs);
+  const r = resolveLlama(settings, o, fs, () => models);
+  const autoPick = r.auto ?? autoPickModel(models);
   const exists = !!r.model && fs.isFile(r.model);
-  const hint = !r.model ? (models.length ? llamaNoModelMessage() : llamaDownloadHint()) : !exists ? `Datei nicht gefunden – ${llamaDownloadHint()}` : undefined;
+  const hint = !r.model ? llamaDownloadHint() : !exists ? `Datei nicht gefunden: ${r.model}` : undefined;
+  const label = r.auto ? ggufLabel(r.auto) : r.model ? modelAlias(r.model) : "";
   return {
     binary:
       r.binary.path === null
         ? { path: null, source: null, version: null, error: r.binary.error }
         : { path: r.binary.path, source: BINARY_SOURCE_LABELS[r.binary.source], version: await llamaVersion(r.binary.path) },
-    model: { path: r.model, label: r.model ? modelAlias(r.model) : "", exists, sizeBytes: exists ? fs.size(r.model) : null, ...(hint ? { hint } : {}) },
+    model: { path: r.model, label, auto: !!r.auto, exists, sizeBytes: exists ? fs.size(r.model) : null, ...(hint ? { hint } : {}) },
     mmproj: { path: r.mmproj, auto: r.mmprojAuto, exists: !!r.mmproj && fs.isFile(r.mmproj) },
     vision: !!r.mmproj && fs.isFile(r.mmproj),
     contextSize: r.contextSize,
     server: manager.state(),
     discovered: models.length,
+    autoModel: autoPick ? { path: autoPick.path, label: ggufLabel(autoPick) } : null,
   };
 }
 
@@ -219,7 +251,7 @@ export async function testLlama(settings: OcrSettings, o: LlamaOverrides, signal
     } catch (err) {
       throw toLlmError(err);
     }
-    const res = await extractWithOpenAi({
+    const res = await extractFields({
       baseUrl: endpoint.baseUrl,
       apiKey: endpoint.apiKey,
       model: endpoint.model,

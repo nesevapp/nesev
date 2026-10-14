@@ -12,14 +12,23 @@ import { apiErrorMessage, type LlamaModel, llamaModelsQuery, type ReceiptEngineS
 import { CodeText } from "./code-text";
 import { formatGb, StatusRow } from "./status-row";
 
-// llama.cpp provider ("von nesev gestartet"): form fields and status rows of the Belegerkennung settings.
+// llama.cpp (llama-server, started by nesev): form fields and status rows of the Belegerkennung settings.
 
 const seconds = (ms: number) => `${(ms / 1000).toLocaleString("de-AT", { maximumFractionDigits: 1 })} s`;
 
 export const llamaModelLabel = (m: LlamaModel) =>
   [m.name, m.quant, formatGb(m.sizeBytes), m.mmproj ? "Vision" : null].filter(Boolean).join(" · ");
 
-export function LlamaFields({ control, mode }: { control: Control<OcrSettingsInput>; mode: OcrMode }) {
+export function LlamaFields({
+  control,
+  mode,
+  autoModel,
+}: {
+  control: Control<OcrSettingsInput>;
+  mode: OcrMode;
+  /** the model used when the path is left empty (from the status) */
+  autoModel: { path: string; label: string } | null;
+}) {
   const models = useQuery(llamaModelsQuery);
   const test = useTestLlama();
   const [serverPath, modelPath, mmprojPath, contextSize] = useWatch({
@@ -34,17 +43,17 @@ export function LlamaFields({ control, mode }: { control: Control<OcrSettingsInp
         control={control}
         name="llamaModelPath"
         label="Modelldatei (GGUF)"
-        placeholder="~/.cache/huggingface/hub/models--…/…/modell-Q4_K_M.gguf"
+        placeholder={autoModel ? `leer = automatisch (${autoModel.label})` : "~/.cache/huggingface/hub/models--…/…/modell.gguf"}
         description={
           found.length > 0
             ? undefined
-            : "Keine GGUF-Dateien gefunden (gesucht: Hugging-Face-Cache, llama.cpp-Cache, ~/.unsloth, LM Studio)."
+            : "Keine GGUF-Dateien gefunden (gesucht: Hugging-Face-Cache, llama.cpp-Cache, ~/.unsloth, LM Studio). Einmal `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` lädt das empfohlene Modell."
         }
       />
       {found.length > 0 && (
         <FormItem className="-mt-2">
           <FormLabel className="sr-only">Gefundene Modelle</FormLabel>
-          <ModelPicker models={found} value={modelPath ?? ""} />
+          <ModelPicker models={found} value={modelPath ?? ""} autoModel={autoModel} />
         </FormItem>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -74,7 +83,7 @@ export function LlamaFields({ control, mode }: { control: Control<OcrSettingsInp
             type="button"
             variant="outline"
             size="sm"
-            disabled={test.isPending || !modelPath}
+            disabled={test.isPending || (!modelPath && !autoModel)}
             onClick={() =>
               test.mutate({
                 serverPath: serverPath ?? "",
@@ -106,18 +115,22 @@ export function LlamaFields({ control, mode }: { control: Control<OcrSettingsInp
   );
 }
 
-/** Picks a discovered GGUF into the path field above. Radix Select can't hold "": a custom path shows the placeholder. */
-function ModelPicker({ models, value }: { models: LlamaModel[]; value: string }) {
+/** Radix Select can't hold "": stands for an empty model path (automatic choice) */
+const AUTO_MODEL = "__auto__";
+
+/** Picks a discovered GGUF (or the automatic choice) into the path field above; a custom path shows the placeholder. */
+function ModelPicker({ models, value, autoModel }: { models: LlamaModel[]; value: string; autoModel: { label: string } | null }) {
   const { setValue } = useFormContext<OcrSettingsInput>();
   return (
     <Select
-      value={models.some((m) => m.path === value) ? value : ""}
-      onValueChange={(path) => setValue("llamaModelPath", path, { shouldDirty: true, shouldValidate: true })}
+      value={!value ? AUTO_MODEL : models.some((m) => m.path === value) ? value : ""}
+      onValueChange={(path) => setValue("llamaModelPath", path === AUTO_MODEL ? "" : path, { shouldDirty: true, shouldValidate: true })}
     >
       <SelectTrigger className="w-full">
         <SelectValue placeholder="Gefundenes Modell wählen…" />
       </SelectTrigger>
       <SelectContent>
+        <SelectItem value={AUTO_MODEL}>Automatisch{autoModel ? `: ${autoModel.label}` : ""}</SelectItem>
         {models.map((m) => (
           <SelectItem key={m.path} value={m.path} title={m.path}>
             {llamaModelLabel(m)}
@@ -140,9 +153,12 @@ export function LlamaStatusRows({ status: s }: { status: NonNullable<ReceiptEngi
           <CodeText text={s.binary.error ?? "nicht gefunden"} />
         )}
       </StatusRow>
-      <StatusRow state={s.model.exists ? "ok" : "warn"} label={s.model.label ? `Modell ${s.model.label}` : "Modell"}>
+      <StatusRow state={s.model.exists ? "ok" : "warn"} label="Modell">
         {s.model.exists ? (
-          <span title={s.model.path}>{s.model.sizeBytes != null ? formatGb(s.model.sizeBytes) : "vorhanden"}</span>
+          <span title={s.model.path}>
+            {s.model.auto ? `Automatisch: ${s.model.label}` : s.model.label}
+            {s.model.sizeBytes != null ? ` · ${formatGb(s.model.sizeBytes)}` : ""}
+          </span>
         ) : (
           <CodeText text={s.model.hint ?? "nicht gefunden"} />
         )}

@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { OcrProvider, OcrSettings } from "@shared/receipts";
+import type { OcrSettings } from "@shared/receipts";
 import type { LlamaTestRequest } from "@shared/schemas/receipt";
 import { idParam, parseResponse, receipts } from "./client";
 import { useInvalidate } from "./invalidate";
@@ -13,7 +13,7 @@ export const receiptsApi = {
   analysis: async (expenseId: number) =>
     (await parseResponse(receipts.expenses[":id"].$get({ param: idParam(expenseId) }))).analysis,
   settings: () => parseResponse(receipts.settings.$get()),
-  /** Status of the OCR components (Vision helper, Tesseract, active model server); `probe` tests unsaved form values. */
+  /** Status of the OCR components (Vision helper, Tesseract, llama.cpp); `probe` tests unsaved form values. */
   status: (probe: OcrStatusProbe = {}) => parseResponse(receipts.status.$get({ query: probe })),
   analyze: (expenseIds: number[]) => parseResponse(receipts.analyze.$post({ json: { expenseIds } })),
   cancel: (analysisId: number) => parseResponse(receipts[":id"].cancel.$post({ param: idParam(analysisId) })),
@@ -26,13 +26,8 @@ export const receiptsApi = {
   testLlama: (json: LlamaTestRequest) => parseResponse(receipts.llamacpp.test.$post({ json })),
 };
 
-/** unsaved settings-form values to test ("Verbindung testen"); missing → saved settings */
+/** unsaved llama.cpp paths from the settings form ("Verbindung testen"; empty = auto, missing → saved settings) */
 export interface OcrStatusProbe {
-  provider?: OcrProvider;
-  url?: string;
-  apiKey?: string;
-  model?: string;
-  /** llama.cpp paths (empty = auto) */
   serverPath?: string;
   modelPath?: string;
   mmprojPath?: string;

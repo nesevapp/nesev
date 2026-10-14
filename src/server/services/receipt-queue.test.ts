@@ -29,9 +29,8 @@ const output = (over: Partial<AnalyzeOutput> = {}): AnalyzeOutput => ({
   status: "done",
   textSource: "pdf_text",
   text: "Beleg",
-  model: "qwen3.5:4b",
+  model: "Qwen3.5-4B-UD-Q4_K_XL",
   error: "",
-  usedModel: true,
   result: { fields: { grossCents: { value: 100, confidence: 0.9, source: "llm" } }, warnings: [] },
   ...over,
 });
@@ -65,32 +64,29 @@ describe("receipt analysis queue", () => {
     expect(queueOverview(db).queued).toBe(2);
   });
 
-  test("worker runs one at a time in queue order; keep_alive hint on the last one; unload at batch end", async () => {
+  test("worker runs one at a time in queue order; batch end hook once", async () => {
     const { db, ids } = await setup();
     enqueueAnalyses(db, ids);
     const order: number[] = [];
     let concurrent = 0;
     let maxConcurrent = 0;
-    const lastFlags: boolean[] = [];
-    const run: RunFn = async (_db, row, ctx) => {
+    const run: RunFn = async (_db, row) => {
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       order.push(row.expenseId);
-      lastFlags.push(ctx.lastInBatch);
       await Bun.sleep(5);
       concurrent--;
-      return output(row.expenseId === ids[1] ? { status: "failed", error: "Ollama läuft nicht – starte es mit `ollama serve`" } : {});
+      return output(row.expenseId === ids[1] ? { status: "failed", error: "llama-server konnte das Modell nicht laden: bad magic" } : {});
     };
-    const batches: Set<string>[] = [];
-    const worker = new ReceiptWorker(db, run, async (models) => void batches.push(models));
+    let batches = 0;
+    const worker = new ReceiptWorker(db, run, async () => void batches++);
     worker.kick();
     worker.kick(); // no second loop
     await worker.idle();
 
     expect(order).toEqual(ids);
     expect(maxConcurrent).toBe(1);
-    expect(lastFlags).toEqual([false, false, true]);
-    expect(batches).toEqual([new Set(["qwen3.5:4b"])]);
+    expect(batches).toBe(1);
 
     const a = latestAnalysis(db, ids[0]!)!;
     expect(a.status).toBe("done");
@@ -99,7 +95,7 @@ describe("receipt analysis queue", () => {
     expect(a.finishedAt).not.toBeNull();
     const failed = latestAnalysis(db, ids[1]!)!;
     expect(failed.status).toBe("failed");
-    expect(failed.error).toContain("ollama serve");
+    expect(failed.error).toContain("bad magic");
 
     const items = queueOverview(db).items;
     expect(items.map(analysisListStatus)).toEqual(["ready", "failed", "ready"]);

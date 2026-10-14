@@ -20,20 +20,10 @@ import { AbortedError, runCommand } from "../lib/ocr/run";
 import { tesseractImage, tesseractStatus } from "../lib/ocr/tesseract";
 import { supplierSuggestions } from "./expenses";
 import { extractWithRules, type RulesContext } from "./receipt-heuristics";
-import {
-  extractWithOllama,
-  type FetchFn,
-  hasModel,
-  LlmError,
-  listModels,
-  modelMissingMessage,
-  OllamaError,
-  type PromptContext,
-} from "./receipt-ollama";
 import { modelAlias } from "../lib/llama/paths";
 import type { LlamaServerManager } from "../lib/llama/server";
 import { getLlamaServer, llamaConfigFor, toLlmError } from "./receipt-llama";
-import { extractWithOpenAi, listOpenAiModels, resolveOpenAiModel } from "./receipt-openai";
+import { extractFields, type FetchFn, LlmError, type PromptContext } from "./receipt-llm";
 import { normalizeSupplierName, normalizeUid } from "./receipt-parse";
 import { mergeFields, validateFields } from "./receipt-validate";
 
@@ -53,14 +43,12 @@ export interface AnalyzeInput {
   /** absolute path of the receipt */
   file: string;
   settings: OcrSettings;
-  /** Ollama keep_alive for this request (0 = unload right after); ignored by the OpenAI-compatible provider */
-  keepAlive: number | string;
   context: RulesContext & PromptContext;
   signal?: AbortSignal;
   db: DbOrTx;
   tools?: ReceiptTools;
   fetchFn?: FetchFn;
-  /** llama.cpp provider: the server manager (default: the process-wide one) */
+  /** the llama-server manager (default: the process-wide one) */
   llama?: Pick<LlamaServerManager, "ensure">;
   today?: string;
 }
@@ -70,11 +58,9 @@ export interface AnalyzeOutput {
   textSource: TextSource | null;
   text: string;
   result: ReceiptExtraction;
-  /** model id used, or configured when the model step failed before choosing one ("" when none) */
+  /** model id used (also when the model step failed after choosing it; "" when none) */
   model: string;
   error: string;
-  /** a model request was sent (the worker unloads it after the batch) */
-  usedModel: boolean;
 }
 
 const MAX_PAGES = 5;
@@ -181,7 +167,6 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
         text,
         model: "",
         error: "",
-        usedModel: false,
         result: {
           fields: v.fields,
           warnings: [...parsed.warnings, ...v.warnings],
@@ -231,7 +216,6 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
       text,
       model: "",
       error: "Kein Text erkannt – Beleg unlesbar?",
-      usedModel: false,
       result: { fields: {}, warnings, pageCount, timings: { ...timings, total: elapsed(started) }, llmSkipped: true },
     };
   }
@@ -242,13 +226,12 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
   let fields = rules.fields;
   let error = "";
   let llmSkipped = true;
-  const step: ModelStep = { model: activeModel(settings), usedModel: false };
+  const step: ModelStep = { model: "" };
   if (settings.llmEnabled) {
     t = performance.now();
     try {
       const llm = await runModel(input, text, tools, step);
       fields = mergeFields(llm.fields, rules.fields);
-      if (llm.warning) warnings.push(llm.warning);
       if (step.serverStartMs) timings.server = step.serverStartMs;
       llmSkipped = false;
     } catch (err) {
@@ -271,7 +254,6 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
     text,
     model: settings.llmEnabled ? step.model : "",
     error,
-    usedModel: step.usedModel,
     result: {
       fields: v.fields,
       warnings: [...warnings, ...v.warnings],
@@ -283,80 +265,40 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
   };
 }
 
-/** model step progress: the model id actually used, and whether a request was sent (→ unload after batch) */
+/** model step progress: the model id, once chosen */
 interface ModelStep {
   model: string;
-  usedModel: boolean;
-  /** llama.cpp: ms spent starting llama-server in this run */
+  /** ms spent starting llama-server in this run */
   serverStartMs?: number;
 }
 
-/** configured model of the active provider ("" for OpenAI-compatible = first loaded model) */
-function activeModel(settings: OcrSettings): string {
-  if (settings.provider === "openai") return settings.openaiModel;
-  if (settings.provider === "llamacpp") return settings.llamaModelPath ? modelAlias(settings.llamaModelPath) : "";
-  return settings.mode === "vision" ? settings.visionModel : settings.model;
-}
-
-/** Field extraction by the configured provider. Throws LlmError (→ rules-only result) when it can't run. */
+/**
+ * Field extraction by the local model: nesev starts llama-server (first run of a batch, reused afterwards) and
+ * sends it the text or page images. Throws LlmError (→ rules-only result) when it can't run.
+ */
 async function runModel(input: AnalyzeInput, text: string, tools: ReceiptTools, step: ModelStep) {
   const { settings, signal } = input;
-  const fetchFn = input.fetchFn ?? fetch;
-  const pageImages = () => (settings.mode === "vision" ? tools.pageImages(input.file, signal) : Promise.resolve(undefined));
-  if (settings.provider === "llamacpp") {
-    // nesev starts llama-server itself (first run of a batch) and talks to it OpenAI-style
-    const config = llamaConfigFor(settings);
-    let server;
-    try {
-      server = await (input.llama ?? getLlamaServer()).ensure(config, signal);
-    } catch (err) {
-      if (signal?.aborted) throw new AbortedError();
-      throw toLlmError(err);
-    }
-    step.model = server.model;
-    step.serverStartMs = server.startMs;
-    const images = await pageImages();
-    step.usedModel = true;
-    return extractWithOpenAi({
-      baseUrl: server.baseUrl,
-      apiKey: server.apiKey,
-      model: server.model,
-      text,
-      images,
-      context: input.context,
-      signal,
-      fetchFn,
-    });
+  const config = llamaConfigFor(settings);
+  step.model = modelAlias(config.model);
+  let server;
+  try {
+    server = await (input.llama ?? getLlamaServer()).ensure(config, signal);
+  } catch (err) {
+    if (signal?.aborted) throw new AbortedError();
+    throw toLlmError(err);
   }
-  if (settings.provider === "openai") {
-    const loaded = await listOpenAiModels(settings.openaiUrl, settings.openaiApiKey, fetchFn, signal);
-    step.model = resolveOpenAiModel(loaded, settings.openaiModel);
-    const images = await pageImages();
-    step.usedModel = true;
-    return extractWithOpenAi({
-      baseUrl: settings.openaiUrl,
-      apiKey: settings.openaiApiKey,
-      model: step.model,
-      text,
-      images,
-      context: input.context,
-      signal,
-      fetchFn,
-    });
-  }
-  const models = await listModels(settings.ollamaUrl, fetchFn, signal);
-  if (!hasModel(models, step.model)) throw new OllamaError(modelMissingMessage(step.model), "model_missing");
-  const images = await pageImages();
-  step.usedModel = true;
-  return extractWithOllama({
-    baseUrl: settings.ollamaUrl,
-    model: step.model,
+  step.model = server.model;
+  step.serverStartMs = server.startMs;
+  const images = settings.mode === "vision" ? await tools.pageImages(input.file, signal) : undefined;
+  return extractFields({
+    baseUrl: server.baseUrl,
+    apiKey: server.apiKey,
+    model: server.model,
     text,
     images,
     context: input.context,
-    keepAlive: input.keepAlive,
     signal,
-    fetchFn,
+    fetchFn: input.fetchFn,
   });
 }
 

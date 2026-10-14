@@ -16,7 +16,7 @@ import {
 } from "./receipt-parse";
 
 // Rule-based field extraction for (mostly Austrian) receipts and invoices. Works without any model, so the
-// user gets partial results even when Ollama isn't running; with a model it serves as a cross-check.
+// user gets partial results even when the model can't run; with a model it serves as a cross-check.
 
 export interface RulesContext {
   /** our own UID / IBAN / company name (from settings), never the supplier's */

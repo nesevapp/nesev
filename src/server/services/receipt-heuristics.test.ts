@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
 import { shortDescription } from "../../shared/receipts";
 import { amountsIn, extractWithRules, findCategory } from "./receipt-heuristics";
-import { mapLlmOutput } from "./receipt-ollama";
+import { mapLlmOutput } from "./receipt-llm";
 import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
 

@@ -2,14 +2,17 @@ import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS, VAT_TREATMENTS, type VatTrea
 import { type FieldSuggestion, isCategoryKey, type ReceiptFields, shortDescription, type TaxLineSuggestion } from "../../shared/receipts";
 import { eurToCents, parseDate } from "./receipt-parse";
 
-// Local field extraction via Ollama's HTTP API (structured outputs: `format` = JSON schema, temperature 0).
-// Only loopback URLs are configurable (see ocrSettingsSchema), so receipts never leave the machine.
+// Field extraction by the local model: prompt, JSON schema, mapping of the answer to field suggestions, and the
+// HTTP client for the llama-server that nesev starts itself (see receipt-llama.ts): POST {base}/chat/completions
+// with a JSON-schema response_format (llama-server enforces it as a grammar, so the answer is always
+// schema-shaped JSON – no prompt-only fallback needed) and temperature 0. The base URL is the loopback endpoint
+// of nesev's own server; its per-process key goes in the Authorization header and never into a message.
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
-export type LlmErrorKind = "unreachable" | "model_missing" | "bad_response" | "unauthorized" | "no_vision";
+export type LlmErrorKind = "unreachable" | "model_missing" | "bad_response" | "no_vision";
 
-/** A model step failure that degrades to rules-only results (any provider). */
+/** A model step failure that degrades to rules-only results. */
 export class LlmError extends Error {
   constructor(
     message: string,
@@ -19,18 +22,8 @@ export class LlmError extends Error {
   }
 }
 
-export class OllamaError extends LlmError {}
-
-export const ollamaUnreachableMessage = () => "Ollama läuft nicht – starte es mit `ollama serve`";
-export const modelMissingMessage = (model: string) =>
-  `Modell ${model} fehlt – \`ollama pull ${model}\` (meldet der Download „requires a newer version of Ollama“: zuerst \`brew upgrade ollama\`)`;
-export const ollamaTooOldMessage = (model: string) =>
-  `${model} benötigt eine neuere Ollama-Version – \`brew upgrade ollama\`, dann \`ollama pull ${model}\``;
-
-export interface OllamaModel {
-  name: string;
-  size: number;
-}
+export const noVisionMessage = () =>
+  "Das Modell kann keine Bilder lesen – mmproj-Datei eintragen bzw. neben das Modell legen oder Modus „Text“ wählen";
 
 async function request(fetchFn: FetchFn, url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = 5_000, signal, ...rest } = init;
@@ -40,51 +33,24 @@ async function request(fetchFn: FetchFn, url: string, init: RequestInit & { time
     return await fetchFn(url, { ...rest, signal: combined });
   } catch (err) {
     if (signal?.aborted) throw err;
-    if (timeout.aborted) throw new OllamaError("Ollama antwortet nicht (Zeitüberschreitung)", "unreachable");
-    throw new OllamaError(ollamaUnreachableMessage(), "unreachable");
+    if (timeout.aborted) throw new LlmError("llama-server antwortet nicht (Zeitüberschreitung)", "unreachable");
+    throw new LlmError("llama-server nicht erreichbar (abgestürzt?)", "unreachable");
   }
 }
 
-/** Installed models (GET /api/tags). Throws OllamaError("unreachable") when Ollama isn't running. */
-export async function listModels(baseUrl: string, fetchFn: FetchFn = fetch, signal?: AbortSignal): Promise<OllamaModel[]> {
-  const res = await request(fetchFn, `${baseUrl}/api/tags`, { signal });
-  if (!res.ok) throw new OllamaError(`Ollama: HTTP ${res.status}`, "bad_response");
-  const body = (await res.json()) as { models?: { name: string; size?: number }[] };
-  return (body.models ?? []).map((m) => ({ name: m.name, size: m.size ?? 0 }));
-}
-
-/** Ollama version (GET /api/version), or null. */
-export async function ollamaVersion(baseUrl: string, fetchFn: FetchFn = fetch): Promise<string | null> {
+/** Error text of a failed response: `{error:{message}}` (llama-server), `{error:"…"}` or plain text. */
+async function errorText(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => "");
   try {
-    const res = await request(fetchFn, `${baseUrl}/api/version`);
-    return ((await res.json()) as { version?: string }).version ?? null;
+    const body = JSON.parse(raw) as { error?: string | { message?: string }; message?: string };
+    const e = body.error;
+    if (typeof e === "string") return e;
+    if (e && typeof e.message === "string") return e.message;
+    if (typeof body.message === "string") return body.message;
   } catch {
-    return null;
+    // not JSON
   }
-}
-
-/** "qwen3.5:4b" matches "qwen3.5:4b"; "llama3.2" matches "llama3.2:latest". */
-export function hasModel(models: readonly OllamaModel[], model: string): boolean {
-  const want = model.includes(":") ? model : `${model}:latest`;
-  return models.some((m) => m.name === want || m.name === model);
-}
-
-/** Unloads a model if it is currently loaded (POST /api/generate with keep_alive 0 and no prompt). */
-export async function unloadModel(baseUrl: string, model: string, fetchFn: FetchFn = fetch): Promise<boolean> {
-  try {
-    const ps = await request(fetchFn, `${baseUrl}/api/ps`);
-    const loaded = ((await ps.json()) as { models?: { name: string; model?: string }[] }).models ?? [];
-    const want = model.includes(":") ? model : `${model}:latest`;
-    if (!loaded.some((m) => m.name === want || m.model === want || m.name === model)) return false;
-    await request(fetchFn, `${baseUrl}/api/generate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, keep_alive: 0 }),
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return raw.slice(0, 300);
 }
 
 // --- extraction ------------------------------------------------------------------------------------
@@ -105,7 +71,7 @@ const CONFIDENCE_KEYS = [
   "vatTreatment",
 ] as const;
 
-/** JSON schema of the answer (Ollama `format`, OpenAI `response_format.json_schema.schema`). */
+/** JSON schema of the answer (sent as `response_format.json_schema.schema`; llama-server turns it into a grammar). */
 export const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -273,90 +239,91 @@ export function jsonBody(content: string): string {
   return start >= 0 && end > start ? text.slice(start, end + 1) : text;
 }
 
-export interface OllamaExtractOptions {
+type JsonSchema = { [key: string]: unknown };
+
+/** Every object closed (`additionalProperties: false`), so the grammar allows no extra keys. */
+export function strictSchema(schema: JsonSchema): JsonSchema {
+  const out: JsonSchema = { ...schema };
+  if (out.type === "object") out.additionalProperties = false;
+  if (out.properties && typeof out.properties === "object") {
+    out.properties = Object.fromEntries(Object.entries(out.properties as Record<string, JsonSchema>).map(([k, v]) => [k, strictSchema(v)]));
+  }
+  if (out.items && typeof out.items === "object") out.items = strictSchema(out.items as JsonSchema);
+  return out;
+}
+
+const RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: { name: "receipt", strict: true, schema: strictSchema(EXTRACTION_SCHEMA as unknown as JsonSchema) },
+};
+
+export interface ExtractOptions {
+  /** llama-server base URL incl. /v1 */
   baseUrl: string;
+  /** llama-server's per-process key (Authorization header) */
+  apiKey: string;
   model: string;
   text: string;
-  /** base64 PNG page images (vision mode) */
+  /** base64 PNG page images (vision mode), sent as image_url data URLs */
   images?: string[];
   context?: PromptContext;
-  /** e.g. 0 to unload right after the answer, "5m" while a batch continues */
-  keepAlive: number | string;
   signal?: AbortSignal;
   fetchFn?: FetchFn;
   timeoutMs?: number;
 }
 
-export interface OllamaExtractResult {
+export interface ExtractResult {
   fields: ReceiptFields;
   raw: unknown;
   durationMs: number;
-  /** e.g. the runner could not enforce the JSON schema */
-  warning?: string;
 }
 
-/** Shape the model has to answer with when the runner cannot enforce the schema (prompt-only fallback). */
-export const JSON_SHAPE_HINT = `Antworte NUR mit einem JSON-Objekt genau dieser Form (null wo unbekannt):
-{"supplierName": string|null, "supplierUid": string|null, "supplierCountry": string|null, "supplierInvoiceNumber": string|null,
- "issueDate": "YYYY-MM-DD"|null, "dueDate": "YYYY-MM-DD"|null, "currency": string|null, "grossTotal": number|null,
- "taxLines": [{"ratePercent": number, "net": number|null, "tax": number|null, "gross": number|null}],
- "iban": string|null, "description": string|null, "category": string, "vatTreatment": string,
- "confidence": {${CONFIDENCE_KEYS.map((k) => `"${k}": number`).join(", ")}}}`;
+const IMAGE_ERROR = /image|multimodal|mmproj|vision/i;
 
-export async function extractWithOllama(opts: OllamaExtractOptions): Promise<OllamaExtractResult> {
+export async function extractFields(opts: ExtractOptions): Promise<ExtractResult> {
   const fetchFn = opts.fetchFn ?? fetch;
-  const { system, user } = buildPrompt(opts.text, opts.context ?? {}, !!opts.images?.length);
+  const withImages = !!opts.images?.length;
+  const { system, user } = buildPrompt(opts.text, opts.context ?? {}, withImages);
   const started = performance.now();
-  const chat = (structured: boolean) =>
-    request(fetchFn, `${opts.baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      signal: opts.signal,
-      timeoutMs: opts.timeoutMs ?? 600_000,
-      body: JSON.stringify({
-        model: opts.model,
-        stream: false,
-        // Qwen3-family models would otherwise "think" first: slower, and the answer must be plain JSON
-        think: false,
-        ...(structured ? { format: EXTRACTION_SCHEMA } : {}),
-        keep_alive: opts.keepAlive,
-        options: { temperature: 0, num_ctx: 8192 },
-        messages: [
-          { role: "system", content: structured ? system : `${system}\n\n${JSON_SHAPE_HINT}` },
-          { role: "user", content: user, ...(opts.images?.length ? { images: opts.images } : {}) },
-        ],
-      }),
-    });
-
-  let structured = true;
-  let res = await chat(true);
-  let error = res.ok ? "" : ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "";
-  // Some runners (e.g. Ollama's MLX engine without xgrammar) can't enforce a JSON schema: ask via the prompt
-  if (!res.ok && /structured output|format/i.test(error)) {
-    structured = false;
-    res = await chat(false);
-    error = res.ok ? "" : ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "";
-  }
+  const userContent = withImages
+    ? [
+        { type: "text", text: user },
+        ...opts.images!.map((b64) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${b64}` } })),
+      ]
+    : user;
+  const res = await request(fetchFn, `${opts.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${opts.apiKey}` },
+    signal: opts.signal,
+    timeoutMs: opts.timeoutMs ?? 600_000,
+    body: JSON.stringify({
+      model: opts.model,
+      stream: false,
+      temperature: 0,
+      max_tokens: 2048,
+      // reasoning models (Qwen3.5, Gemma 4, …) would think first: slower, and the answer must be plain JSON.
+      // llama-server also runs with `--reasoning off`; this covers chat templates that ignore that flag.
+      chat_template_kwargs: { enable_thinking: false },
+      response_format: RESPONSE_FORMAT,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+    }),
+  });
   if (!res.ok) {
-    if (res.status === 412 || /newer version/i.test(error)) {
-      throw new OllamaError(ollamaTooOldMessage(opts.model), "model_missing");
-    }
-    if (res.status === 404 || /not found|pull/i.test(error)) {
-      throw new OllamaError(modelMissingMessage(opts.model), "model_missing");
-    }
-    throw new OllamaError(`Ollama-Fehler: ${error || `HTTP ${res.status}`}`, "bad_response");
+    const error = await errorText(res);
+    if (withImages && IMAGE_ERROR.test(error)) throw new LlmError(noVisionMessage(), "no_vision");
+    throw new LlmError(`Modell-Fehler: ${error || `HTTP ${res.status}`}`, "bad_response");
   }
-  const body = (await res.json()) as { message?: { content?: string } };
+  const body = (await res.json().catch(() => ({}))) as { choices?: { message?: { content?: string | null }; finish_reason?: string }[] };
+  const choice = body.choices?.[0];
   let parsed: LlmOutput;
   try {
-    parsed = JSON.parse(jsonBody(body.message?.content ?? "")) as LlmOutput;
+    parsed = JSON.parse(jsonBody(choice?.message?.content ?? "")) as LlmOutput;
   } catch {
-    throw new OllamaError("Ollama lieferte kein gültiges JSON", "bad_response");
+    const cut = choice?.finish_reason === "length" ? " (Antwort abgeschnitten – Kontextgröße zu klein?)" : "";
+    throw new LlmError(`Modell lieferte kein gültiges JSON${cut}`, "bad_response");
   }
-  return {
-    fields: mapLlmOutput(parsed),
-    raw: parsed,
-    durationMs: Math.round(performance.now() - started),
-    ...(structured ? {} : { warning: "Modell ohne erzwungenes JSON-Schema (Structured Output nicht verfügbar) – Antwort per Prompt geparst" }),
-  };
+  return { fields: mapLlmOutput(parsed), raw: parsed, durationMs: Math.round(performance.now() - started) };
 }

@@ -10,8 +10,8 @@
 //   vision    Apple Vision OCR (macOS helper) of images / scanned PDFs
 //   tesseract Tesseract CLI fallback
 // Then field extraction by a local model (structured JSON output) plus a rule-based extractor, which also
-// covers the case that the model server isn't running. Providers: Ollama (native API), any OpenAI-compatible
-// server (Unsloth Studio, LM Studio, llama-server), or a llama-server that nesev starts itself per batch. Validation (sums, rates, UID, IBAN, dates) happens in code.
+// covers the case that the model can't run. The model runs in a llama.cpp `llama-server` that nesev starts
+// itself for a batch and stops again. Validation (sums, rates, UID, IBAN, dates) happens in code.
 
 import {
   EXPENSE_CATEGORY_KEYS,
@@ -43,63 +43,31 @@ export type OcrMode = (typeof OCR_MODES)[number];
 export const OCR_ENGINES = ["vision", "tesseract"] as const;
 export type OcrEngine = (typeof OCR_ENGINES)[number];
 /**
- * "ollama": Ollama's native API; "openai": OpenAI-compatible /v1 API (Unsloth Studio, LM Studio, llama-server);
- * "llamacpp": nesev starts llama-server itself for a batch and stops it again (OpenAI-compatible client).
+ * Stored in settings.ocr_settings (null → defaults). Parsed with ocrSettingsSchema, which drops unknown keys,
+ * so JSON written by older versions (with keys of since removed model servers) still loads.
  */
-export const OCR_PROVIDERS = ["ollama", "openai", "llamacpp"] as const;
-export type OcrProvider = (typeof OCR_PROVIDERS)[number];
-
-export const OCR_PROVIDER_LABELS: Record<OcrProvider, string> = {
-  ollama: "Ollama",
-  openai: "OpenAI-kompatibel (Unsloth Studio)",
-  llamacpp: "llama.cpp (von nesev gestartet)",
-};
-
-/** Stored in settings.ocr_settings (null → defaults). */
 export interface OcrSettings {
   /** run the local LLM at all; off = rule-based extraction only */
   llmEnabled: boolean;
-  /** which local model server to talk to */
-  provider: OcrProvider;
-  /** Ollama base URL; only loopback addresses are accepted (nothing leaves the machine) */
-  ollamaUrl: string;
-  /** OpenAI-compatible base URL incl. /v1 (loopback only, like ollamaUrl) */
-  openaiUrl: string;
-  /** Bearer token, e.g. Unsloth Studio's `sk-unsloth-…` (empty = no auth header); never logged */
-  openaiApiKey: string;
-  /** model id for both modes; empty = the first model from GET /v1/models (i.e. the one loaded in Studio) */
-  openaiModel: string;
-  /** "text": text model on the extracted text; "vision": vision model on the page images */
+  /** "text": the model reads the extracted text; "vision": it reads the page images (needs an mmproj file) */
   mode: OcrMode;
-  /** Ollama model for mode "text" */
-  model: string;
-  /** Ollama model for mode "vision" */
-  visionModel: string;
   /** OCR engine for images and scanned PDFs */
   ocrEngine: OcrEngine;
-  /** Ollama: unload the model (keep_alive 0) after the last receipt of a batch; llama.cpp: stop llama-server
-   *  after the batch (off = after 5 min idle) */
+  /** stop llama-server after the last receipt of a batch (off = after 5 min idle) */
   unloadAfterBatch: boolean;
-  /** llama.cpp: llama-server binary; empty = auto-detect (Unsloth's build, PATH, Homebrew) */
+  /** llama-server binary; empty = auto-detect (Unsloth's build, PATH, Homebrew) */
   llamaServerPath: string;
-  /** llama.cpp: GGUF model file (absolute or ~/…) */
+  /** GGUF model file (absolute or ~/…); empty = picked automatically from the GGUFs found on disk */
   llamaModelPath: string;
-  /** llama.cpp: multimodal projector for vision mode; empty = an mmproj*.gguf next to the model, if any */
+  /** multimodal projector for vision mode; empty = an mmproj*.gguf next to the model, if any */
   llamaMmprojPath: string;
-  /** llama.cpp: context size (-c) */
+  /** context size (-c) */
   llamaContextSize: number;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
   llmEnabled: true,
-  provider: "ollama",
-  ollamaUrl: "http://127.0.0.1:11434",
-  openaiUrl: "http://127.0.0.1:8888/v1",
-  openaiApiKey: "",
-  openaiModel: "",
   mode: "text",
-  model: "qwen3.5:4b",
-  visionModel: "qwen3.5:4b",
   ocrEngine: "vision",
   unloadAfterBatch: true,
   llamaServerPath: "",
@@ -108,20 +76,7 @@ export const DEFAULT_OCR_SETTINGS: OcrSettings = {
   llamaContextSize: 8192,
 };
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-
-/** Only local model servers: http(s)://localhost|127.x.x.x|[::1]. */
-export function isLoopbackUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    return LOOPBACK_HOSTS.has(u.hostname) || /^127\.\d+\.\d+\.\d+$/.test(u.hostname);
-  } catch {
-    return false;
-  }
-}
-
-/** Short display name of a model id: OpenAI-compatible servers may report a file path ("/…/gemma-4-E2B-it-Q4.gguf"). */
+/** Short display name of a stored model id (older analyses may hold a file path, "/…/gemma-4-E2B-it-Q4.gguf"). */
 export function modelLabel(id: string): string {
   return id.includes("/") ? id.split("/").filter(Boolean).at(-1)!.replace(/\.gguf$/i, "") : id;
 }
@@ -183,8 +138,7 @@ export interface ReceiptExtraction {
   matchedSupplier?: { name: string; by: "uid" | "name"; count: number };
   /** page count of the receipt */
   pageCount?: number;
-  /** milliseconds per step */
-  /** ms; `server` = llama-server start incl. model load (llama.cpp provider, first run of a batch), part of `llm` */
+  /** ms per step; `server` = llama-server start incl. model load (first run of a batch), part of `llm` */
   timings?: { text?: number; ocr?: number; llm?: number; server?: number; total?: number };
   /** the model step was skipped or failed; the fields come from rules only */
   llmSkipped?: boolean;

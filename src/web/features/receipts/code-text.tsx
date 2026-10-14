@@ -1,4 +1,4 @@
-/** Renders `backtick` segments of a server message (e.g. "starte es mit `ollama serve`") as code. */
+/** Renders `backtick` segments of a server message (e.g. "… – `brew install tesseract-lang`") as code. */
 export function CodeText({ text }: { text: string }) {
   return (
     <>
