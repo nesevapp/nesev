@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CONFIRM_TOOLS, type ChatStreamEvent, DEFAULT_CHAT_SETTINGS } from "../../shared/chat";
 import { createTestDb, type Db } from "../db/client";
 import { chatMessages, settings as settingsTable } from "../db/schema";
+import { sameTimeZone } from "../../mcp/test/client";
 import { LlamaLease } from "../lib/llama/lease";
 import { type LlamaConfig, type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { PROJECT_ROOT } from "../lib/paths";
@@ -642,7 +643,7 @@ describe("in-process MCP host", () => {
   test("lists the MCP tools, confirm set = destructive tools, links are app paths, receipts queue in-process", () => {
     const dir = mkdtempSync(join(tmpdir(), "nesev-chat-host-"));
     try {
-      const seed = Bun.spawnSync([process.execPath, "src/mcp/test/seed.ts"], { cwd: PROJECT_ROOT, env: { ...process.env, NESEV_DATA_DIR: dir } });
+      const seed = Bun.spawnSync([process.execPath, "src/mcp/test/seed.ts"], { cwd: PROJECT_ROOT, env: { ...process.env, ...sameTimeZone(), NESEV_DATA_DIR: dir } });
       if (seed.exitCode !== 0) throw new Error(seed.stderr.toString());
       const script = join(dir, "host.ts");
       writeFileSync(
@@ -662,7 +663,7 @@ process.stdout.write(JSON.stringify({
 }));
 process.exit(0);`,
       );
-      const out = Bun.spawnSync([process.execPath, script], { cwd: PROJECT_ROOT, env: { ...process.env, NESEV_DATA_DIR: dir } });
+      const out = Bun.spawnSync([process.execPath, script], { cwd: PROJECT_ROOT, env: { ...process.env, ...sameTimeZone(), NESEV_DATA_DIR: dir } });
       if (out.exitCode !== 0) throw new Error(out.stderr.toString());
       const r = JSON.parse(out.stdout.toString());
       expect(r.names.length).toBeGreaterThanOrEqual(28);

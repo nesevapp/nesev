@@ -1,4 +1,5 @@
 import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult, type ChatUiAction, TOOL_GROUP_META, TOOL_GROUPS, type ToolGroup } from "../../shared/chat";
+import { todayIso } from "../../shared/dates";
 import { categoryLabel, VAT_TREATMENT_SHORT_LABELS, type VatTreatment } from "../../shared/expenses";
 import { formatCents, parseMoneyToCents } from "../../shared/money";
 import { TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
@@ -492,7 +493,7 @@ export async function confirmSummary(name: string, args: Record<string, unknown>
       const r = id && l.recurring ? await l.recurring(id) : null;
       const what = r ? `Serienrechnung „${r.name}“${r.client ? ` (${r.client})` : ""}` : `Serienrechnung id ${id ?? "?"}`;
       if (args.active === false) return `${what} pausieren – es werden keine Rechnungen mehr erstellt, bis sie fortgesetzt wird`;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayIso();
       const catchUp = r && r.nextRunDate && r.nextRunDate < today ? ` – versäumte Termine seit ${deDate(r.nextRunDate)} werden nachgeholt` : "";
       return `${what} fortsetzen${catchUp}`;
     }
@@ -607,7 +608,7 @@ async function recordSummary(name: string, args: Record<string, unknown>, read: 
       const e = id ? await read("get_expense", { id }) : null;
       const amount = e?.gross?.formatted ? ` (${e.gross.formatted})` : "";
       if (args.paidAt === null) return `${expenseName(e, id)}${amount} wieder als offen markieren`;
-      const date = typeof args.paidAt === "string" ? deDate(args.paidAt) : `heute (${deDate(new Date().toISOString())})`;
+      const date = typeof args.paidAt === "string" ? deDate(args.paidAt) : `heute (${deDate(todayIso())})`;
       return `${expenseName(e, id)}${amount} als bezahlt am ${date} markieren`;
     }
     case "apply_receipt_analysis": {
