@@ -3,7 +3,7 @@ import { formatAssetNumber } from "../../shared/assets";
 import type { ChatUiAction } from "../../shared/chat";
 import type { DbOrTx } from "../db/client";
 import { fixedAssets, recurringInvoices, reminders } from "../db/schema";
-import { appPath, type ChatTool, type ToolHost, type ToolOutcome } from "./chat-tools";
+import { appPath, type ChatTool, isOpenRequest, type ToolHost, type ToolOutcome } from "./chat-tools";
 import { documentPdfFileName, reminderPdfFileName } from "./pdf";
 
 // Assistant-only tools (group "ui"), not part of the MCP server: they act in the user's app instead of on data.
@@ -158,25 +158,40 @@ const SEARCH_KINDS: Record<string, string> = {
   asset: "asset",
 };
 
+/** a specific document type only matches its own search results ("Angebot für Alpen" → offers) */
+const SEARCH_TYPES: Partial<Record<Target, readonly string[]>> = { invoice: ["invoice"], offer: ["offer"], credit_note: ["credit_note"] };
+
+type Found = { id: number } | { error: string };
+
 /**
- * The record id behind `number` (or a non-numeric `id`, which small models fill with "RE-2026-0004"): the first
- * search hit of that kind. Lets the model open a record by its number in one call. undefined = no number given.
+ * The record behind `number` / `query` (or a non-numeric `id`, which small models fill with "RE-2026-0004"), via
+ * search, so the model can open a record in one call. A number takes the matching (or first) hit of that kind; a
+ * query must be unambiguous, else the candidates come back as an error so the model can ask. undefined = neither
+ * given.
  */
-async function idFromNumber(host: ToolHost, args: Record<string, unknown>, kind: string): Promise<number | null | undefined> {
-  const raw = typeof args.number === "string" && args.number.trim() ? args.number : typeof args.id === "string" && !/^\d+$/.test(args.id.trim()) ? args.id : null;
-  if (!raw) return undefined;
-  const res = await host.call("search", { query: raw.trim(), limit: 5 }).catch(() => null);
-  const results = res && !res.isError && Array.isArray(res.structured?.results) ? (res.structured.results as { type: string; id: number }[]) : [];
-  return results.find((r) => SEARCH_KINDS[r.type] === kind)?.id ?? null;
+async function findRecord(host: ToolHost, args: Record<string, unknown>, kind: string, what: string, types?: readonly string[]): Promise<Found | undefined> {
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const number = text(args.number) ?? (typeof args.id === "string" && !/^\d+$/.test(args.id.trim()) ? text(args.id) : null);
+  const query = number ?? text(args.query);
+  if (!query) return undefined;
+  const res = await host.call("search", { query, limit: 8 }).catch(() => null);
+  const all = res && !res.isError && Array.isArray(res.structured?.results) ? (res.structured.results as { type: string; id: number; label?: string; sublabel?: string }[]) : [];
+  const hits = all.filter((r) => (types ? types.includes(r.type) : SEARCH_KINDS[r.type] === kind));
+  if (!hits.length) return { error: `${what}: „${query}“ nicht gefunden – mit search suchen` };
+  const fold = (v: unknown) => String(v ?? "").toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
+  const exact = hits.filter((r) => fold(r.label) === fold(query));
+  if (number || hits.length === 1 || exact.length === 1) return { id: (exact[0] ?? hits[0]!).id };
+  const list = hits.slice(0, 5).map((r) => `${[r.label, r.sublabel].filter(Boolean).join(" · ")} (id ${r.id})`);
+  return { error: `${what}: „${query}“ ist nicht eindeutig (${hits.length} Treffer: ${list.join("; ")}). Frag den Nutzer, welcher gemeint ist, und ruf dann mit der id auf.` };
 }
 
 async function pdfTarget(host: ToolHost, db: DbOrTx, args: Record<string, unknown>) {
   const t = target(args.type ?? "document");
   const kind = t === "reminder" ? "reminder" : "document";
-  const byNumber = await idFromNumber(host, args, kind);
-  if (byNumber === null) return { error: `„${String(args.number ?? args.id)}“ nicht gefunden – die id mit search ermitteln` };
-  const id = byNumber ?? positiveId(args.id);
-  if (!id) return { error: "id oder number fehlt (Beleg-id aus search/list_documents, Mahnungs-id oder die Nummer wie RE-2026-0004)" };
+  const found = await findRecord(host, args, kind, t === "reminder" ? "Mahnung" : "Beleg");
+  if (found && "error" in found) return found;
+  const id = found?.id ?? positiveId(args.id);
+  if (!id) return { error: "id, number oder query fehlt (Beleg-id aus search/list_documents, Mahnungs-id oder die Nummer wie RE-2026-0004)" };
   if (t === "reminder") {
     const r = db.select({ id: reminders.id, number: reminders.number }).from(reminders).where(eq(reminders.id, id)).get();
     if (!r) return { error: `Mahnung id ${id} nicht gefunden` };
@@ -195,6 +210,7 @@ const PDF_ARGS = {
   properties: {
     id: { type: "integer", description: "document id (invoice/offer/credit note) or reminder id from a tool result" },
     number: { type: "string", description: 'or the number instead of the id, e.g. "RE-2026-0004" (drafts have none: use the id)' },
+    query: { type: "string", description: "or a client name to search for when neither id nor number is known" },
     type: { type: "string", enum: ["document", "reminder"], description: "document (default) or reminder (Mahnung)" },
   },
 };
@@ -222,6 +238,7 @@ export const UI_TOOLS: ChatTool[] = [
         what: { type: "string", enum: TARGET_KEYS, description: "record type or page" },
         id: { type: "integer", description: "record id from a tool result (omit both id and number to open the page)" },
         number: { type: "string", description: 'or the record number instead of the id, e.g. "RE-2026-0004", "K-0001", "ER-2026-0003"' },
+        query: { type: "string", description: 'or a name to search for, e.g. the supplier ("A1") or client ("Alpen"); must match one record' },
       },
       required: ["what"],
     },
@@ -246,10 +263,10 @@ export async function callUiTool(host: ToolHost, db: DbOrTx, name: string, args:
     const t = target(args.what);
     if (!t) return error(`Unbekanntes Ziel „${String(args.what)}“. Möglich: ${TARGET_KEYS.join(", ")}`);
     const spec = TARGETS[t];
-    const byNumber = spec.record ? await idFromNumber(host, args, spec.record) : undefined;
-    if (byNumber === null) return error(`${spec.label}: „${String(args.number ?? args.id)}“ nicht gefunden – die id mit search ermitteln`);
-    const id = byNumber ?? (args.id === undefined || args.id === null ? null : positiveId(args.id));
-    if (byNumber === undefined && args.id !== undefined && args.id !== null && !id) return error(`Ungültige id „${String(args.id)}“ – eine Zahl aus einem Werkzeug-Ergebnis angeben`);
+    const found = spec.record ? await findRecord(host, args, spec.record, spec.label, SEARCH_TYPES[t]) : undefined;
+    if (found && "error" in found) return error(found.error);
+    const id = found?.id ?? (args.id === undefined || args.id === null ? null : positiveId(args.id));
+    if (!found && args.id !== undefined && args.id !== null && !id) return error(`Ungültige id „${String(args.id)}“ – eine Zahl aus einem Werkzeug-Ergebnis angeben`);
     if (id && spec.record) {
       const rec = await lookupRecord(host, db, spec.record, id);
       if (!rec) return error(`${spec.label}: id ${id} nicht gefunden – die id mit search ermitteln`);
@@ -259,7 +276,7 @@ export async function callUiTool(host: ToolHost, db: DbOrTx, name: string, args:
   }
   if (name === "open_pdf" || name === "download_pdf") {
     const pdf = await pdfTarget(host, db, args);
-    if ("error" in pdf) return error(pdf.error!);
+    if ("error" in pdf) return error(pdf.error);
     // drafts render live: a preview, not the final PDF
     const what = `${pdf.draft ? "PDF-Vorschau" : "PDF"} ${pdf.label}`;
     if (name === "open_pdf") return done(`${what} wird in einem neuen Tab geöffnet.`, { kind: "open_tab", url: pdf.url, label: what });
@@ -271,6 +288,37 @@ export async function callUiTool(host: ToolHost, db: DbOrTx, name: string, args:
     });
   }
   return error(`Unbekanntes Werkzeug „${name}“`);
+}
+
+/** incl. the split verb: "Lade mir … herunter" */
+const DOWNLOAD_WORDS = /herunterlad|runterlad|\blad(e|en)?\b[^.?!]*\b(he)?runter\b|download|speicher/i;
+
+/** record words in a navigation request → open_in_app target */
+const OPEN_WORDS: [RegExp, Target][] = [
+  [/serienrechnung/, "recurring_invoice"],
+  [/gutschrift/, "credit_note"],
+  [/rechnung/, "invoice"],
+  [/angebot/, "offer"],
+  [/mahnung/, "reminder"],
+  [/ausgabe|beleg/, "expense"],
+  [/kunde|kundin/, "client"],
+  [/anlage/, "asset"],
+];
+
+/**
+ * Deterministic fixes for frequent 4B slips, applied to a call before it is stored and run:
+ * - the user said "herunterladen" (often next to "Vorschau") and the model picked open_pdf → download_pdf;
+ * - in a short pure navigation request naming a record type ("Öffne die Ausgabe von A1") the model searches and
+ *   then only describes the hit → the search becomes open_in_app {what, query}, which opens a unique hit or
+ *   returns the candidates.
+ */
+export function nudgeUiCall(name: string, args: Record<string, unknown>, userText: string): { name: string; arguments: Record<string, unknown> } {
+  if (name === "open_pdf" && DOWNLOAD_WORDS.test(userText)) return { name: "download_pdf", arguments: args };
+  if (name === "search" && typeof args.query === "string" && isOpenRequest(userText)) {
+    const what = OPEN_WORDS.find(([re]) => re.test(userText.toLowerCase()))?.[1];
+    if (what) return { name: "open_in_app", arguments: { what, query: args.query } };
+  }
+  return { name, arguments: args };
 }
 
 /** The assistant's host: the MCP tools plus the UI tools. */

@@ -1,3 +1,4 @@
+import type { DocumentStatus } from "./documents";
 import { z } from "./schemas/zod";
 
 // In-app assistant ("Assistent"): API contract shared by server (src/server/services/chat*.ts,
@@ -30,6 +31,11 @@ export const CONFIRM_TOOLS = [
   "set_bank_transaction_ignored",
   "set_recurring_invoice_active",
   "generate_recurring_invoice",
+  "update_client",
+  "update_expense",
+  "mark_expense_paid",
+  "apply_receipt_analysis",
+  "link_expense_to_fixed_cost",
 ] as const;
 
 export interface ChatSettings {
@@ -103,7 +109,11 @@ export type ChatCard =
   | {
       kind: "kpis";
       title: string;
-      items: { label: string; cents: number; hint?: string; tone?: ChatTone }[];
+      /**
+       * `cents` holds the value: cents (default), a plain count (format "count") or basis points (format "percent",
+       * 2000 = 20 %)
+       */
+      items: { label: string; cents: number; hint?: string; tone?: ChatTone; format?: "cents" | "count" | "percent" }[];
       link?: ChatLink;
     }
   /** small chart in the style of the dashboard / forecast charts; values are cents, one per label */
@@ -125,6 +135,10 @@ export type ChatCard =
       number: string | null;
       /** German status incl. "Überfällig", "teilbezahlt" */
       status: string;
+      /** raw status for the badge color (status is the label) */
+      statusKey?: DocumentStatus;
+      overdue?: boolean;
+      partial?: boolean;
       client: string | null;
       date: string | null;
       dueDate: string | null;
@@ -142,7 +156,8 @@ export type ChatCard =
       columns: { key: string; label: string; align?: "left" | "right"; money?: boolean }[];
       /** cells keyed by column key: strings, or cents for money columns */
       rows: { cells: Record<string, string | number | null>; path?: string }[];
-      total?: { label: string; cents: number };
+      /** `column`: key of the money column the sum belongs under (default: the last money column) */
+      total?: { label: string; cents: number; column?: string };
       more?: number;
       link?: ChatLink;
     };

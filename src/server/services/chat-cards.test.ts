@@ -70,7 +70,7 @@ const recurring = (o: Record<string, unknown> = {}) => ({
 });
 
 describe("bank cards", () => {
-  test("overview → kpis with the open count in the title", () => {
+  test("overview → kpis with the open count as a count item", () => {
     const card = buildCard("get_bank_overview", {
       accounts: [
         { id: 1, name: "Giro", iban: "AT…", archived: false, transactionCount: 12, openCount: 2, importedSum: m(150000), lastBookingDate: "2026-10-03", link: "/bank" },
@@ -80,9 +80,11 @@ describe("bank cards", () => {
       openIn: m(54000),
       openOut: m(1999),
     });
-    expect(card).toMatchObject({ kind: "kpis", title: "Bank · 2 offene Buchungen", link: { path: "/bank" } });
+    expect(card).toMatchObject({ kind: "kpis", title: "Bank", link: { path: "/bank" } });
+    expect(card?.kind === "kpis" && card.items[0]).toEqual({ label: "Offene Buchungen", cents: 2, format: "count", tone: "neutral" });
     if (card?.kind !== "kpis") throw new Error("kpis");
     expect(card.items.map((i) => [i.label, i.cents])).toEqual([
+      ["Offene Buchungen", 2],
       ["Offene Eingänge", 54000],
       ["Offene Ausgänge", -1999],
       ["Giro", 150000],
@@ -107,7 +109,7 @@ describe("bank cards", () => {
       path: "/bank?account=1&status=all&q=540%2C00",
     });
     expect(card.rows[1]!.cells.status).toBe("→ ER-2026-0001");
-    expect(card.total).toEqual({ label: "Saldo", cents: 52001 });
+    expect(card.total).toEqual({ label: "Saldo", cents: 52001, column: "amount" });
   });
 
   test("open transaction → its suggestions; matched → its allocations; the matching tools use the same card", () => {
@@ -147,7 +149,7 @@ describe("recurring cards", () => {
       ["Wartung", "01.11.2026", "/recurring/2"],
       ["Hosting", "pausiert", "/recurring/3"],
     ]);
-    expect(list.total).toEqual({ label: "Aktiv pro Monat", cents: 12000 });
+    expect(list.total).toEqual({ label: "Aktiv pro Monat", cents: 12000, column: "gross" });
     const paused = buildCard("set_recurring_invoice_active", recurring({ active: false }));
     expect(paused).toMatchObject({ kind: "table", title: "Serienrechnung Wartung", rows: [{ cells: { next: "pausiert" }, path: "/recurring/2" }] });
     const doc = buildCard("generate_recurring_invoice", {

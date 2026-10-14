@@ -16,6 +16,7 @@ import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
+import { nudgeUiCall } from "./chat-ui-tools";
 import { getSettings } from "./settings";
 
 // In-app assistant: conversations (CRUD) and the agent loop. A turn: user message → model call (streamed) → tool
@@ -411,7 +412,7 @@ function parseArgs(raw: string): Record<string, unknown> | null {
 export function needsData(text: string): boolean {
   const t = text.toLowerCase();
   if (/^\s*(hallo|hi|hey|servus|grüß|danke|ok|okay|super|passt|alles klar|wer bist|was kannst)/.test(t) && t.length < 40) return false;
-  return /\d|€|rechnung|angebot|gutschrift|mahnung|kunde|kundin|ausgabe|beleg|umsatz|gewinn|ergebnis|uva|zm\b|ear\b|steuer|ust|afa|anlage|fixkost|prognose|offen|bezahlt|überfällig|fällig|summe|betrag|wie viel|wieviel|welche|zeig|such|finde|liste|anleg|erstell|finalisier|markier|artikel|öffne|oeffne|pdf|herunterlad|download|vorschau|bank|konto|buchung|zuordn|wie lief|wie läuft|wie steh|monat|quartal|jänner|januar|februar|märz|april|mai\b|juni|juli|august|september|oktober|november|dezember/.test(t);
+  return /\d|€|rechnung|angebot|gutschrift|mahnung|kunde|kundin|ausgabe|beleg|umsatz|gewinn|ergebnis|uva|zm\b|ear\b|steuer|ust|afa|anlage|fixkost|prognose|offen|bezahlt|überfällig|fällig|summe|betrag|wie viel|wieviel|welche|zeig|such|finde|liste|anleg|erstell|finalisier|markier|artikel|öffne|oeffne|pdf|herunterlad|download|vorschau|bank|konto|buchung|zuordn|änder|aender|e-mail|email|adresse|verknüpf|übernimm|übernehm|serienrechnung|wie lief|wie läuft|wie steh|monat|quartal|jänner|januar|februar|märz|april|mai\b|juni|juli|august|september|oktober|november|dezember/.test(t);
 }
 
 let callSeq = 0;
@@ -500,7 +501,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       const id = raw.id || newCallId();
       const args = parseArgs(raw.arguments);
       if (!args) malformed.set(id, raw.arguments);
-      calls.push({ id, name: raw.name, arguments: args ?? {} });
+      calls.push({ id, ...nudgeUiCall(raw.name, args ?? {}, lastUser?.content ?? "") });
     }
     if (holdText && !calls.length) {
       forcedRetried = true;

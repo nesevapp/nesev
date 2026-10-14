@@ -473,6 +473,11 @@ describe("tools", () => {
     expect(names({ userTexts: ["Welche Bankumsätze sind noch nicht zugeordnet?"] })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
     expect(names({ userTexts: ["Was ist meine UVA-Zahllast?"] })).toEqual([...core, "get_forecast", "get_tax_report"]);
     expect(names({ userTexts: ["Ordne die Zahlung von Alpen zu"] })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
+    expect(names({ userTexts: ["Ändere die E-Mail von Alpen auf office@alpen.at"] })).toEqual([...core, "list_clients", "create_client"]);
+    expect(names({ userTexts: ["Ist der Monitor ein GWG?"] })).toEqual([...core, "get_forecast", "get_tax_report"]);
+    // a short pure navigation request: core + ui only (open_in_app instead of a list tool)
+    expect(names({ userTexts: ["Öffne die Ausgabe von A1"] })).toEqual(core);
+    expect(names({ userTexts: ["Öffne die Rechnung RE-2026-0001 und markiere sie als bezahlt"] })).toContain("create_invoice_draft");
     // page context, recent tools and the previous message keep a group for follow-ups
     expect(names({ userTexts: ["ja"], contextPath: "/bank" })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
     expect(names({ userTexts: ["ja, mach"], recentTools: ["create_client"] })).toEqual([...core, "list_clients", "create_client"]);
@@ -603,9 +608,8 @@ process.exit(0);`,
       if (out.exitCode !== 0) throw new Error(out.stderr.toString());
       const r = JSON.parse(out.stdout.toString());
       expect(r.names.length).toBeGreaterThanOrEqual(28);
-      // every listed confirm tool is annotated destructive, and every destructive tool needs the click
-      for (const name of CONFIRM_TOOLS) expect(r.destructive).toContain(name);
-      expect([...r.confirm].sort()).toEqual([...r.destructive].sort());
+      expect([...r.destructive].sort()).toEqual([...CONFIRM_TOOLS].sort());
+      expect([...r.confirm].sort()).toEqual([...CONFIRM_TOOLS].sort());
       expect(r.search.ok).toBe(true);
       expect(r.search.links.length).toBeGreaterThan(0);
       for (const l of r.search.links) expect(l.path.startsWith("/")).toBe(true);

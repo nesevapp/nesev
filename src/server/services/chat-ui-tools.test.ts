@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { createTestDb, type Db } from "../db/client";
 import { fixedAssets } from "../db/schema";
 import type { ChatTool, ToolHost } from "./chat-tools";
-import { UI_TOOLS, withUiTools } from "./chat-ui-tools";
+import { nudgeUiCall, UI_TOOLS, withUiTools } from "./chat-ui-tools";
 
 // Assistant-only UI tools against a fake MCP host (documents/clients/expenses) and an in-memory DB (assets,
 // reminders, recurring invoices).
@@ -20,7 +20,12 @@ const mcp: ToolHost = {
     if (name === "get_document" && docs[id]) return { isError: false, text: "Beleg", structured: docs[id]! };
     if (name === "get_client" && id === 3) return { isError: false, text: "Kunde", structured: { id: 3, name: "Alpen GmbH", link: "/clients/3" } };
     if (name === "search") {
-      const results = args.query === "RE-2026-0004" ? [{ type: "client", id: 3 }, { type: "invoice", id: 4 }] : [];
+      const results =
+        args.query === "RE-2026-0004"
+          ? [{ type: "client", id: 3 }, { type: "invoice", id: 4 }]
+          : args.query === "Alpen"
+            ? [{ type: "client", id: 3, label: "Alpen GmbH" }, { type: "invoice", id: 4, label: "RE-2026-0004", sublabel: "Alpen GmbH" }, { type: "offer", id: 7, label: "Angebot (Entwurf)", sublabel: "Alpen GmbH" }]
+            : [];
       return { isError: false, text: "Treffer", structured: { query: args.query, results } };
     }
     return { isError: true, text: "Fehler: nicht gefunden", structured: null };
@@ -68,7 +73,7 @@ describe("UI tools", () => {
   test("records by number (resolved via search), also when the model puts the number into id", async () => {
     expect((await host.call("open_in_app", { what: "invoice", number: "RE-2026-0004" })).action).toMatchObject({ path: "/invoices/4" });
     expect((await host.call("open_in_app", { what: "document", id: "RE-2026-0004" })).action).toMatchObject({ path: "/invoices/4" });
-    expect((await host.call("open_in_app", { what: "invoice", number: "RE-2099-0001" })).text).toBe("Fehler: Rechnungen: „RE-2099-0001“ nicht gefunden – die id mit search ermitteln");
+    expect((await host.call("open_in_app", { what: "invoice", number: "RE-2099-0001" })).text).toBe("Fehler: Rechnungen: „RE-2099-0001“ nicht gefunden – mit search suchen");
     expect((await host.call("download_pdf", { number: "RE-2026-0004" })).action).toMatchObject({ url: "/api/pdf/documents/4?download=1", fileName: "RE-2026-0004.pdf" });
     expect((await host.call("open_pdf", { number: "RE-2099-0001" })).isError).toBe(true);
   });
@@ -101,8 +106,34 @@ describe("UI tools", () => {
     expect(draft.text).toBe("PDF-Vorschau Angebot (Entwurf) wird heruntergeladen (Entwurf-7.pdf).");
     expect(draft.action).toMatchObject({ fileName: "Entwurf-7.pdf" });
     expect((await host.call("open_pdf", { id: 99 })).isError).toBe(true);
-    expect((await host.call("open_pdf", {})).text).toContain("id oder number fehlt");
+    expect((await host.call("open_pdf", {})).text).toContain("id, number oder query fehlt");
     expect((await host.call("open_pdf", { id: 1, type: "reminder" })).text).toContain("Mahnung id 1 nicht gefunden");
     expect((await host.call("open_pdf", { id: 3, type: "client" })).text).toContain("PDFs gibt es nur");
+  });
+
+  test("query: a unique hit opens, several hits come back as candidates for the model to ask", async () => {
+    expect((await host.call("open_in_app", { what: "client", query: "Alpen" })).action).toMatchObject({ path: "/clients/3" });
+    const ambiguous = await host.call("open_pdf", { query: "Alpen" });
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.text).toBe(
+      "Fehler: Beleg: „Alpen“ ist nicht eindeutig (2 Treffer: RE-2026-0004 · Alpen GmbH (id 4); Angebot (Entwurf) · Alpen GmbH (id 7)). Frag den Nutzer, welcher gemeint ist, und ruf dann mit der id auf.",
+    );
+    expect((await host.call("open_in_app", { what: "expense", query: "Alpen" })).text).toContain("„Alpen“ nicht gefunden");
+  });
+
+  test("nudges: download words → download_pdf; a search in a pure open request → open_in_app with query", () => {
+    const n = (name: string, args: Record<string, unknown>, text: string) => nudgeUiCall(name, args, text);
+    expect(n("open_pdf", { id: 4 }, "Lade mir die Vorschau vom Entwurf herunter")).toEqual({ name: "download_pdf", arguments: { id: 4 } });
+    expect(n("open_pdf", { id: 4 }, "Zeig mir die Vorschau").name).toBe("open_pdf");
+    expect(n("search", { query: "A1", limit: 6 }, "Öffne die Ausgabe von A1")).toEqual({ name: "open_in_app", arguments: { what: "expense", query: "A1" } });
+    expect(n("search", { query: "Alpen" }, "Öffne das Angebot für Alpen")).toEqual({ name: "open_in_app", arguments: { what: "offer", query: "Alpen" } });
+    // not a pure open request, or no record word: unchanged
+    expect(n("search", { query: "Alpen" }, "Öffne die Rechnung von Alpen und markiere sie als bezahlt").name).toBe("search");
+    expect(n("search", { query: "Alpen" }, "Wer ist Alpen?").name).toBe("search");
+    expect(n("search", { query: "x" }, "Geh zu den Steuern").name).toBe("search");
+  });
+
+  test("a specific document type only matches its own search hits", async () => {
+    expect((await host.call("open_in_app", { what: "offer", query: "Alpen" })).action).toMatchObject({ path: "/offers/7" });
   });
 });

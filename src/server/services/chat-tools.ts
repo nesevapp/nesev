@@ -1,5 +1,7 @@
 import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult, type ChatUiAction, TOOL_GROUP_META, TOOL_GROUPS, type ToolGroup } from "../../shared/chat";
+import { categoryLabel, VAT_TREATMENT_SHORT_LABELS, type VatTreatment } from "../../shared/expenses";
 import { formatCents, parseMoneyToCents } from "../../shared/money";
+import { TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
 import { buildCard, cardNote } from "./chat-cards";
 import type { LlmTool } from "./chat-llm";
 
@@ -127,7 +129,7 @@ export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: Re
     paths: /^\/(invoices|offers|credit-notes|reminders|recurring)\b/,
   },
   clients: {
-    words: /kunde|kundin|client|artikel|leistung|produkt|stammdat|adresse|\buid\b|ansprechp|kontaktp|\bk-?\d/,
+    words: /kunde|kundin|client|artikel|leistung|produkt|stammdat|adresse|\buid\b|e-?mail|telefon|ansprechp|kontaktp|änder|aender|\bk-?\d/,
     paths: /^\/(clients|articles)\b/,
   },
   expenses: {
@@ -142,9 +144,22 @@ export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: Re
   },
   finance: {
     words:
-      /prognose|liquidität|liquiditaet|cashflow|cash-flow|vorschau auf|kontostand|\buva\b|\bzm\b|\bear\b|steuer|\bust\b|umsatzsteuer|vorsteuer|zahllast|finanzamt|\bafa\b|abschreib|anlage|anlagen|e1a|einnahmen-ausgaben|gewinn|verlust/,
+      /prognose|liquidität|liquiditaet|cashflow|cash-flow|vorschau auf|kontostand|\buva\b|\bzm\b|\bear\b|steuer|\bust\b|umsatzsteuer|vorsteuer|zahllast|finanzamt|\bafa\b|abschreib|anlage|anlagen|\bgwg\b|geringwertig|e1a|einnahmen-ausgaben|gewinn|verlust/,
     paths: /^\/(forecast|tax|assets)\b/,
   },
+};
+
+/**
+ * A short, pure navigation request ("Öffne die Ausgabe von A1", "Geh zu den Steuern"): only core + ui, so the 4B
+ * reaches for open_in_app (with `query`/`number`) instead of a list tool whose result it then just describes.
+ */
+const OPEN_INTENT = /^\s*(bitte\s+)?(öffne|oeffne|geh(e)?\s+(zu|zur|zum|in)|bring\s+mich|navigier|spring\s+(zu|zur|zum))\b/;
+const OTHER_ACTION = /\bund\b|bezahlt|markier|finalis|änder|aender|erstell|anleg|zuordn|pdf|herunterlad|runter|download/;
+
+/** a short, pure navigation request (see OPEN_INTENT) */
+export const isOpenRequest = (text: string) => {
+  const t = text.toLowerCase();
+  return OPEN_INTENT.test(t) && !OTHER_ACTION.test(t) && t.length <= 80;
 };
 
 /** generic write verbs without a group word ("leg das an"): every group may be meant */
@@ -174,6 +189,7 @@ export interface ToolSelection {
 export function routeGroups(all: ChatTool[], input: Omit<ToolSelectionInput, "budgetTokens">): { groups: Set<ToolGroup>; fallback: boolean; generic: boolean } {
   const text = input.userTexts.slice(0, 2).join("\n").toLowerCase();
   const groups = new Set<ToolGroup>(["core", "ui"]);
+  if (isOpenRequest(input.userTexts[0] ?? "")) return { groups, fallback: false, generic: false };
   for (const [group, route] of Object.entries(GROUP_ROUTES) as [ToolGroup, { words: RegExp; paths: RegExp }][]) {
     if (route.words.test(text) || (input.contextPath && route.paths.test(input.contextPath))) groups.add(group);
   }
@@ -314,6 +330,8 @@ export interface ConfirmLookups {
   /** "Ausgabe ER-2026-0002 A1 Telekom" */
   expense?: (id: number) => Promise<string | null>;
   recurring?: (id: number) => Promise<RecurringInfo | null>;
+  /** structured content of a read tool (get_client, get_expense, list_fixed_costs, get_receipt_analysis); null on error */
+  read?: (tool: string, args: Record<string, unknown>) => Promise<Record<string, any> | null>;
 }
 
 const structuredOf = async (host: ToolHost, name: string, args: Record<string, unknown>) => {
@@ -337,6 +355,7 @@ export function documentLookup(host: ToolHost): DocumentLookup {
 export function confirmLookups(host: ToolHost): ConfirmLookups {
   return {
     document: documentLookup(host),
+    read: (tool, args) => structuredOf(host, tool, args),
     async transaction(id) {
       const t = await structuredOf(host, "get_bank_transaction", { id });
       if (!t) return null;
@@ -461,6 +480,135 @@ export async function confirmSummary(name: string, args: Record<string, unknown>
       if (!r) return `Rechnung aus Serienrechnung id ${id ?? "?"} jetzt erstellen`;
       const mode = r.autoFinalize ? "wird sofort finalisiert (Nummer und PDF, unveränderbar)" : "als Entwurf";
       return `Rechnung aus Serienrechnung „${r.name}“${r.client ? ` für ${r.client}` : ""} jetzt erstellen (${formatCents(r.grossCents)}, ${mode})`;
+    }
+    case "update_client":
+    case "update_expense":
+    case "mark_expense_paid":
+    case "apply_receipt_analysis":
+    case "link_expense_to_fixed_cost":
+      return recordSummary(name, args, l.read ?? (async () => null));
+    default:
+      return `Aktion „${name}“ ausführen`;
+  }
+}
+
+// --- record changes (update_client, update_expense, expense payment, receipt analysis, Fixkosten link) -----------
+
+type Read = NonNullable<ConfirmLookups["read"]>;
+
+const CLIENT_FIELDS: Record<string, string> = {
+  type: "Typ",
+  name: "Name",
+  contactPerson: "Ansprechperson",
+  street: "Straße",
+  addressExtra: "Adresszusatz",
+  zip: "PLZ",
+  city: "Ort",
+  country: "Land",
+  uid: "UID",
+  email: "E-Mail",
+  phone: "Telefon",
+  paymentTermsDays: "Zahlungsziel (Tage)",
+  defaultTaxMode: "Steuermodus",
+  notes: "Notizen",
+};
+/** update_expense argument → [label, field of the get_expense result] */
+const EXPENSE_FIELDS: Record<string, [string, string]> = {
+  supplierName: ["Lieferant", "supplier"],
+  supplierCountry: ["Land", "supplierCountry"],
+  supplierUid: ["UID", "supplierUid"],
+  supplierInvoiceNumber: ["Rechnungsnr.", "supplierInvoiceNumber"],
+  issueDate: ["Datum", "issueDate"],
+  dueDate: ["Fällig am", "dueDate"],
+  vatTreatment: ["USt-Behandlung", "vatTreatment"],
+  description: ["Beschreibung", "description"],
+  notes: ["Notizen", "notes"],
+};
+/** apply_receipt_analysis `fields` → German labels */
+const RECEIPT_FIELDS: Record<string, string> = {
+  supplierName: "Lieferant",
+  supplierUid: "UID",
+  supplierCountry: "Land",
+  supplierInvoiceNumber: "Rechnungsnr.",
+  issueDate: "Datum",
+  dueDate: "Fälligkeit",
+  vatTreatment: "USt-Behandlung",
+  category: "Kategorie",
+  description: "Beschreibung",
+  lines: "Positionen (Steuerzeilen)",
+};
+
+const shown = (v: unknown): string => {
+  if (v === null || v === undefined || v === "") return "–";
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return deDate(v);
+  return String(v);
+};
+const clip = (v: string) => (v.length > 60 ? `${v.slice(0, 59)}…` : v);
+const diffText = (diffs: string[]) => (diffs.length ? diffs.join("; ") : "keine Änderung (die Werte sind schon so)");
+
+/** "Ausgabe ER-2026-0001 A1 Telekom" from a get_expense result */
+const expenseName = (e: Record<string, any> | null, id: number | null) => (e ? ["Ausgabe", e.number ?? `(id ${e.id})`, e.supplier].filter(Boolean).join(" ") : `Ausgabe id ${id ?? "?"}`);
+
+async function recordSummary(name: string, args: Record<string, unknown>, read: Read): Promise<string> {
+  switch (name) {
+    case "update_client": {
+      const id = num(args.id);
+      const c = id ? await read("get_client", { id }) : null;
+      const diffs = Object.entries(CLIENT_FIELDS)
+        .filter(([field]) => args[field] !== undefined)
+        .filter(([field]) => !c || (args[field] ?? null) !== (c[field] ?? null))
+        .map(([field, label]) => {
+          const show = (v: unknown) =>
+            field === "paymentTermsDays" && v === null ? "Standard" : field === "defaultTaxMode" ? (v ? (TAX_MODE_LABELS[v as TaxMode] ?? String(v)) : "Standard") : clip(shown(v));
+          return c ? `${label}: ${show(c[field])} → ${show(args[field])}` : `${label} → ${show(args[field])}`;
+        });
+      return `Kunde ${c?.name ?? `id ${id ?? "?"}`} ändern: ${diffText(diffs)}`;
+    }
+    case "update_expense": {
+      const id = num(args.id);
+      const e = id ? await read("get_expense", { id }) : null;
+      const show = (field: string, v: unknown) => (field === "vatTreatment" && v ? (VAT_TREATMENT_SHORT_LABELS[v as VatTreatment] ?? String(v)) : clip(shown(v)));
+      const diffs = Object.entries(EXPENSE_FIELDS)
+        .filter(([arg]) => args[arg] !== undefined)
+        .filter(([arg, [, field]]) => !e || (args[arg] ?? null) !== (e[field] ?? null))
+        .map(([arg, [label, field]]) => (e ? `${label}: ${show(arg, e[field])} → ${show(arg, args[arg])}` : `${label} → ${show(arg, args[arg])}`));
+      const beforeCats = e && Array.isArray(e.lines) ? [...new Set(e.lines.map((l: Record<string, any>) => l.categoryLabel))].join(", ") || "–" : null;
+      if (typeof args.category === "string") diffs.push(`Kategorie aller Positionen: ${beforeCats ? `${beforeCats} → ` : ""}${categoryLabel(args.category)}`);
+      if (Array.isArray(args.lines)) {
+        const before = e && Array.isArray(e.lines) ? `${e.lines.length} Position(en), brutto ${e.gross?.formatted ?? "?"}` : null;
+        diffs.push(`Positionen ersetzen: ${before ? `${before} → ` : ""}${args.lines.length} neue Position(en)`);
+      }
+      return `${expenseName(e, id)} ändern: ${diffText(diffs)}`;
+    }
+    case "mark_expense_paid": {
+      const id = num(args.id);
+      const e = id ? await read("get_expense", { id }) : null;
+      const amount = e?.gross?.formatted ? ` (${e.gross.formatted})` : "";
+      if (args.paidAt === null) return `${expenseName(e, id)}${amount} wieder als offen markieren`;
+      const date = typeof args.paidAt === "string" ? deDate(args.paidAt) : `heute (${deDate(new Date().toISOString())})`;
+      return `${expenseName(e, id)}${amount} als bezahlt am ${date} markieren`;
+    }
+    case "apply_receipt_analysis": {
+      const id = num(args.expenseId);
+      const [e, r] = id ? await Promise.all([read("get_expense", { id }), read("get_receipt_analysis", { expenseId: id })]) : [null, null];
+      const suggestions: Record<string, any>[] = Array.isArray(r?.analysis?.suggestions) ? r.analysis.suggestions : [];
+      const fields = Array.isArray(args.fields) ? (args.fields as unknown[]).map(String) : [];
+      const parts = fields.map((f) => {
+        const value = suggestions.find((x) => x.field === f)?.value;
+        const label = RECEIPT_FIELDS[f] ?? f;
+        return value && f !== "lines" ? `${label} „${clip(String(value))}“` : label;
+      });
+      return `Belegerkennung auf ${expenseName(e, id)} übernehmen: ${parts.join(", ") || "?"} – bestehende Werte werden ersetzt`;
+    }
+    case "link_expense_to_fixed_cost": {
+      const id = num(args.expenseId);
+      const fcId = num(args.fixedCostId);
+      const [e, list] = await Promise.all([id ? read("get_expense", { id }) : null, fcId ? read("list_fixed_costs", {}) : null]);
+      const fc = fcId && Array.isArray(list?.fixedCosts) ? list.fixedCosts.find((f: Record<string, any>) => f.id === fcId) : null;
+      const target = fcId ? `den Fixkosten ${fc ? `„${fc.name}“` : `id ${fcId}`}` : "den passenden Fixkosten";
+      const slot = typeof args.scheduledDate === "string" ? `Termin ${deDate(args.scheduledDate)}` : "passender freier Termin";
+      const replaced = e?.fixedCost ? ` – ersetzt die bestehende Verknüpfung mit „${e.fixedCost.name}“ (${deDate(String(e.fixedCost.scheduledDate))})` : "";
+      return `${expenseName(e, id)} ${target} zuordnen (${slot}); der Termin zählt dann nicht mehr in der Prognose${replaced}`;
     }
     default:
       return `Aktion „${name}“ ausführen`;

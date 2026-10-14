@@ -1,4 +1,5 @@
 import type { ChatCard, ChatLink, ChatTone } from "../../shared/chat";
+import { DOCUMENT_STATUSES, type DocumentStatus } from "../../shared/documents";
 import { formatCents } from "../../shared/money";
 import { appPath } from "./chat-tools";
 
@@ -31,6 +32,7 @@ const monthLabel = (key: string, withYear: boolean) => {
 };
 
 type TableCard = Extract<ChatCard, { kind: "table" }>;
+type KpiItem = Extract<ChatCard, { kind: "kpis" }>["items"][number];
 
 function table(
   rows: Data[],
@@ -59,8 +61,12 @@ function table(
   };
 }
 
-const withTotal = (card: TableCard, total: { label: string; cents: number } | null): ChatCard =>
-  total ? { ...card, total } : card;
+/** the sum under a money column (default: the last one) */
+const withTotal = (card: TableCard, total: { label: string; cents: number; column?: string } | null): ChatCard => {
+  if (!total) return card;
+  const column = total.column ?? card.columns.findLast((c) => c.money)?.key;
+  return { ...card, total: column ? { ...total, column } : total };
+};
 
 // --- documents ------------------------------------------------------------------------------------------------
 
@@ -81,6 +87,9 @@ const documentCard: Builder = (d) => {
     typeLabel: d.typeLabel,
     number: d.number ?? null,
     status: String(d.statusLabel ?? ""),
+    ...((DOCUMENT_STATUSES as readonly unknown[]).includes(d.status) ? { statusKey: d.status as DocumentStatus } : {}),
+    ...(typeof d.overdue === "boolean" ? { overdue: d.overdue } : {}),
+    ...(typeof d.partiallyPaid === "boolean" ? { partial: d.partiallyPaid } : {}),
     client: (typeof d.client === "string" ? d.client : d.client?.name) || null,
     date: d.issueDate ?? null,
     dueDate: d.type === "offer" ? null : (d.dueDate ?? null),
@@ -314,8 +323,9 @@ const bankOverview: Builder = (d) => {
   const accounts = (d.accounts as Data[]).filter((a) => !a.archived);
   return {
     kind: "kpis",
-    title: `Bank · ${d.openCount ?? 0} offene Buchungen`,
+    title: "Bank",
     items: [
+      { label: "Offene Buchungen", cents: Number(d.openCount ?? 0), format: "count" as const, tone: "neutral" as ChatTone },
       { label: "Offene Eingänge", cents: cents(d.openIn), tone: "positive" as ChatTone },
       { label: "Offene Ausgänge", cents: -cents(d.openOut), tone: "negative" as ChatTone },
       ...accounts.slice(0, 3).map((a) => ({
@@ -463,6 +473,89 @@ const recurringRow: Builder = (d) => {
   });
 };
 
+// --- record changes, Fixkosten, assets -------------------------------------------------------------------------
+
+/** update_client / update_expense / apply_receipt_analysis: what changed (the tools return `changes`) */
+const changeTable =
+  (title: (d: Data) => string): Builder =>
+  (d) => {
+    if (!Array.isArray(d.changes) || !d.changes.length) return null;
+    return table(d.changes, {
+      title: title(d),
+      columns: [
+        { key: "label", label: "Feld" },
+        { key: "before", label: "vorher" },
+        { key: "after", label: "nachher" },
+      ],
+      row: (c) => ({ label: c.label ?? c.field ?? "", before: c.before ?? "–", after: c.after ?? "–" }),
+      link: link("Öffnen", d.link),
+    });
+  };
+
+const expenseName = (d: Data) => [d.number ?? "Ausgabe", d.supplier].filter(Boolean).join(" · ");
+
+/** mark_expense_paid: the expense as one row */
+const expenseRowCard: Builder = (d) => {
+  if (typeof d.id !== "number" || !d.gross) return null;
+  return table([d], {
+    title: `Ausgabe ${expenseName(d)}`,
+    columns: [
+      { key: "number", label: "Nummer" },
+      { key: "supplier", label: "Lieferant" },
+      { key: "paid", label: "Bezahlt am" },
+      { key: "gross", label: "Brutto", align: "right", money: true },
+      { key: "status", label: "Status" },
+    ],
+    row: (x) => ({ number: x.number ?? "–", supplier: x.supplier || x.description || "", paid: x.paidAt ? deDate(x.paidAt) : "–", gross: cents(x.gross), status: x.statusLabel ?? "" }),
+    rowPath: (x) => path(x.link),
+  });
+};
+
+const fixedCostLink: Builder = (d) => {
+  if (!d.expense || !d.fixedCost) return null;
+  return table([d], {
+    title: d.replaced ? `Fixkosten-Verknüpfung ersetzt (vorher ${d.replaced.name} · ${deDate(d.replaced.scheduledDate)})` : "Mit Fixkosten verknüpft",
+    columns: [
+      { key: "expense", label: "Ausgabe" },
+      { key: "fixedCost", label: "Fixkosten" },
+      { key: "date", label: "Termin" },
+      { key: "gross", label: "Betrag", align: "right", money: true },
+    ],
+    row: (x) => ({ expense: expenseName(x.expense), fixedCost: x.fixedCost.name ?? "", date: deDate(x.fixedCost.scheduledDate), gross: cents(x.expense.gross) }),
+    rowPath: (x) => path(x.expense.link),
+    link: { label: "Fixkosten", path: "/fixed-costs" },
+  });
+};
+
+const fixedCostCreated: Builder = (d) => {
+  if (typeof d.id !== "number" || !d.gross) return null;
+  const tax = cents(d.tax);
+  const next = d.nextPaymentDate ? `nächste Zahlung ${deDate(d.nextPaymentDate)}` : "keine weitere Zahlung";
+  const items: KpiItem[] = [
+    { label: "Pro Zahlung", cents: cents(d.gross), hint: [d.interval, next].filter(Boolean).join(" · "), tone: "expenses" },
+    { label: "Pro Monat", cents: cents(d.monthly), tone: "expenses" },
+  ];
+  if (tax) items.push({ label: "Enthaltene USt", cents: tax, tone: "muted" });
+  return { kind: "kpis", title: `Fixkosten ${d.name}`, items, link: { label: "Fixkosten", path: "/fixed-costs" } };
+};
+
+/** create_asset: the AfA plan per year (bars) with the book value at year end (line) */
+const assetPlan: Builder = (d) => {
+  if (!Array.isArray(d.schedule) || !d.schedule.length) return null;
+  const years: Data[] = d.schedule;
+  return {
+    kind: "chart",
+    title: `AfA-Plan ${d.number ?? ""} ${d.name ?? ""} (AK ${formatCents(cents(d.cost))}, ${d.usefulLifeYears} Jahre)`.replace(/\s+/g, " "),
+    chart: "bar",
+    labels: years.map((y) => String(y.year)),
+    series: [
+      { label: "AfA", values: years.map((y) => cents(y.afa)), tone: "expenses" },
+      { label: "Buchwert 31.12.", values: years.map((y) => cents(y.bookValueEnd)), tone: "result", type: "line" },
+    ],
+    link: link("Anlage öffnen", d.link),
+  };
+};
+
 const BUILDERS: Record<string, Builder> = {
   get_dashboard: dashboard,
   get_document: documentCard,
@@ -493,6 +586,13 @@ const BUILDERS: Record<string, Builder> = {
   list_recurring_invoices: recurringList,
   set_recurring_invoice_active: recurringRow,
   generate_recurring_invoice: documentCard,
+  update_client: changeTable((d) => `Kunde ${d.name ?? ""} geändert`),
+  update_expense: changeTable((d) => `Ausgabe ${expenseName(d)} geändert`),
+  apply_receipt_analysis: changeTable((d) => `Belegerkennung übernommen: ${expenseName(d)}`),
+  mark_expense_paid: expenseRowCard,
+  link_expense_to_fixed_cost: fixedCostLink,
+  create_fixed_cost: fixedCostCreated,
+  create_asset: assetPlan,
 };
 
 /** The card for a tool result, or null (unknown tool, no structured content, unexpected shape). */
