@@ -40,7 +40,8 @@ export function ChatChart({ card }: { card: ChartCardData }) {
   const bars = series.filter((s) => !isLine(s, chart));
   const lines = series.filter((s) => isLine(s, chart));
 
-  const values = series.flatMap((s) => s.values);
+  // null = no value (e.g. future months): ignored by the axis, no column, a gap in the line, "–" in the tooltip
+  const values = series.flatMap((s) => s.values).filter((v): v is number => v !== null);
   const max = Math.max(0, ...values);
   const min = Math.min(0, ...values);
   const step = niceStep(max - min);
@@ -62,7 +63,8 @@ export function ChatChart({ card }: { card: ChartCardData }) {
   // a line-only chart with a single series gets the forecast's soft area
   const area = bars.length === 0 && lines.length === 1;
 
-  const aria = (i: number) => `${labels[i]}: ${series.map((s) => `${s.label} ${formatCents(s.values[i] ?? 0)}`).join(", ")}`;
+  const show = (v: number | null | undefined) => (v == null ? "–" : formatCents(v));
+  const aria = (i: number) => `${labels[i]}: ${series.map((s) => `${s.label} ${show(s.values[i])}`).join(", ")}`;
 
   return (
     <div className="space-y-1.5">
@@ -92,14 +94,17 @@ export function ChatChart({ card }: { card: ChartCardData }) {
               return (
                 <g key={i}>
                   {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-zinc-100/70" />}
-                  {bars.map((s, k) => (
-                    <path
-                      key={k}
-                      d={columnPath(x0 + k * (barW + GAP), barW, y(0), y(s.values[i] ?? 0))}
-                      fill={TONE_COLOR[s.tone]}
-                      className={cn(active !== null && active !== i && "opacity-60")}
-                    />
-                  ))}
+                  {bars.map((s, k) => {
+                    const v = s.values[i];
+                    return v == null ? null : (
+                      <path
+                        key={k}
+                        d={columnPath(x0 + k * (barW + GAP), barW, y(0), y(v))}
+                        fill={TONE_COLOR[s.tone]}
+                        className={cn(active !== null && active !== i && "opacity-60")}
+                      />
+                    );
+                  })}
                   {i % labelEvery === 0 && (
                     <text x={cx(i)} y={HEIGHT - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
                       {label}
@@ -109,18 +114,33 @@ export function ChatChart({ card }: { card: ChartCardData }) {
               );
             })}
             {lines.map((s, k) => {
-              const pts = labels.map((_, i) => [cx(i), y(s.values[i] ?? 0)] as const);
-              const d = pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
+              // runs of consecutive values; a null breaks the line
+              const runs: { i: number; x: number; y: number }[][] = [];
+              let run: { i: number; x: number; y: number }[] = [];
+              labels.forEach((_, i) => {
+                const v = s.values[i];
+                if (v == null) {
+                  if (run.length) runs.push(run);
+                  run = [];
+                } else run.push({ i, x: cx(i), y: y(v) });
+              });
+              if (run.length) runs.push(run);
+              const pathOf = (r: typeof run) => r.map((p, j) => `${j ? "L" : "M"}${p.x},${p.y}`).join("");
               const color = TONE_COLOR[s.tone];
+              const dots = labels.length <= 16;
               return (
                 <g key={k} className="pointer-events-none">
-                  {area && pts.length > 0 && (
-                    <path d={`${d}L${pts.at(-1)![0]},${y(0)}L${pts[0]![0]},${y(0)}Z`} fill={color} fillOpacity={0.07} />
-                  )}
-                  <path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-                  {pts.map(([px, py], i) =>
-                    pts.length <= 16 || active === i ? (
-                      <circle key={i} cx={px} cy={py} r={active === i ? 3.5 : 2.25} className="fill-background" stroke={color} strokeWidth={1.5} />
+                  {area &&
+                    runs.map((r, j) => (
+                      <path key={j} d={`${pathOf(r)}L${r.at(-1)!.x},${y(0)}L${r[0]!.x},${y(0)}Z`} fill={color} fillOpacity={0.07} />
+                    ))}
+                  {runs.map((r, j) => (
+                    <path key={j} d={pathOf(r)} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+                  ))}
+                  {runs.flat().map((p) =>
+                    // a lone value has no line through it: always draw its dot
+                    dots || active === p.i || runs.some((r) => r.length === 1 && r[0] === p) ? (
+                      <circle key={p.i} cx={p.x} cy={p.y} r={active === p.i ? 3.5 : 2.25} className="fill-background" stroke={color} strokeWidth={1.5} />
                     ) : null,
                   )}
                 </g>
@@ -153,11 +173,13 @@ export function ChatChart({ card }: { card: ChartCardData }) {
           >
             <div className="mb-1 text-muted-foreground">{labels[active]}</div>
             {series.map((s, k) => {
-              const v = s.values[active] ?? 0;
+              const v = s.values[active];
               return (
                 <div key={k} className="flex items-center gap-2">
                   <Swatch series={s} chart={chart} />
-                  <span className={cn("font-medium tabular", v < 0 ? "text-red-600" : "text-foreground")}>{formatCents(v)}</span>
+                  <span className={cn("font-medium tabular", v == null ? "text-muted-foreground" : v < 0 ? "text-red-600" : "text-foreground")}>
+                    {show(v)}
+                  </span>
                   <span className="ml-auto pl-3 text-muted-foreground">{s.label}</span>
                 </div>
               );
