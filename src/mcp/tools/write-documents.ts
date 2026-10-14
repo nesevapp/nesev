@@ -20,7 +20,7 @@ const documentFields = {
   issueDate: isoDate.optional().describe("default today"),
   servicePeriodStart: isoDate.optional().describe("Leistungszeitraum start"),
   servicePeriodEnd: isoDate.optional().describe("Leistungszeitraum end"),
-  title: z.string().trim().max(200).optional().describe("short subject shown on the document"),
+  title: z.string().trim().max(200).optional().describe("optional subject (Betreff) of the whole document; NOT the line title: every item needs its own title"),
   introText: z.string().max(5000).optional().describe("default from the settings"),
   closingText: z.string().max(5000).optional().describe("default from the settings"),
   taxMode: z.enum(TAX_MODES).optional().describe("default derived from the client (country, UID) like in the UI; override only on request"),

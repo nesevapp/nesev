@@ -170,31 +170,9 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
     },
     async ({ expenseIds }) => {
       const ids = [...new Set(expenseIds)];
-      const remote = remoteApi(ctx.apiUrl);
-      // the server must work on the same data as this MCP process (same NESEV_DATA_DIR)
-      for (const id of ids) {
-        const local = await call(ctx.api.expenses[":id"].$get({ param: idParam(id) }));
-        let other: Awaited<ReturnType<typeof remoteExpense>> | null;
-        try {
-          other = await remoteExpense(remote, id);
-        } catch (err) {
-          if (err instanceof ApiError) other = null;
-          else throw unreachable(ctx.apiUrl);
-        }
-        if (!other || other.number !== local.number || other.supplierName !== local.supplierName || other.attachmentPath !== local.attachmentPath) {
-          throw new ToolError(
-            `Der nesev-Server unter ${ctx.apiUrl} arbeitet mit anderen Daten als der MCP-Server (Ausgabe ${id} weicht ab). ` +
-              "NESEV_DATA_DIR / NESEV_API_URL prüfen; nichts eingereiht.",
-          );
-        }
-      }
-      let result: { queued: number[]; skipped: { expenseId: number; reason: string }[] };
-      try {
-        result = await call(remote.receipts.analyze.$post({ json: { expenseIds: ids } }));
-      } catch (err) {
-        if (err instanceof ApiError) throw err;
-        throw unreachable(ctx.apiUrl);
-      }
+      // inside the nesev server (assistant) the worker is right here
+      const result = ctx.inServer ? await call(ctx.api.receipts.analyze.$post({ json: { expenseIds: ids } })) : await queueRemote(ids);
+      const server = ctx.inServer ? "nesev-Server" : ctx.apiUrl;
       const text = [
         result.queued.length
           ? `${result.queued.length} Beleg(e) zur Erkennung eingereiht (Ausgaben ${result.queued.join(", ")}); Ergebnis später mit get_receipt_analysis abrufen.`
@@ -203,9 +181,37 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
       ]
         .filter(Boolean)
         .join("\n");
-      return { text, data: { server: ctx.apiUrl, queued: result.queued, skipped: result.skipped } };
+      return { text, data: { server, queued: result.queued, skipped: result.skipped } };
     },
   );
+
+  /** Queue on the running nesev server over HTTP, after checking it works on the same data. */
+  async function queueRemote(ids: number[]): Promise<{ queued: number[]; skipped: { expenseId: number; reason: string }[] }> {
+    const remote = remoteApi(ctx.apiUrl);
+    // the server must work on the same data as this MCP process (same NESEV_DATA_DIR)
+    for (const id of ids) {
+      const local = await call(ctx.api.expenses[":id"].$get({ param: idParam(id) }));
+      let other: Awaited<ReturnType<typeof remoteExpense>> | null;
+      try {
+        other = await remoteExpense(remote, id);
+      } catch (err) {
+        if (err instanceof ApiError) other = null;
+        else throw unreachable(ctx.apiUrl);
+      }
+      if (!other || other.number !== local.number || other.supplierName !== local.supplierName || other.attachmentPath !== local.attachmentPath) {
+        throw new ToolError(
+          `Der nesev-Server unter ${ctx.apiUrl} arbeitet mit anderen Daten als der MCP-Server (Ausgabe ${id} weicht ab). ` +
+            "NESEV_DATA_DIR / NESEV_API_URL prüfen; nichts eingereiht.",
+        );
+      }
+    }
+    try {
+      return await call(remote.receipts.analyze.$post({ json: { expenseIds: ids } }));
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw unreachable(ctx.apiUrl);
+    }
+  }
 }
 
 function remoteExpense(remote: ReturnType<typeof remoteApi>, id: number) {

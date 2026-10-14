@@ -298,7 +298,7 @@ describe("write tools", () => {
       items: [
         { title: "Arbeitszeit", quantity: 2.5, unit: "Std.", unitPrice: "80,00" },
         { title: "Material", quantity: 3, unit: "Stk.", unitPrice: "12.5", taxRate: 20, discount: 10 },
-        { articleId, quantity: 1 },
+        { articleId, title: "", quantity: 1 },
       ],
     });
     expect(draft.isError).toBeFalsy();

@@ -19,6 +19,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { ChatButton, ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
 
 interface NavItem {
@@ -100,6 +101,7 @@ export function AppShell() {
         </div>
         <div className="px-3 pb-2">
           <GlobalSearch />
+          <ChatButton />
         </div>
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-2">
           {NAV.map((group, i) => (
@@ -131,6 +133,7 @@ export function AppShell() {
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
+      <ChatPanel />
     </div>
   );
 }

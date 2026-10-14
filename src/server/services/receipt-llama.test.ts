@@ -7,6 +7,7 @@ import { ocrSettingsSchema } from "../../shared/schemas/receipt";
 import { createTestDb } from "../db/client";
 import { createExpense } from "./expenses";
 import { type GgufModel, nodeFs } from "../lib/llama/paths";
+import { LlamaLease } from "../lib/llama/lease";
 import { type LlamaConfig, type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
 import { autoPickModel, llamaConfigFor, llamaCppStatus, resolveLlama, syncLlamaServer, toLlmError } from "./receipt-llama";
@@ -27,6 +28,8 @@ writeFileSync(binary, "#!/bin/sh\n");
 chmodSync(binary, 0o755);
 writeFileSync(model, "gguf");
 const fs = { ...nodeFs, home: dir, which: () => null };
+/** a lease around a fake manager (nothing running before) */
+const lease = (m: { ensure: (c: LlamaConfig) => Promise<LlamaEndpoint> }) => new LlamaLease({ ensure: m.ensure, activeConfig: () => null });
 
 const LLAMA: OcrSettings = { ...DEFAULT_OCR_SETTINGS, llamaServerPath: binary, llamaModelPath: model };
 const none = () => [];
@@ -133,7 +136,7 @@ describe("analyzeReceipt", () => {
       return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer) } }] });
     };
     const llama = { ensure: async (c: LlamaConfig) => (configs.push(c), endpoint) };
-    const out = await analyzeReceipt({ ...base, settings: { ...LLAMA, llamaServerPath: binary }, fetchFn, llama });
+    const out = await analyzeReceipt({ ...base, settings: { ...LLAMA, llamaServerPath: binary }, fetchFn, llama: lease(llama) });
     expect(out.status).toBe("done");
     expect(out.model).toBe("Qwen3.5-4B-Q4_K_M");
     expect(out.result.llmSkipped).toBe(false);
@@ -149,14 +152,14 @@ describe("analyzeReceipt", () => {
         throw new LlamaServerError("llama-server konnte das Modell nicht laden: bad magic", "start_failed");
       },
     };
-    const out = await analyzeReceipt({ ...base, settings: LLAMA, llama });
+    const out = await analyzeReceipt({ ...base, settings: LLAMA, llama: lease(llama) });
     expect(out.status).toBe("failed");
     expect(out.error).toBe("llama-server konnte das Modell nicht laden: bad magic");
     expect(out.model).toBe("Qwen3.5-4B-Q4_K_M");
     expect(out.result.llmSkipped).toBe(true);
     expect(out.result.fields.supplierUid?.value).toBe("ATU00000000");
 
-    const missing = await analyzeReceipt({ ...base, settings: { ...LLAMA, llamaModelPath: join(dir, "gone.gguf") }, llama });
+    const missing = await analyzeReceipt({ ...base, settings: { ...LLAMA, llamaModelPath: join(dir, "gone.gguf") }, llama: lease(llama) });
     expect(missing.error).toContain("Modelldatei nicht gefunden");
     expect(missing.result.fields.grossCents?.value).toBe(48000);
   });
@@ -170,7 +173,7 @@ describe("analyzeReceipt", () => {
       return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer) } }] });
     };
     const llama = { ensure: async (c: LlamaConfig) => (configs.push(c), { ...endpoint, vision: true }) };
-    const out = await analyzeReceipt({ ...base, tools: { ...tools, pageImages: async () => ["aW1n"] }, settings: { ...LLAMA, mode: "vision" }, fetchFn, llama });
+    const out = await analyzeReceipt({ ...base, tools: { ...tools, pageImages: async () => ["aW1n"] }, settings: { ...LLAMA, mode: "vision" }, fetchFn, llama: lease(llama) });
     rmSync(join(modelDir, "mmproj-F16.gguf"));
     expect(out.status).toBe("done");
     expect(configs[0]!.mmproj).toBe(join(modelDir, "mmproj-F16.gguf"));
@@ -179,7 +182,7 @@ describe("analyzeReceipt", () => {
 
   test("LLM disabled → rules only, done, no server", async () => {
     const llama = { ensure: async (): Promise<LlamaEndpoint> => { throw new Error("must not start"); } };
-    const out = await analyzeReceipt({ ...base, settings: { ...LLAMA, llmEnabled: false }, llama });
+    const out = await analyzeReceipt({ ...base, settings: { ...LLAMA, llmEnabled: false }, llama: lease(llama) });
     expect(out.status).toBe("done");
     expect(out.model).toBe("");
     expect(out.result.llmSkipped).toBe(true);
@@ -208,7 +211,7 @@ describe("analyzeReceipt", () => {
         throw new AbortedError();
       },
     };
-    await expect(analyzeReceipt({ ...base, settings: LLAMA, llama, signal: controller.signal })).rejects.toBeInstanceOf(AbortedError);
+    await expect(analyzeReceipt({ ...base, settings: LLAMA, llama: lease(llama), signal: controller.signal })).rejects.toBeInstanceOf(AbortedError);
   });
 });
 
@@ -217,8 +220,9 @@ describe("syncLlamaServer", () => {
     const m = { stopped: 0, activeKey: () => key, stop: async () => void m.stopped++ };
     return m;
   };
-  const sync = (s: OcrSettings, busy: boolean, m: ReturnType<typeof fakeManager>) =>
-    syncLlamaServer(s, busy, m as unknown as Parameters<typeof syncLlamaServer>[2]);
+  const idleLease = { busy: false, recentlyUsed: () => false };
+  const sync = (s: OcrSettings, busy: boolean, m: ReturnType<typeof fakeManager>, l = idleLease) =>
+    syncLlamaServer(s, busy, m as unknown as Parameters<typeof syncLlamaServer>[2], l);
 
   test("stops an idle server whose config no longer matches", async () => {
     const key = JSON.stringify([binary, model, null, 8192]);
@@ -234,5 +238,15 @@ describe("syncLlamaServer", () => {
     const busy = fakeManager(key);
     await sync({ ...LLAMA, llmEnabled: false }, true, busy);
     expect(busy.stopped).toBe(0);
+  });
+
+  test("keeps the server while the assistant uses it or used it recently", async () => {
+    const key = JSON.stringify([binary, model, null, 32768]);
+    const inUse = fakeManager(key);
+    await sync({ ...LLAMA, llmEnabled: false }, false, inUse, { busy: true, recentlyUsed: () => false });
+    expect(inUse.stopped).toBe(0);
+    const warm = fakeManager(key);
+    await sync({ ...LLAMA, llmEnabled: false }, false, warm, { busy: false, recentlyUsed: () => true });
+    expect(warm.stopped).toBe(0);
   });
 });

@@ -21,8 +21,8 @@ import { tesseractImage, tesseractStatus } from "../lib/ocr/tesseract";
 import { supplierSuggestions } from "./expenses";
 import { extractWithRules, type RulesContext } from "./receipt-heuristics";
 import { modelAlias } from "../lib/llama/paths";
-import type { LlamaServerManager } from "../lib/llama/server";
-import { getLlamaServer, llamaConfigFor, toLlmError } from "./receipt-llama";
+import type { LlamaLease } from "../lib/llama/lease";
+import { getLlamaLease, llamaConfigFor, toLlmError } from "./receipt-llama";
 import { extractFields, type FetchFn, LlmError, type PromptContext } from "./receipt-llm";
 import { normalizeSupplierName, normalizeUid } from "./receipt-parse";
 import { mergeFields, validateFields } from "./receipt-validate";
@@ -48,8 +48,8 @@ export interface AnalyzeInput {
   db: DbOrTx;
   tools?: ReceiptTools;
   fetchFn?: FetchFn;
-  /** the llama-server manager (default: the process-wide one) */
-  llama?: Pick<LlamaServerManager, "ensure">;
+  /** access to the shared llama-server (default: the process-wide lease) */
+  llama?: Pick<LlamaLease, "run">;
   today?: string;
 }
 
@@ -280,26 +280,35 @@ async function runModel(input: AnalyzeInput, text: string, tools: ReceiptTools, 
   const { settings, signal } = input;
   const config = llamaConfigFor(settings);
   step.model = modelAlias(config.model);
-  let server;
+  const images = settings.mode === "vision" ? await tools.pageImages(input.file, signal) : undefined;
+  // the lease keeps the assistant from restarting the server while this receipt is extracted
+  let started = false;
   try {
-    server = await (input.llama ?? getLlamaServer()).ensure(config, signal);
+    return await (input.llama ?? getLlamaLease()).run(
+      "ocr",
+      config,
+      (server) => {
+        started = true;
+        step.model = server.model;
+        step.serverStartMs = server.startMs;
+        return extractFields({
+          baseUrl: server.baseUrl,
+          apiKey: server.apiKey,
+          model: server.model,
+          text,
+          images,
+          context: input.context,
+          signal,
+          fetchFn: input.fetchFn,
+        });
+      },
+      { signal },
+    );
   } catch (err) {
+    if (started) throw err;
     if (signal?.aborted) throw new AbortedError();
     throw toLlmError(err);
   }
-  step.model = server.model;
-  step.serverStartMs = server.startMs;
-  const images = settings.mode === "vision" ? await tools.pageImages(input.file, signal) : undefined;
-  return extractFields({
-    baseUrl: server.baseUrl,
-    apiKey: server.apiKey,
-    model: server.model,
-    text,
-    images,
-    context: input.context,
-    signal,
-    fetchFn: input.fetchFn,
-  });
 }
 
 /**

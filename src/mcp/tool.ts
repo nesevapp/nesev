@@ -2,7 +2,7 @@ import type { McpServer, StandardSchemaWithJSON, ToolAnnotations } from "@modelc
 import { join } from "node:path";
 import type { z } from "zod";
 import { DATA_DIR } from "../server/lib/paths";
-import { type Api, ApiError, api } from "./api";
+import { type Api, ApiError, api, createApi } from "./api";
 
 // The shared core every tool module builds on: the context passed to register<Area>Tools(server, ctx) and
 // defineTool(), which wires a zod input/output schema, annotations and the error mapping onto server.registerTool.
@@ -16,6 +16,11 @@ export interface ToolContext {
   dataPath: (relative: string) => string;
   /** the running nesev server (HTTP), for work that must not run in the MCP process (receipt analysis) */
   apiUrl: string;
+  /**
+   * The tools run inside the nesev server process (in-app assistant) instead of the stdio MCP process: receipt
+   * analysis is queued in-process (api serves POST /api/receipts), apiUrl is unused.
+   */
+  inServer: boolean;
 }
 
 export const DEFAULT_WEB_URL = "http://localhost:5174";
@@ -28,6 +33,18 @@ export function createContext(env: Record<string, string | undefined> = process.
     webUrl: (path) => `${base}${path.startsWith("/") ? path : `/${path}`}`,
     dataPath: (relative) => join(DATA_DIR, relative),
     apiUrl: (env.NESEV_API_URL?.trim() || DEFAULT_API_URL).replace(/\/+$/, ""),
+    inServer: false,
+  };
+}
+
+/** Context for the tools inside the nesev server process: links are app paths ("/invoices/12"), receipts in-process. */
+export function createServerContext(): ToolContext {
+  return {
+    api: createApi({ inServer: true }),
+    webUrl: (path) => (path.startsWith("/") ? path : `/${path}`),
+    dataPath: (relative) => join(DATA_DIR, relative),
+    apiUrl: "",
+    inServer: true,
   };
 }
 

@@ -95,7 +95,7 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 |---|---|
 | `create_client` | Refuses likely duplicates (same name without legal form, same UID or email) unless `allowDuplicate: true` |
 | `create_article` | Unit must be one of the configured units; net price in euros; rate 20/13/10/0 % |
-| `create_invoice_draft` / `create_offer_draft` | Client by `clientId` or `clientName` (must match exactly one client; otherwise the error lists the candidates). Each item has quantity, a configured unit (the error lists them), a net `unitPrice` in euros, a rate and optionally an `articleId` for defaults. Tax mode, texts and dates default like in the UI. Returns the draft with totals. |
+| `create_invoice_draft` / `create_offer_draft` | Client by `clientId` or `clientName` (must match exactly one client; otherwise the error lists the candidates). Each item has a `title` (required in the schema, so grammar-constrained local models can't drop it; `""` takes the article's title), quantity, a configured unit (the error lists them), a net `unitPrice` in euros, a rate and optionally an `articleId` for defaults. Tax mode, texts and dates default like in the UI. Returns the draft with totals. |
 | `update_document_draft` | Drafts only. Changes the given fields; `items` replaces all lines |
 | `create_expense` | Lines with net or gross, rate and deductible %; the VAT treatment defaults from country and UID. Optional: `receiptPath` (a local file, checked like the UI: PDF/JPG/PNG/WebP, ≤ 20 MB, plus the file content) and `fixedCostId` + `fixedCostSlot` |
 | `queue_receipt_analysis` | Queues OCR on the running nesev server over HTTP (`NESEV_API_URL`). It first checks that the server uses the same data (each expense must match on number, supplier and receipt). Fails clearly when the server isn't running. |
@@ -133,11 +133,14 @@ Input:
 ## Layout
 
 ```
-server.ts         entry: stdout guard, SERVER_INFO + instructions, TOOL_MODULES (order!), buildServer(), serveStdio
+server.ts         stdio entry: stdout guard, serveStdio(buildServer)
+build.ts          SERVER_INFO + instructions, TOOL_MODULES (order!), buildServer(); importable without the guard (the
+                  nesev server uses it in-process for the assistant, services/chat-tools.ts)
 stdout-guard.ts   console.log/info/debug → stderr (first import)
-api.ts            in-process typed hc clients (fetch = app.fetch; non-GET /api/receipts refused), call() → body or
+api.ts            createApi(): in-process typed hc clients (fetch = app.fetch; non-GET /api/receipts refused unless inServer), call() → body or
                   ApiError; remoteApi(url) for the running server
-tool.ts           ToolContext (api, webUrl, dataPath, apiUrl), defineTool(), ToolError, READ_ONLY / CREATES / CHANGES_STATE
+tool.ts           ToolContext (api, webUrl, dataPath, apiUrl, inServer), createContext() (stdio) / createServerContext()
+                  (inside the nesev server: app-path links, receipts in-process), defineTool(), ToolError, annotations
 format.ts         Money/money(), euroAmount/eurosToCents, qty/toMilli/percent, dates, German status labels, text helpers
 inputs.ts         write-tool inputs: resolveClientId (clientName), configured units, tax rates, itemInput/buildItems
 tools/            read: overview, documents, clients, articles, expenses, finance

@@ -25,6 +25,7 @@ import {
   reapOrphan,
   unregister,
 } from "../lib/llama/server";
+import { LlamaLease } from "../lib/llama/lease";
 import { DATA_DIR } from "../lib/paths";
 import { extractFields, LlmError } from "./receipt-llm";
 
@@ -134,10 +135,27 @@ export function getLlamaServer(): LlamaServerManager {
   return g[MANAGER_KEY];
 }
 
-/** A running server that no longer matches the settings is stopped (unless a batch is using it). */
-export async function syncLlamaServer(settings: OcrSettings, workerBusy: boolean, manager = getLlamaServer()): Promise<void> {
+const LEASE_KEY = Symbol.for("nesev.llamaLease");
+
+/** Exclusive access to the shared llama-server for the receipt worker and the assistant (see lib/llama/lease.ts). */
+export function getLlamaLease(): LlamaLease {
+  const g = globalThis as { [LEASE_KEY]?: LlamaLease };
+  g[LEASE_KEY] ??= new LlamaLease(getLlamaServer());
+  return g[LEASE_KEY];
+}
+
+/**
+ * A running server that no longer matches the settings is stopped (unless a batch or the assistant is using it, or
+ * the assistant used it in the last minutes – its next call restarts it with the right config anyway).
+ */
+export async function syncLlamaServer(
+  settings: OcrSettings,
+  workerBusy: boolean,
+  manager = getLlamaServer(),
+  lease: Pick<LlamaLease, "busy" | "recentlyUsed"> = getLlamaLease(),
+): Promise<void> {
   const active = manager.activeKey();
-  if (!active || workerBusy) return;
+  if (!active || workerBusy || lease.busy || lease.recentlyUsed("chat")) return;
   let wanted: string | null = null;
   if (settings.llmEnabled) {
     try {

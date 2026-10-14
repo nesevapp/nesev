@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
 import { ForecastSettingsSection } from "@/features/forecast/forecast-settings-section";
 import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
+import { ChatSettingsSection } from "@/features/chat/chat-settings-section";
 import {
   apiErrorMessage,
   fileUrl,
@@ -225,6 +226,7 @@ export function SettingsPage() {
       <ReminderSettingsSection />
       <ForecastSettingsSection />
       <ReceiptSettingsSection />
+      <ChatSettingsSection />
     </Page>
   );
 }

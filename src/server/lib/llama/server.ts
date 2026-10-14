@@ -177,6 +177,11 @@ export class LlamaServerManager {
     return this.running?.key ?? this.starting?.key ?? null;
   }
 
+  /** config of the running server (not one still starting), null when stopped */
+  activeConfig(): LlamaConfig | null {
+    return this.running?.config ?? null;
+  }
+
   /** Running server for `config` – reused, or (re)started. Aborting `signal` while it loads stops it. */
   async ensure(config: LlamaConfig, signal?: AbortSignal): Promise<LlamaEndpoint> {
     if (signal?.aborted) throw new AbortedError();

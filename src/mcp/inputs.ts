@@ -61,7 +61,7 @@ export function taxRateBp(ratePercent: number, where: string): number {
 
 export const itemInput = z.object({
   articleId: z.number().int().positive().optional().describe("catalog article: title, unit, price and rate default from it"),
-  title: z.string().trim().max(500).optional(),
+  title: z.string().trim().max(500).describe('line title, e.g. "Beratung" ("" = the article\'s title when articleId is given)'),
   description: z.string().max(5000).optional(),
   quantity: z.number().describe("plain number, e.g. 1.5 (hours, pieces, …)"),
   unit: z.string().trim().max(20).optional().describe("one of the configured units (e.g. Std., Stk., Pauschal)"),
@@ -78,8 +78,8 @@ export async function buildItems(ctx: ToolContext, items: ItemInput[]): Promise<
   for (const [i, it] of items.entries()) {
     const where = `Position ${i + 1}`;
     const article = it.articleId ? await call(ctx.api.articles[":id"].$get({ param: idParam(it.articleId) })) : null;
-    const title = it.title ?? article?.title ?? "";
-    if (!title.trim()) throw new ToolError(`${where}: Bezeichnung (title) fehlt`);
+    const title = it.title || article?.title || "";
+    if (!title.trim()) throw new ToolError(`${where}: Bezeichnung fehlt – jede Position in items braucht "title" (z. B. "Beratung"), außer sie hat eine articleId`);
     const unitPriceCents = it.unitPrice ?? article?.unitPriceCents;
     if (unitPriceCents === undefined) throw new ToolError(`${where}: Einzelpreis (unitPrice, netto in Euro) fehlt`);
     const unit = it.unit ?? article?.unit;

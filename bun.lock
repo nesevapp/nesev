@@ -7,6 +7,7 @@
       "dependencies": {
         "@hono/zod-validator": "0.9.1",
         "@hookform/resolvers": "5.9.1",
+        "@modelcontextprotocol/client": "2.3.1",
         "@modelcontextprotocol/server": "2.3.1",
         "@pdfme/common": "6.2.4",
         "@pdfme/generator": "6.2.4",
@@ -32,7 +33,6 @@
         "zod": "4.6.7",
       },
       "devDependencies": {
-        "@modelcontextprotocol/client": "2.3.1",
         "@tailwindcss/vite": "4.3.3",
         "@types/bun": "1.4.3",
         "@types/react": "19.3.0",

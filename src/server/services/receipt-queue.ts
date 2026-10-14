@@ -7,7 +7,7 @@ import { expenses, type ReceiptAnalysis, receiptAnalyses } from "../db/schema";
 import { DATA_DIR } from "../lib/paths";
 import { AbortedError } from "../lib/ocr/run";
 import { analyzeReceipt, type AnalyzeOutput } from "./receipt-pipeline";
-import { getLlamaServer } from "./receipt-llama";
+import { getLlamaLease, getLlamaServer } from "./receipt-llama";
 import { getOcrSettings } from "./receipt-settings";
 import { getSettings } from "./settings";
 
@@ -298,10 +298,12 @@ const WORKER_KEY = Symbol.for("nesev.receiptWorker");
 export function getReceiptWorker(db: DbOrTx): ReceiptWorker {
   const g = globalThis as { [WORKER_KEY]?: ReceiptWorker };
   g[WORKER_KEY] ??= new ReceiptWorker(db, runAnalysis, async () => {
-    // nesev's own llama-server: stop it now, or after 5 min idle (a new batch reuses it)
+    // nesev's own llama-server: stop it now, or after 5 min idle (a new batch reuses it). While the assistant is
+    // using it (or used it in the last minutes) it stays up; the idle stop still applies.
     const llama = getLlamaServer();
-    if (!llama.activeKey()) return;
-    if (getOcrSettings(db).unloadAfterBatch) await llama.stop();
+    const lease = getLlamaLease();
+    if (!llama.activeKey() || lease.busy) return;
+    if (getOcrSettings(db).unloadAfterBatch && !lease.recentlyUsed("chat")) await llama.stop();
     else llama.scheduleIdleStop();
   });
   return g[WORKER_KEY];

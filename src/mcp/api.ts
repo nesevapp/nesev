@@ -27,38 +27,43 @@ const BASE = "http://nesev.local/api";
 /**
  * Receipt analysis must never run in the MCP process: POST /api/receipts/analyze kicks the in-process worker (OCR,
  * llama-server). Only GETs of /api/receipts are served in-process; queueing goes to the running nesev server over
- * HTTP (remoteApi, tools/receipts.ts).
+ * HTTP (remoteApi, tools/receipts.ts). Inside the nesev server process itself (in-app assistant) the worker belongs
+ * there, so createApi({ inServer: true }) serves them.
  */
 const IN_PROCESS_BLOCKED = /^\/api\/receipts(\/|$)/;
 
-const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const req = new Request(input, init);
-  if (req.method !== "GET" && IN_PROCESS_BLOCKED.test(new URL(req.url).pathname)) {
-    return Response.json({ error: "Belegerkennung läuft nur im nesev-Server, nicht im MCP-Prozess" }, { status: 403 });
-  }
-  return app.fetch(req);
-};
+export function createApi(opts: { inServer?: boolean } = {}) {
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(input, init);
+    if (!opts.inServer && req.method !== "GET" && IN_PROCESS_BLOCKED.test(new URL(req.url).pathname)) {
+      return Response.json({ error: "Belegerkennung läuft nur im nesev-Server, nicht im MCP-Prozess" }, { status: 403 });
+    }
+    return app.fetch(req);
+  };
+  return {
+    articles: hc<typeof articlesApp>(`${BASE}/articles`, { fetch }),
+    assets: hc<typeof assetsApp>(`${BASE}/assets`, { fetch }),
+    bank: hc<typeof bankApp>(`${BASE}/bank`, { fetch }),
+    clients: hc<typeof clientsApp>(`${BASE}/clients`, { fetch }),
+    dashboard: hc<typeof dashboardApp>(`${BASE}/dashboard`, { fetch }),
+    documents: hc<typeof documentsApp>(`${BASE}/documents`, { fetch }),
+    expenses: hc<typeof expensesApp>(`${BASE}/expenses`, { fetch }),
+    forecast: hc<typeof forecastApp>(`${BASE}/forecast`, { fetch }),
+    /** GET only, unless inServer (see IN_PROCESS_BLOCKED) */
+    receipts: hc<typeof receiptsApp>(`${BASE}/receipts`, { fetch }),
+    recurring: hc<typeof recurringApp>(`${BASE}/recurring`, { fetch }),
+    recurringExpenses: hc<typeof recurringExpensesApp>(`${BASE}/recurring-expenses`, { fetch }),
+    reminders: hc<typeof remindersApp>(`${BASE}/reminders`, { fetch }),
+    search: hc<typeof searchApp>(`${BASE}/search`, { fetch }),
+    settings: hc<typeof settingsApp>(`${BASE}/settings`, { fetch }),
+    tax: hc<typeof taxApp>(`${BASE}/tax`, { fetch }),
+    templates: hc<typeof templatesApp>(`${BASE}/templates`, { fetch }),
+    units: hc<typeof unitsApp>(`${BASE}/units`, { fetch }),
+  };
+}
 
-export const api = {
-  articles: hc<typeof articlesApp>(`${BASE}/articles`, { fetch }),
-  assets: hc<typeof assetsApp>(`${BASE}/assets`, { fetch }),
-  bank: hc<typeof bankApp>(`${BASE}/bank`, { fetch }),
-  clients: hc<typeof clientsApp>(`${BASE}/clients`, { fetch }),
-  dashboard: hc<typeof dashboardApp>(`${BASE}/dashboard`, { fetch }),
-  documents: hc<typeof documentsApp>(`${BASE}/documents`, { fetch }),
-  expenses: hc<typeof expensesApp>(`${BASE}/expenses`, { fetch }),
-  forecast: hc<typeof forecastApp>(`${BASE}/forecast`, { fetch }),
-  /** GET only (see IN_PROCESS_BLOCKED) */
-  receipts: hc<typeof receiptsApp>(`${BASE}/receipts`, { fetch }),
-  recurring: hc<typeof recurringApp>(`${BASE}/recurring`, { fetch }),
-  recurringExpenses: hc<typeof recurringExpensesApp>(`${BASE}/recurring-expenses`, { fetch }),
-  reminders: hc<typeof remindersApp>(`${BASE}/reminders`, { fetch }),
-  search: hc<typeof searchApp>(`${BASE}/search`, { fetch }),
-  settings: hc<typeof settingsApp>(`${BASE}/settings`, { fetch }),
-  tax: hc<typeof taxApp>(`${BASE}/tax`, { fetch }),
-  templates: hc<typeof templatesApp>(`${BASE}/templates`, { fetch }),
-  units: hc<typeof unitsApp>(`${BASE}/units`, { fetch }),
-};
+/** The MCP process's clients (receipt POSTs refused). */
+export const api = createApi();
 export type Api = typeof api;
 
 /**

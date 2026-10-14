@@ -42,6 +42,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <Section title="Allgemein">
               <Row keys={[modKey, "K"]}>Suche öffnen</Row>
               <Row keys={["/"]}>Suche öffnen</Row>
+              <Row keys={[modKey, "J"]}>Assistent ein-/ausblenden</Row>
               <Row keys={["?"]}>Diese Übersicht</Row>
               <Row keys={[modKey, "S"]}>Speichern (in Editoren)</Row>
               <Row keys={[modKey, "↵"]}>Ausgabe speichern & nächste</Row>
