@@ -93,7 +93,7 @@ export const EXPENSE_CATEGORIES = [
     group: "Anlagen",
     e1aKz: "9130",
     defaultDeductibleBp: 10000,
-    hint: "Über die Nutzungsdauer abzuschreiben (AfA) — mit Steuerberatung klären",
+    hint: "Wird über die Nutzungsdauer abgeschrieben (AfA): im Anlagenverzeichnis anlegen",
   },
   { key: "buero", label: "Büromaterial", group: "Betrieb", e1aKz: "9230", defaultDeductibleBp: 10000 },
   { key: "telefon_internet", label: "Telefon & Internet", group: "Betrieb", e1aKz: "9230", defaultDeductibleBp: 10000 },

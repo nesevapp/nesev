@@ -19,6 +19,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { GlobalSearch } from "@/features/search/global-search";
 
 interface NavItem {
   to:
@@ -96,6 +97,9 @@ export function AppShell() {
             n
           </div>
           <span className="text-sm font-semibold tracking-tight text-foreground">nesev</span>
+        </div>
+        <div className="px-3 pb-2">
+          <GlobalSearch />
         </div>
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-2">
           {NAV.map((group, i) => (

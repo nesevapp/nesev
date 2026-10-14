@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
-import { addDays, formatDate } from "@shared/dates";
+import { AlertTriangle, X } from "lucide-react";
+import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { Page } from "@/components/page";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -12,7 +13,8 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { docLink } from "@/features/documents/config";
 import { cn } from "@/lib/utils";
 import { type Forecast, type ForecastEntry, type ForecastParams, forecastQuery, type ForecastSource } from "@/sdk";
-import { type ChartColumn, ForecastChart, SOURCE_META, SOURCE_ORDER, SourceLegend } from "./forecast-chart";
+import { type ChartColumn, ForecastChart, IN_SOURCES, OUT_SOURCES, SOURCE_META, SourceLegend } from "./forecast-chart";
+import { ForecastSettingsPopover } from "./forecast-settings";
 
 export interface ForecastSearch {
   months?: number;
@@ -20,6 +22,7 @@ export interface ForecastSearch {
   drafts?: boolean;
   offers?: boolean;
   probability?: number;
+  outflows?: boolean;
 }
 
 const MONTHS = ["Jän", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -41,13 +44,16 @@ function isoWeek(iso: string): number {
 
 function toColumns(data: Forecast, view: "month" | "week"): ChartColumn[] {
   const cols: ChartColumn[] = [];
-  if (data.overdueBucket.totalCents > 0) {
+  const o = data.overdueBucket;
+  if (o.inCents > 0 || o.outCents > 0) {
+    const balanceCounts = data.balance && data.balance.date <= data.today;
     cols.push({
       key: "overdue",
       label: "Überfällig",
       title: "Überfällig – sofort erwartet",
-      ...data.overdueBucket,
-      cumulativeCents: data.overdueBucket.totalCents,
+      ...o,
+      lineCents: data.balance ? data.balance.startCents + (balanceCounts ? o.netCents : 0) : o.netCents,
+      minBalanceCents: null,
       overdue: true,
     });
   }
@@ -55,15 +61,16 @@ function toColumns(data: Forecast, view: "month" | "week"): ChartColumn[] {
   buckets.forEach((b, i) => {
     const month = Number(b.key.slice(5, 7)) - 1;
     const year = b.key.slice(2, 4);
+    const col = { ...b, lineCents: b.balanceCents ?? b.cumulativeCents };
     if (view === "month") {
       cols.push({
-        ...b,
+        ...col,
         label: i === 0 || month === 0 ? `${MONTHS[month]} ${year}` : MONTHS[month]!,
         title: `${MONTHS_LONG[month]} ${b.key.slice(0, 4)}${i === 0 ? ` (ab ${short(data.today)})` : ""}`,
       });
     } else {
       cols.push({
-        ...b,
+        ...col,
         label: short(b.start),
         title: `KW ${isoWeek(b.start)} · ${formatDate(b.start)} – ${formatDate(b.end)}`,
       });
@@ -78,16 +85,20 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
     drafts: search.drafts ?? false,
     offers: search.offers ?? false,
     probability: search.probability ?? 50,
+    outflows: search.outflows ?? true,
   };
   const view = search.view ?? "month";
   const { data, isFetching } = useQuery(forecastQuery(params));
   const [selected, setSelected] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => setSelected(null), [view, params.months]);
 
   if (!data) return <Page title="Zahlungsprognose" />;
 
   const columns = toColumns(data, view);
-  const usedSources = SOURCE_ORDER.filter((s) => s === "invoice" || s === "recurring" || (s === "offer" ? params.offers : params.drafts));
+  const has = (dir: "in" | "out", s: ForecastSource) => data.entries.some((e) => e.direction === dir && e.source === s);
+  const inSources = IN_SOURCES.filter((s) => s === "invoice" || s === "recurring" || has("in", s) || (s === "offer" ? params.offers : s === "draft" && params.drafts));
+  const outSources = params.outflows ? OUT_SOURCES.filter((s) => s === "fixed_cost" || has("out", s)) : [];
   const selectedCol = columns.find((c) => c.key === selected);
   const rows = selectedCol
     ? data.entries.filter((e) =>
@@ -100,30 +111,46 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
   return (
     <Page
       title="Zahlungsprognose"
-      description={`Erwartete Zahlungseingänge (brutto) bis ${formatDate(data.horizonEnd)} – aus offenen Rechnungen, Serienrechnungen und dem Zahlungsverhalten deiner Kunden.`}
+      description={`Erwartete Zahlungen (brutto) bis ${formatDate(data.horizonEnd)} – Eingänge aus Rechnungen und dem Zahlungsverhalten deiner Kunden, Ausgänge aus Fixkosten, offenen Ausgaben und Steuern.`}
       actions={
-        <Segmented
-          value={String(params.months)}
-          options={[
-            ["3", "3 Monate"],
-            ["6", "6 Monate"],
-            ["12", "12 Monate"],
-          ]}
-          onChange={(v) => setSearch({ months: Number(v) === 6 ? undefined : Number(v) })}
-          label="Zeitraum"
-        />
+        <>
+          <ForecastSettingsPopover open={settingsOpen} onOpenChange={setSettingsOpen} />
+          <Segmented
+            value={String(params.months)}
+            options={[
+              ["3", "3 Monate"],
+              ["6", "6 Monate"],
+              ["12", "12 Monate"],
+            ]}
+            onChange={(v) => setSearch({ months: Number(v) === 6 ? undefined : Number(v) })}
+            label="Zeitraum"
+          />
+        </>
       }
     >
       <div className={cn("space-y-8 transition-opacity", isFetching && "opacity-70")}>
-        <Kpis data={data} />
+        <Kpis data={data} onSetBalance={() => setSettingsOpen(true)} />
+        {data.kpis.lowestBalance && data.kpis.lowestBalance.cents < 0 && (
+          <div className="-mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 px-4 py-3 text-sm text-red-800">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Der Kontostand fällt voraussichtlich am {formatDate(data.kpis.lowestBalance.date)} auf{" "}
+              <span className="font-medium tabular">{formatCents(data.kpis.lowestBalance.cents)}</span>. Prüfe Zahlungsziele,
+              offene Rechnungen oder verschiebbare Ausgaben.
+            </span>
+          </div>
+        )}
 
         <section>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-medium">Erwartete Eingänge pro {view === "month" ? "Monat" : "Woche"}</h2>
+              <h2 className="text-sm font-medium">
+                Erwartete {params.outflows ? "Ein- und Ausgänge" : "Eingänge"} pro {view === "month" ? "Monat" : "Woche"}
+              </h2>
               <p className="text-xs text-muted-foreground">Nach erwartetem Zahlungsdatum · Balken anklicken filtert die Liste</p>
             </div>
             <div className="flex flex-wrap items-center gap-4">
+              <Toggle id="fc-outflows" label="Ausgänge" checked={params.outflows} onChange={(v) => setSearch({ outflows: v ? undefined : false })} />
               <Toggle id="fc-drafts" label="Entwürfe" checked={params.drafts} onChange={(v) => setSearch({ drafts: v || undefined })} />
               <div className="flex items-center gap-2">
                 <Toggle id="fc-offers" label="Angebote" checked={params.offers} onChange={(v) => setSearch({ offers: v || undefined })} />
@@ -142,9 +169,9 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
           </div>
           <div className="rounded-lg border p-4 pb-2">
             <div className="mb-2 flex justify-end">
-              <SourceLegend sources={usedSources} />
+              <SourceLegend inSources={inSources} outSources={outSources} line={data.balance ? "Kontostand" : "Saldo kumuliert"} />
             </div>
-            <ForecastChart columns={columns} selected={selected} onSelect={setSelected} />
+            <ForecastChart columns={columns} selected={selected} onSelect={setSelected} showOut={params.outflows} balance={!!data.balance} />
           </div>
         </section>
 
@@ -176,34 +203,73 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
 
 // ── KPIs ────────────────────────────────────────────────────────────────────────
 
-function Kpis({ data }: { data: Forecast }) {
+function Kpis({ data, onSetBalance }: { data: Forecast; onSetBalance: () => void }) {
   const { kpis } = data;
-  const until = (days: number) => {
-    const end = addDays(data.today, days);
-    const label = end > data.horizonEnd ? `bis ${formatDate(data.horizonEnd)} (Ende Zeitraum)` : `bis ${formatDate(end)}`;
-    return kpis.overdue > 0 ? `${label} · inkl. überfällig` : label;
-  };
-  const share = (part: number) => (kpis.total > 0 ? `${Math.round((part / kpis.total) * 100)} % der Summe` : "–");
+  const outflows = data.options.includeOutflows;
+  const low = kpis.lowestBalance;
+  const outParts = [
+    kpis.fixedCosts > 0 && `Fixkosten ${formatCents(kpis.fixedCosts)}`,
+    kpis.outOverdue > 0 && `überfällig ${formatCents(kpis.outOverdue)}`,
+  ].filter(Boolean);
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-5">
-      <Tile label="Nächste 30 Tage" value={formatCents(kpis.next30)} sub={until(30)} />
-      <Tile label="Nächste 90 Tage" value={formatCents(kpis.next90)} sub={until(90)} />
+    <div className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-4">
       <Tile
-        label={`Gesamt bis ${formatDate(data.horizonEnd)}`}
+        label={`Eingänge bis ${formatDate(data.horizonEnd)}`}
         value={formatCents(kpis.total)}
         sub={
           <>
-            davon USt. <span className="tabular">{formatCents(kpis.tax)}</span> (ans Finanzamt)
+            nächste 30 Tage <span className="tabular">{formatCents(kpis.next30)}</span>
+            {kpis.overdue > 0 && (
+              <span className="text-red-700">
+                {" "}
+                · überfällig <span className="tabular">{formatCents(kpis.overdue)}</span>
+              </span>
+            )}
           </>
         }
       />
       <Tile
-        label="Davon überfällig"
-        value={formatCents(kpis.overdue)}
-        sub={kpis.overdueCount ? `${kpis.overdueCount} ${kpis.overdueCount === 1 ? "Rechnung" : "Rechnungen"} · ${share(kpis.overdue)}` : "Keine überfälligen Rechnungen"}
-        tone={kpis.overdue > 0 ? "danger" : undefined}
+        label="Ausgänge"
+        value={outflows ? formatCents(kpis.outTotal) : "–"}
+        sub={
+          outflows
+            ? outParts.length
+              ? outParts.join(" · ")
+              : `nächste 30 Tage ${formatCents(kpis.outNext30)}`
+            : "ausgeblendet"
+        }
       />
-      <Tile label="Davon wiederkehrend" value={formatCents(kpis.recurring)} sub={share(kpis.recurring)} />
+      <Tile
+        label="Saldo"
+        value={formatCents(kpis.netTotal)}
+        sub={outflows ? "Eingänge − Ausgänge im Zeitraum" : "nur Eingänge (Ausgänge ausgeblendet)"}
+      />
+      {data.balance && kpis.endBalance !== null ? (
+        <Tile
+          label={`Kontostand am ${formatDate(data.horizonEnd)}`}
+          value={formatCents(kpis.endBalance)}
+          sub={
+            low && low.cents < 0 ? (
+              <span className="text-red-700">
+                Tiefster Stand <span className="tabular">{formatCents(low.cents)}</span> am {formatDate(low.date)}
+              </span>
+            ) : low ? (
+              <>
+                Tiefster Stand <span className="tabular">{formatCents(low.cents)}</span> am {formatDate(low.date)}
+              </>
+            ) : null
+          }
+          tone={(low && low.cents < 0) || kpis.endBalance < 0 ? "danger" : undefined}
+        />
+      ) : (
+        <div className="bg-background p-4">
+          <div className="text-xs text-muted-foreground">Erwarteter Kontostand</div>
+          <p className="mt-1.5 text-xs text-muted-foreground">Trag deinen aktuellen Kontostand ein, um den Verlauf vorauszurechnen.</p>
+          <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={onSetBalance}>
+            Kontostand eintragen
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -223,8 +289,8 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub: 
 
 // ── Table ───────────────────────────────────────────────────────────────────────
 
-function delayHint(e: ForecastEntry): string {
-  const { days, basis, samples } = e.delay;
+function delayHint(delay: NonNullable<ForecastEntry["delay"]>): string {
+  const { days, basis, samples } = delay;
   if (basis === "none") return "Keine Zahlungshistorie – Zahlung zur Fälligkeit angenommen";
   const amount = days === 0 ? "pünktlich" : `${Math.abs(days)} ${Math.abs(days) === 1 ? "Tag" : "Tage"} ${days > 0 ? "nach" : "vor"} Fälligkeit`;
   if (basis === "global") return `Keine eigene Historie – Schnitt aller Kunden: ${amount}`;
@@ -234,11 +300,37 @@ function delayHint(e: ForecastEntry): string {
 function EntryHint({ e }: { e: ForecastEntry }) {
   const lines: ReactNode[] = [];
   if (e.overdue) lines.push(<span className="text-red-700">Seit {e.daysOverdue} {e.daysOverdue === 1 ? "Tag" : "Tagen"} überfällig</span>);
-  if (e.source === "recurring" && !e.documentId) lines.push(`Rechnung am ${formatDate(e.issueDate)}, fällig ${formatDate(e.dueDate)}`);
-  else if (e.source === "offer") lines.push(`${e.probability} % von ${formatCents(e.fullGrossCents)} · bei Annahme heute fällig ${formatDate(e.dueDate)}`);
-  else if (!e.overdue) lines.push(`Fällig ${formatDate(e.dueDate)}`);
-  if (e.fullGrossCents !== e.grossCents && e.source !== "offer") lines.push(`abzgl. Gutschrift (Rechnung ${formatCents(e.fullGrossCents)})`);
-  lines.push(delayHint(e));
+  switch (e.source) {
+    case "fixed_cost":
+      lines.push("Geplante Zahlung laut Fixkosten");
+      break;
+    case "expense":
+      if (!e.overdue) lines.push(`Fällig ${formatDate(e.dueDate)}`);
+      if (e.fullGrossCents !== e.grossCents) lines.push(`Restbetrag (Rechnung ${formatCents(e.fullGrossCents)})`);
+      break;
+    case "vat":
+      lines.push(
+        e.estimated
+          ? "Bisher erfasste Belege + Schätzung: USt. der erwarteten Eingänge − Vorsteuer der geplanten Ausgaben im Zeitraum"
+          : "Laut UVA (bereits abgeschlossener Zeitraum)",
+      );
+      lines.push(`Fällig ${formatDate(e.dueDate)}${e.direction === "in" ? " · Gutschrift, Auszahlung nach Abgabe" : ""}`);
+      break;
+    case "income_tax":
+      lines.push(`Vierteljährliche Vorauszahlung laut Einstellung, fällig ${formatDate(e.dueDate)}`);
+      break;
+    case "recurring":
+      if (!e.documentId) lines.push(`Rechnung am ${formatDate(e.issueDate)}, fällig ${formatDate(e.dueDate)}`);
+      else if (!e.overdue) lines.push(`Fällig ${formatDate(e.dueDate)}`);
+      break;
+    case "offer":
+      lines.push(`${e.probability} % von ${formatCents(e.fullGrossCents)} · bei Annahme heute fällig ${formatDate(e.dueDate)}`);
+      break;
+    default:
+      if (!e.overdue) lines.push(`Fällig ${formatDate(e.dueDate)}`);
+      if (e.fullGrossCents !== e.grossCents) lines.push(`abzgl. Gutschrift/Teilzahlung (Rechnung ${formatCents(e.fullGrossCents)})`);
+  }
+  if (e.delay) lines.push(delayHint(e.delay));
   return (
     <div className="space-y-0.5 text-xs text-muted-foreground">
       {lines.map((l, i) => (
@@ -248,18 +340,41 @@ function EntryHint({ e }: { e: ForecastEntry }) {
   );
 }
 
+const linkClass = "font-medium underline-offset-4 hover:underline";
+
 function EntryLink({ e }: { e: ForecastEntry }) {
   if (e.documentId && e.documentType) {
     return (
-      <Link {...docLink(e.documentType, e.documentId)} className="font-medium underline-offset-4 hover:underline">
+      <Link {...docLink(e.documentType, e.documentId)} className={linkClass}>
         {e.number ?? "Entwurf"}
       </Link>
     );
   }
   if (e.recurringInvoiceId) {
     return (
-      <Link to="/recurring/$id" params={{ id: e.recurringInvoiceId }} className="font-medium underline-offset-4 hover:underline">
+      <Link to="/recurring/$id" params={{ id: e.recurringInvoiceId }} className={linkClass}>
         {e.label || "Serienrechnung"}
+      </Link>
+    );
+  }
+  if (e.expenseId) {
+    return (
+      <Link to="/expenses/$id" params={{ id: e.expenseId }} className={linkClass}>
+        {e.number || "Ausgabe"}
+      </Link>
+    );
+  }
+  if (e.recurringExpenseId) {
+    return (
+      <Link to="/fixed-costs" className={linkClass}>
+        {e.label}
+      </Link>
+    );
+  }
+  if (e.vatPeriod) {
+    return (
+      <Link to="/tax" search={{ tab: "uva", period: e.vatPeriod }} className={linkClass}>
+        UVA {e.label.replace(/^USt-(Zahllast|Gutschrift) /, "")}
       </Link>
     );
   }
@@ -274,15 +389,17 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
       </div>
     );
   }
-  const total = rows.reduce((s, e) => s + e.grossCents, 0);
-  const tax = rows.reduce((s, e) => s + e.taxCents, 0);
+  const sum = (dir: "in" | "out") => rows.filter((e) => e.direction === dir).reduce((s, e) => s + e.grossCents, 0);
+  const totalIn = sum("in");
+  const totalOut = sum("out");
+  const tax = rows.reduce((s, e) => s + (e.direction === "in" ? e.taxCents : 0), 0);
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead>Erwartet</TableHead>
           <TableHead>Quelle</TableHead>
-          <TableHead>Kunde · Beleg</TableHead>
+          <TableHead>Partner · Beleg</TableHead>
           <TableHead className="text-right">Betrag</TableHead>
           <TableHead className="w-[38%]">Annahme</TableHead>
         </TableRow>
@@ -297,19 +414,27 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
             <TableCell>
               <span className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className={cn("size-2 rounded-[2px]", SOURCE_META[e.source].bg)} aria-hidden />
-                {sourceShort(e.source, !!e.documentId)}
+                {sourceShort(e)}
               </span>
             </TableCell>
             <TableCell>
-              <div className="max-w-72 truncate">{e.clientName}</div>
+              <div className="max-w-72 truncate">{e.partyName}</div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <EntryLink e={e} />
-                {e.documentId && e.label && <span className="truncate">{e.label}</span>}
+                {(e.documentId || e.expenseId) && e.label && <span className="truncate">{e.label}</span>}
               </div>
             </TableCell>
-            <TableCell className="text-right tabular">
-              {formatCents(e.grossCents)}
-              {e.taxCents > 0 && <div className="text-xs text-muted-foreground">USt. {formatCents(e.taxCents)}</div>}
+            <TableCell className="text-right tabular whitespace-nowrap">
+              {e.direction === "out" ? (
+                <span>−{formatCents(e.grossCents)}</span>
+              ) : (
+                <span className="text-emerald-700">+{formatCents(e.grossCents)}</span>
+              )}
+              {e.taxCents > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {e.direction === "in" ? "USt." : "VSt."} {formatCents(e.taxCents)}
+                </div>
+              )}
             </TableCell>
             <TableCell className="whitespace-normal">
               <EntryHint e={e} />
@@ -320,12 +445,13 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
       <TableFooter>
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={3}>Summe</TableCell>
-          <TableCell className="text-right tabular">
-            {formatCents(total)}
-            <div className="text-xs font-normal text-muted-foreground">USt. {formatCents(tax)}</div>
+          <TableCell className="text-right tabular whitespace-nowrap">
+            <div className="text-emerald-700">+{formatCents(totalIn)}</div>
+            {totalOut > 0 && <div>−{formatCents(totalOut)}</div>}
+            <div className={cn("border-t pt-0.5", totalIn - totalOut < 0 && "text-red-700")}>{formatCents(totalIn - totalOut)}</div>
           </TableCell>
           <TableCell className="text-xs font-normal text-muted-foreground">
-            Netto nach USt.: <span className="tabular">{formatCents(total - tax)}</span>
+            In den Eingängen enthaltene USt.: <span className="tabular">{formatCents(tax)}</span>
           </TableCell>
         </TableRow>
       </TableFooter>
@@ -333,16 +459,24 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
   );
 }
 
-function sourceShort(s: ForecastSource, hasDocument: boolean): string {
-  switch (s) {
+function sourceShort(e: ForecastEntry): string {
+  switch (e.source) {
     case "invoice":
       return "Rechnung";
     case "recurring":
-      return hasDocument ? "Serie (Entwurf)" : "Serienrechnung";
+      return e.documentId ? "Serie (Entwurf)" : "Serienrechnung";
     case "offer":
       return "Angebot";
     case "draft":
       return "Entwurf";
+    case "fixed_cost":
+      return "Fixkosten";
+    case "expense":
+      return "Offene Ausgabe";
+    case "vat":
+      return `${e.direction === "in" ? "USt-Gutschrift" : "USt-Zahllast"}${e.estimated ? " (geschätzt)" : ""}`;
+    case "income_tax":
+      return "ESt-Vorauszahlung";
   }
 }
 
@@ -415,14 +549,33 @@ function ProbabilityInput({ value, onChange }: { value: number; onChange: (v: nu
 function Method({ data }: { data: Forecast }) {
   const g = data.globalDelay;
   return (
-    <section className="rounded-lg bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-      <span className="font-medium text-foreground">So wird gerechnet: </span>
-      Offene Rechnungen werden zum Fälligkeitsdatum plus der durchschnittlichen Zahlungsverzögerung des Kunden erwartet
-      (bezahlt am − fällig am, über alle bezahlten Rechnungen). Ohne eigene Historie gilt der Schnitt aller Kunden
-      {g.basis === "none" ? " – derzeit gibt es noch keine bezahlten Rechnungen, daher 0 Tage" : ` (${g.days} Tage aus ${g.samples} Rechnungen)`}.
-      Überfällige Rechnungen werden sofort erwartet. Aktive Serienrechnungen werden mit jedem künftigen Termin im Zeitraum
-      hochgerechnet (Rechnungsdatum + Zahlungsziel + Verzögerung). Angebote fließen optional mit der angegebenen
-      Wahrscheinlichkeit ein. Beträge sind brutto – der USt.-Anteil ist ans Finanzamt abzuführen.
+    <section className="space-y-2 rounded-lg bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+      <p>
+        <span className="font-medium text-foreground">Eingänge: </span>
+        Offene Rechnungen werden zum Fälligkeitsdatum plus der durchschnittlichen Zahlungsverzögerung des Kunden erwartet
+        (bezahlt am − fällig am, über alle bezahlten Rechnungen). Ohne eigene Historie gilt der Schnitt aller Kunden
+        {g.basis === "none" ? " – derzeit gibt es noch keine bezahlten Rechnungen, daher 0 Tage" : ` (${g.days} Tage aus ${g.samples} Rechnungen)`}.
+        Überfällige Rechnungen werden sofort erwartet. Aktive Serienrechnungen werden mit jedem künftigen Termin im Zeitraum
+        hochgerechnet (Rechnungsdatum + Zahlungsziel + Verzögerung). Angebote fließen optional mit der angegebenen
+        Wahrscheinlichkeit ein.
+      </p>
+      <p>
+        <span className="font-medium text-foreground">Ausgänge: </span>
+        Fixkosten zu jedem Zahlungstermin; unbezahlte Ausgaben zum Fälligkeitsdatum (ohne Datum: Rechnungsdatum + 14 Tage,
+        überfällige sofort).{" "}
+        {data.smallBusiness
+          ? "Als Kleinunternehmer fällt keine USt-Zahllast an."
+          : "USt-Zahllast am 15. des zweiten Monats nach dem UVA-Zeitraum: abgeschlossene Zeiträume laut UVA, laufende und künftige geschätzt (USt. der erwarteten Eingänge − Vorsteuer der geplanten Ausgaben)."}{" "}
+        ESt-Vorauszahlungen laut Einstellung am 15.2., 15.5., 15.8. und 15.11. Ist eine Fixkosten-Zahlung schon als
+        unbezahlte Ausgabe erfasst, erscheint sie doppelt.
+      </p>
+      {data.balance && (
+        <p>
+          <span className="font-medium text-foreground">Kontostand: </span>
+          {formatCents(data.balance.startCents)} am {formatDate(data.balance.date)} plus alle erwarteten Zahlungen ab diesem
+          Tag. Alle Beträge brutto; eine Hilfe zur Planung, keine Steuerberatung.
+        </p>
+      )}
     </section>
   );
 }

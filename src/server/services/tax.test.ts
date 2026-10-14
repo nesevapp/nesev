@@ -14,6 +14,7 @@ import {
   expenses,
   type NewDocument,
 } from "../db/schema";
+import { createAsset } from "./assets";
 import { createCreditNote, createDocument, finalizeDocument, getDocument } from "./documents";
 import { updateSettings } from "./settings";
 import { computeEar, computeUva, computeZm, earCsv, revenueEvents, uvaCsv, uvaValues } from "./tax";
@@ -318,6 +319,29 @@ describe("EAR", () => {
       ["document", 60000],
     ]);
     expect(earCsv(r)).toContain("Gewinn / Verlust;;;;760,00");
+  });
+
+  test("anlagen lines are capitalized: AfA from the Anlagenverzeichnis under KZ 9130, UVA unchanged", () => {
+    const { db, expense } = setup();
+    const e = expense("domestic", [{ net: 240000, category: "anlagen" }, { net: 10000, category: "buero" }], { issueDate: "2026-09-10", paidAt: "2026-09-12" });
+    let r = computeEar(db, 2026);
+    expect(r.expensesCents).toBe(10000); // the laptop is no expense
+    expect(r.warnings.some((w) => w.includes("im Anlagenverzeichnis anlegen"))).toBe(true);
+    expect(r.e1a.find((x) => x.kz === "9130")).toBeUndefined();
+
+    createAsset(db, { name: "MacBook", expenseId: e.id, acquisitionDate: "2026-09-10", inServiceDate: "2026-09-15", costCents: 240000, usefulLifeYears: 3 });
+    r = computeEar(db, 2026);
+    expect(r.expensesCents).toBe(10000 + 40000); // half-year AfA
+    expect(r.e1a.find((x) => x.kz === "9130")!.amountCents).toBe(40000);
+    const afa = r.groups.find((g) => g.group === "Anlagen")!.categories.find((c) => c.key === "afa")!;
+    expect(afa.assets).toEqual([{ id: 1, number: "AV-0001", name: "MacBook", amountCents: 40000, note: "" }]);
+    expect(r.warnings.some((w) => w.includes("Anlagenverzeichnis"))).toBe(false);
+    expect(r.monthly.reduce((s, m) => s + m.expensesCents, 0)).toBe(r.expensesCents);
+    expect(earCsv(r)).toContain("AV-0001;MacBook");
+    expect(computeEar(db, 2027).expensesCents).toBe(80000);
+
+    // input VAT on the asset stays deductible at once
+    expect(v(db, parsePeriod("2026-Q3")!)["060"]!.amount).toBe(48000 + 2000);
   });
 
   test("Kleinunternehmer: expenses gross", () => {

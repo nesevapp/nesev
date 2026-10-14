@@ -1,12 +1,13 @@
 import { createRoute } from "@tanstack/react-router";
 import { rootRoute } from "@/app/root-route";
-import { Page } from "@/components/page";
+import { recurringExpensesQuery } from "@/sdk";
+import { FixedCostsPage } from "./fixed-costs-page";
 
-// Placeholder – implemented by the feature agent.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/fixed-costs",
-  component: () => <Page title="Fixkosten" />,
+  loader: ({ context }) => context.queryClient.ensureQueryData(recurringExpensesQuery),
+  component: FixedCostsPage,
 });
 
 export const fixedCostsRoutes = [indexRoute] as const;

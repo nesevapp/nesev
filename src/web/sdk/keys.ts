@@ -56,6 +56,7 @@ export const keys = {
   forecast: {
     all: ["forecast"] as const,
     report: (params: object) => ["forecast", params] as const,
+    settings: ["forecast", "settings"] as const,
   },
   dashboard: {
     all: ["dashboard"] as const,

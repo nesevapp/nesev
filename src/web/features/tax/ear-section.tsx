@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
@@ -175,14 +176,18 @@ function Breakdown({ data }: { data: EarReport }) {
                   <TableCell className="py-1.5 pl-4 font-medium">{g.group}</TableCell>
                   <TableCell className="py-1.5 text-right font-medium tabular">{formatCents(g.amountCents)}</TableCell>
                 </TableRow>
-                {g.categories.map((c) => (
-                  <TableRow key={c.key} className="hover:bg-transparent">
-                    <TableCell className="py-1 pl-8 text-muted-foreground" title={c.hint || undefined}>
-                      {c.label}
-                    </TableCell>
-                    <TableCell className="py-1 text-right text-muted-foreground tabular">{formatCents(c.amountCents)}</TableCell>
-                  </TableRow>
-                ))}
+                {g.categories.map((c) =>
+                  c.assets ? (
+                    <AssetCategoryRows key={c.key} category={c} />
+                  ) : (
+                    <TableRow key={c.key} className="hover:bg-transparent">
+                      <TableCell className="py-1 pl-8 text-muted-foreground" title={c.hint || undefined}>
+                        {c.label}
+                      </TableCell>
+                      <TableCell className="py-1 text-right text-muted-foreground tabular">{formatCents(c.amountCents)}</TableCell>
+                    </TableRow>
+                  ),
+                )}
               </Fragment>
             ))}
             <TableRow className="border-t-2 font-semibold hover:bg-transparent">
@@ -193,6 +198,40 @@ function Breakdown({ data }: { data: EarReport }) {
         </Table>
       </div>
     </section>
+  );
+}
+
+type EarCategory = EarReport["groups"][number]["categories"][number];
+
+/** AfA rows: expandable to the assets of the Anlagenverzeichnis behind the amount. */
+function AssetCategoryRows({ category: c }: { category: EarCategory }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TableRow className="cursor-pointer" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <TableCell className="py-1 pl-8 text-muted-foreground" title={c.hint || undefined}>
+          <span className="flex items-center gap-1">
+            <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+            {c.label}
+            <span className="text-xs">({c.assets?.length ?? 0})</span>
+          </span>
+        </TableCell>
+        <TableCell className="py-1 text-right text-muted-foreground tabular">{formatCents(c.amountCents)}</TableCell>
+      </TableRow>
+      {open &&
+        c.assets?.map((a) => (
+          <TableRow key={a.id} className="hover:bg-transparent">
+            <TableCell className="bg-muted/20 py-1 pl-14 text-xs">
+              <Link to="/assets/$id" params={{ id: a.id }} className="font-medium tabular hover:underline">
+                {a.number}
+              </Link>{" "}
+              {a.name}
+              {a.note && <span className="text-muted-foreground"> · {a.note}</span>}
+            </TableCell>
+            <TableCell className="bg-muted/20 py-1 text-right text-xs tabular">{formatCents(a.amountCents)}</TableCell>
+          </TableRow>
+        ))}
+    </>
   );
 }
 

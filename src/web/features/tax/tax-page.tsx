@@ -29,7 +29,7 @@ export function TaxPage({ search, setSearch }: { search: TaxSearch; setSearch: (
       {tab === "ear" && <EarSection year={search.year} setYear={(year) => setSearch({ year })} />}
       <p className="mt-12 border-t pt-4 text-xs text-muted-foreground">
         Hilfe zur Vorbereitung der Meldungen in FinanzOnline bzw. für die Steuerberatung — keine Steuerberatung. Werte vor der
-        Abgabe prüfen; Sonderfälle (Anzahlungen, Eigenverbrauch, Anlagen-AfA, Warenlieferungen ins Ausland) sind nicht abgebildet.
+        Abgabe prüfen; Sonderfälle (Anzahlungen, Eigenverbrauch, Warenlieferungen ins Ausland) sind nicht abgebildet. Die AfA kommt aus dem Anlagenverzeichnis (Anlagen).
       </p>
     </Page>
   );

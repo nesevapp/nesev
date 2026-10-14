@@ -2,7 +2,8 @@ import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
 import type { DbOrTx } from "../db/client";
-import { clients, documents, expenses, settings } from "../db/schema";
+import { clients, documents, expenseLines, expenses, settings } from "../db/schema";
+import { afaEntries, ASSET_CATEGORY, monthlyAfa } from "./assets";
 import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
@@ -14,6 +15,11 @@ import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
 // - Open offers = final/sent offers (neither accepted nor declined).
 // - Expenses = net of expenses (sum of their lines), bucketed by issueDate like revenue. Incomplete drafts
 //   without lines have net 0 and so add nothing. (The EAR on /tax counts by payment date instead.)
+//   Lines with category "anlagen" are capitalized and left out; the AfA of the year from the Anlagenverzeichnis
+//   takes their place (services/assets.ts monthlyAfa): spread evenly over all 12 months of the year (annual
+//   AfA / 12, cent remainder in December), also for the current year and regardless of the month the asset was
+//   put in service, so the monthly result isn't distorted by a year-end lump. A disposal write-off counts in the
+//   month of disposal. Same split as the EAR monthly view.
 
 export interface DashboardDocRow {
   id: number;
@@ -122,22 +128,32 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
-/** Net expenses per month for the given years: Map<year, cents[12]>. */
+/** Net expenses per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
 function monthlyExpenses(db: DbOrTx, years: number[]): Map<number, number[]> {
   const from = `${Math.min(...years)}-01-01`;
   const to = `${Math.max(...years) + 1}-01-01`;
   const ym = sql<string>`substr(${expenses.issueDate}, 1, 7)`;
+  const inRange = and(gte(expenses.issueDate, from), lt(expenses.issueDate, to));
   const rows = db
     .select({ ym, cents: sql<number>`coalesce(sum(${expenses.netCents}), 0)` })
     .from(expenses)
-    .where(and(gte(expenses.issueDate, from), lt(expenses.issueDate, to)))
+    .where(inRange)
     .groupBy(ym)
     .all();
-  const out = new Map(years.map((y) => [y, Array<number>(12).fill(0)]));
-  for (const r of rows) {
-    const [y, m] = r.ym.split("-").map(Number);
-    const bucket = out.get(y!);
-    if (bucket) bucket[m! - 1] = r.cents;
+  const capitalized = db
+    .select({ ym, cents: sql<number>`coalesce(sum(${expenseLines.netCents}), 0)` })
+    .from(expenseLines)
+    .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
+    .where(and(inRange, eq(expenseLines.category, ASSET_CATEGORY)))
+    .groupBy(ym)
+    .all();
+  const out = new Map(years.map((y) => [y, monthlyAfa(afaEntries(db, y))]));
+  for (const [list, sign] of [[rows, 1], [capitalized, -1]] as const) {
+    for (const r of list) {
+      const [y, m] = r.ym.split("-").map(Number);
+      const bucket = out.get(y!);
+      if (bucket) bucket[m! - 1]! += sign * r.cents;
+    }
   }
   return out;
 }

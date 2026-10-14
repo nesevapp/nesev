@@ -49,6 +49,8 @@ const affects = {
   backups: [keys.export.backups],
   /** Fixkosten: projected outflows in the forecast. */
   recurringExpenses: [keys.recurringExpenses.all, keys.forecast.all],
+  /** Start balance / income tax prepayment: forecast only. */
+  forecastSettings: [keys.forecast.all],
   /** Anlagen: AfA changes the EAR, the dashboard result and the expense hints. */
   assets: [keys.assets.all, keys.tax.all, keys.dashboard.all, keys.expenses.lists],
 } satisfies Record<string, readonly QueryKey[]>;

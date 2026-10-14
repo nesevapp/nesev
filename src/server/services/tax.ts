@@ -10,7 +10,7 @@ import {
   getExpenseCategory,
   type VatTreatment,
 } from "../../shared/expenses";
-import { BP_SCALE, roundHalfAwayFromZero } from "../../shared/money";
+import { BP_SCALE, formatCents, roundHalfAwayFromZero } from "../../shared/money";
 import type { TaxMode } from "../../shared/tax";
 import {
   ACQUISITION_RATE_KZ,
@@ -26,6 +26,8 @@ import {
 import { calcTotals, type TaxGroup } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { bankMatches, bankTransactions, clients, documentItems, documents, expenseLines, expenses } from "../db/schema";
+import { formatAssetNumber } from "../../shared/assets";
+import { afaEntries, ASSET_CATEGORY, expensesWithoutAsset, monthlyAfa } from "./assets";
 import { csvAmount, toCsv } from "./export";
 import { getSettings } from "./settings";
 
@@ -43,6 +45,10 @@ import { getSettings } from "./settings";
 // - Expenses: domestic Vorsteuer follows the basis (cash: § 12 Abs. 1 Z 1 lit. a, deductible once paid);
 //   reverse charge / ig. acquisition / import EUSt always use the issue date. EAR uses payment events.
 // - ZM: EU reverse-charge invoices by issue date, independent of the basis.
+// - EAR: expense lines with category "anlagen" are capitalized, not expensed. Instead the AfA of the year from
+//   the Anlagenverzeichnis (fixed_assets, services/assets.ts) and the remaining book value of assets disposed
+//   in the year count under E1a KZ 9130 (category rows "afa" / "afa_abgang"). Their VAT is unaffected: the
+//   input VAT of an asset purchase stays deductible in the UVA right away.
 
 const isoDay = (s: string) => s.slice(0, 10);
 
@@ -717,12 +723,23 @@ export function computeZm(db: DbOrTx, period: TaxPeriod): ZmReport {
 
 // ── EAR ─────────────────────────────────────────────────────────────────────────
 
+export interface EarAssetSource {
+  id: number;
+  /** AV-0001 */
+  number: string;
+  name: string;
+  amountCents: number;
+  note: string;
+}
+
 export interface EarCategoryRow {
   key: string;
   label: string;
   e1aKz: string;
   hint: string;
   amountCents: number;
+  /** AfA rows: the assets behind the amount */
+  assets?: EarAssetSource[];
 }
 
 export interface EarGroup {
@@ -798,12 +815,19 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
   const expenseList = loadExpenses(db);
   for (const e of expenseList.flatMap(expenseCashEvents)) {
     if (e.date < from || e.date > to) continue;
+    if (e.category === ASSET_CATEGORY) continue; // capitalized: counts through the AfA below
     // Nettomethode: net + non-deductible tax; Kleinunternehmer: no Vorsteuer at all.
     const amount = e.netCents + e.taxCents - (gross ? 0 : e.deductibleCents);
     catAmounts.set(e.category, (catAmounts.get(e.category) ?? 0) + amount);
     monthly[monthOf(e.date)]!.expensesCents += amount;
   }
-  for (const m of monthly) m.profitCents = m.incomeCents - m.expensesCents;
+
+  const afa = afaEntries(db, year);
+  const afaMonthly = monthlyAfa(afa);
+  for (const m of monthly) {
+    m.expensesCents += afaMonthly[m.month]!;
+    m.profitCents = m.incomeCents - m.expensesCents;
+  }
 
   const groups: EarGroup[] = [];
   const known = EXPENSE_CATEGORIES as readonly ExpenseCategory[];
@@ -818,7 +842,35 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     g.amountCents += amount;
     g.categories.push({ key, label: categoryLabel(key), e1aKz: cat?.e1aKz ?? "9230", hint: cat?.hint ?? "", amountCents: amount });
   }
-  if (catAmounts.get("anlagen")) warnings.push("Anlagegüter über 1.000 € sind voll als Ausgabe enthalten — tatsächlich über die Nutzungsdauer abzuschreiben (AfA).");
+  const afaRows: EarCategoryRow[] = [
+    {
+      key: "afa",
+      label: "Abschreibungen (AfA) lt. Anlagenverzeichnis",
+      e1aKz: "9130",
+      hint: "Lineare AfA der Anlagegüter, Halbjahresregel im Jahr der Inbetriebnahme",
+      amountCents: afa.reduce((t, a) => t + a.afaCents, 0),
+      assets: afa.filter((a) => a.afaCents).map((a) => ({ id: a.id, number: formatAssetNumber(a.number), name: a.name, amountCents: a.afaCents, note: "" })),
+    },
+    {
+      key: "afa_abgang",
+      label: "Restbuchwert ausgeschiedener Anlagen",
+      e1aKz: "9130",
+      hint: "Beim Verkauf / Ausscheiden abgeschriebener Restbuchwert",
+      amountCents: afa.reduce((t, a) => t + a.disposalCents, 0),
+      assets: afa
+        .filter((a) => a.disposalCents)
+        .map((a) => ({ id: a.id, number: formatAssetNumber(a.number), name: a.name, amountCents: a.disposalCents, note: a.disposalDate ? `ausgeschieden ${formatDate(a.disposalDate)}` : "" })),
+    },
+  ].filter((r) => r.amountCents !== 0);
+  if (afaRows.length) {
+    let g = groups.find((x) => x.group === "Anlagen");
+    if (!g) groups.push((g = { group: "Anlagen", amountCents: 0, categories: [] }));
+    g.amountCents += afaRows.reduce((t, r) => t + r.amountCents, 0);
+    g.categories.push(...afaRows);
+  }
+  for (const e of expensesWithoutAsset(db, from, to)) {
+    warnings.push(`${e.number || e.supplierName}: Anlagegut (${formatCents(e.netCents)} netto) nicht als Ausgabe enthalten, aber noch nicht im Anlagenverzeichnis — im Anlagenverzeichnis anlegen, damit die AfA berücksichtigt wird.`);
+  }
   if (catAmounts.get("bewirtung")) warnings.push("Bewirtung ist voll enthalten — ertragsteuerlich nur zu 50 % absetzbar.");
 
   const incomeCents = incomeAcc.amount;
@@ -905,6 +957,11 @@ export function earCsv(r: EarReport): string {
   rows.push(["Einnahmen", "", "Erlöse", "9040", csvAmount(r.incomeCents)]);
   for (const g of r.groups) for (const c of g.categories) rows.push(["Ausgaben", g.group, c.label, c.e1aKz, csvAmount(-c.amountCents)]);
   rows.push(["Gewinn / Verlust", "", "", "", csvAmount(r.profitCents)]);
+  const assets = r.groups.flatMap((g) => g.categories.flatMap((c) => (c.assets ?? []).map((a) => ({ ...a, category: c.label }))));
+  if (assets.length) {
+    rows.push([], ["Anlage", "Bezeichnung", "Art", "Hinweis", "Betrag"]);
+    for (const a of assets) rows.push([a.number, a.name, a.category, a.note, csvAmount(-a.amountCents)]);
+  }
   rows.push([], ["Monat", "Einnahmen", "Ausgaben", "Ergebnis", ""]);
   for (const m of r.monthly) rows.push([`${r.year}-${String(m.month + 1).padStart(2, "0")}`, csvAmount(m.incomeCents), csvAmount(m.expensesCents), csvAmount(m.profitCents), ""]);
   rows.push([], ["E1a-Kennzahl", "Bezeichnung", "Betrag", "", ""]);

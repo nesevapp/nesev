@@ -406,7 +406,7 @@ describe("partial payments in other features", () => {
     expect(due.map((d) => d.openCents)).toEqual([18000]);
     expect(createReminder(db, { invoiceId: inv.id }, "2026-04-01").openCents).toBe(18000);
 
-    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, today: "2026-04-01" });
+    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, includeOutflows: false, today: "2026-04-01" });
     const entry = forecast.entries.find((e) => e.documentId === inv.id)!;
     expect(entry).toMatchObject({ grossCents: 18000, taxCents: 3000, fullGrossCents: 24000, overdue: true });
 
@@ -474,7 +474,7 @@ describe("payment status vs. allocations and credit notes", () => {
     expect(dash.kpis.paid).toEqual({ count: 0, cents: 0 });
     // forecast/reminders skip it
     expect(listDueInvoices(db, "2026-04-01").map((d) => d.invoiceId)).toEqual([b.id]);
-    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, today: "2026-04-01" });
+    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, includeOutflows: false, today: "2026-04-01" });
     expect(forecast.entries.map((e) => e.documentId)).toEqual([b.id]);
   });
 

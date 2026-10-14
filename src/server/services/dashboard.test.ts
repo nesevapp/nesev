@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createTestDb, type Db } from "../db/client";
-import { clients, documents, expenses, type NewDocument } from "../db/schema";
+import { clients, documents, expenseLines, expenses, type NewDocument } from "../db/schema";
+import { createAsset } from "./assets";
 import { getDashboard } from "./dashboard";
 import { updateSettings } from "./settings";
 
@@ -141,5 +142,23 @@ describe("getDashboard", () => {
     expect(d.monthly[1]).toMatchObject({ cents: 50000, expenseCents: 15000, previousExpenseCents: 4000 });
     expect(d.monthly[10]!.expenseCents).toBe(7000);
     expect(d.years).toContain(2024);
+  });
+  test("expenses: anlagen lines replaced by the AfA spread evenly over the year", () => {
+    const { db } = setup();
+    const e = db.insert(expenses).values({ supplierName: "Apple", issueDate: "2026-09-10", netCents: 250000, taxCents: 50000, grossCents: 300000 }).returning().get();
+    db.insert(expenseLines)
+      .values([
+        { expenseId: e.id, position: 0, category: "anlagen", netCents: 240000, taxRateBp: 2000, taxCents: 48000 },
+        { expenseId: e.id, position: 1, category: "buero", netCents: 10000, taxRateBp: 2000, taxCents: 2000 },
+      ])
+      .run();
+    createAsset(db, { name: "MacBook", expenseId: e.id, acquisitionDate: "2026-09-10", inServiceDate: "2026-09-15", costCents: 240000, usefulLifeYears: 3 });
+
+    const d = getDashboard(db, 2026, TODAY);
+    expect(d.kpis.expenses.cents).toBe(10000 + 40000);
+    expect(d.monthly[0]!.expenseCents).toBe(3333);
+    expect(d.monthly[8]!.expenseCents).toBe(10000 + 3333);
+    expect(d.monthly[11]!.expenseCents).toBe(40000 - 3333 * 11);
+    expect(getDashboard(db, 2027, TODAY).kpis.expenses).toEqual({ cents: 80000, previousCents: 50000 });
   });
 });

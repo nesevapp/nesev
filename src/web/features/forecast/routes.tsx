@@ -10,6 +10,7 @@ const forecastSearch = z.object({
   drafts: z.boolean().optional(),
   offers: z.boolean().optional(),
   probability: z.coerce.number().int().min(0).max(100).optional(),
+  outflows: z.boolean().optional(),
 });
 
 const indexRoute = createRoute({
@@ -24,6 +25,7 @@ const indexRoute = createRoute({
         drafts: deps.drafts ?? false,
         offers: deps.offers ?? false,
         probability: deps.probability ?? 50,
+        outflows: deps.outflows ?? true,
       }),
     ),
   component: function Forecast() {

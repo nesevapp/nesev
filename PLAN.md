@@ -25,6 +25,9 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 13 | Bank import + payment matching | ✅ done | `/bank` |
 | 14 | On-demand local receipt OCR | ✅ done | `/expenses`, Einstellungen → Belegerkennung |
 | 15 | Frontend SDK (`src/web/sdk`) | ✅ done | all features |
+| 16 | Anlagenverzeichnis / AfA | ✅ done | `/assets` |
+| 16 | Global search (⌘K) + keyboard shortcuts | ✅ done | sidebar „Suchen …“, `/api/search` |
+| 17 | Fixkosten + outflows/balance in the forecast | ✅ done | `/fixed-costs`, `/forecast` |
 
 ---
 
@@ -63,7 +66,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 
 ### Dashboard
 - Tiles for the selected year: Umsatz (net, vs. the same months of the previous year), Ausgaben (net, by document date), Ergebnis (Umsatz − Ausgaben, with margin), Bezahlt; second row: open invoices, overdue, open offers.
-- Monthly chart: revenue (blue) and expenses (orange) as columns, result as a line; switches for "Ausgaben" (on by default) and "Vorjahr"; table view with the same columns. Expenses count by document date like revenue (the EAR on `/tax` counts by payment date); incomplete drafts have no lines and add nothing.
+- Monthly chart: revenue (blue) and expenses (orange) as columns, result as a line; switches for "Ausgaben" (on by default) and "Vorjahr"; table view with the same columns. Expenses count by document date like revenue (the EAR on `/tax` counts by payment date); incomplete drafts have no lines and add nothing. `anlagen` lines are replaced by the AfA (1/12 per month).
 
 ### Reminders (Mahnwesen)
 - Levels are configurable (default: Zahlungserinnerung €0, 1. Mahnung €10, 2./letzte Mahnung €20, each +7 days). The last level can repeat. Optional default interest (simple, actual days / 365).
@@ -75,11 +78,13 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Missed periods are caught up with one invoice each, and the end date is respected.
 - Generated invoices are either drafts or auto-finalized; a failed finalize leaves a draft.
 - A scheduler runs on server start and then hourly. "Jetzt ausführen" and "Rechnung jetzt erstellen" trigger it by hand.
-- **Forecast** of incoming money (gross) over 3, 6 or 12 months:
-  - Open invoices are expected on their due date plus that client's average payment delay. Overdue invoices count as "now".
-  - Every planned recurring run is included.
-  - Optional: drafts, and open offers at a set probability.
-  - The VAT share of the inflow is shown separately.
+- **Forecast** of incoming and outgoing money (gross) over 3, 6 or 12 months, plus the projected account balance (`services/forecast.ts`):
+  - Inflows: open invoices on their due date plus that client's average payment delay (overdue = "now"), every planned recurring run, optionally drafts and open offers at a set probability. The VAT share is shown separately.
+  - Outflows (toggle „Ausgänge“): every Fixkosten payment; unpaid expenses (paidAt null, with lines; open = gross − bank allocations) on their due date, without one at issue date + 14 days, overdue = "now"; ESt-Vorauszahlung (setting, per quarter) on 15.2./15.5./15.8./15.11.
+  - USt-Zahllast (not for Kleinunternehmer): each UVA period due (15th of the 2nd month after it, next working day) inside the horizon. Amount = `computeUva()` of what is already recorded + an estimate for what the forecast still expects in the period (output VAT of inflows − deductible VAT of Fixkosten/unpaid expenses; dated by basis: Ist = payment date, Soll = invoice date, offers = today). Periods not yet over are marked „geschätzt“. Negative = refund (inflow). Assumes nothing was paid before the due date.
+  - Balance: „Kontostand am <Datum>“ (setting) + all entries expected on/after that date. Per bucket: balance at the end and lowest day-end balance; KPI and red banner for the lowest point if it goes below 0.
+  - Settings via the page's „Kontostand & Steuern“ popover (`GET/PUT /api/forecast/settings`).
+- **Fixkosten** (`/fixed-costs`, `/api/recurring-expenses`): recurring outgoing payments (name, recipient, expense category, gross, contained deductible VAT with a 20/13/10/0 % helper, monthly / every N months / yearly anchored like recurring invoices, start, optional end, active, notes). Forecast-only; nothing is booked. A Fixkosten payment that is also entered as an unpaid expense is counted twice.
 
 ### Expenses (Ausgaben)
 - Fields: supplier, UID, country, supplier invoice number, dates, VAT treatment (`domestic`, `reverse_charge`, `ig_acquisition`, `import`, `none`).
@@ -93,8 +98,17 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - Mapped to the U30 Kennzahlen (000, 022/029/006/037, 016, 057/066, 070/072/065, 060, 061, 090 → 095).
   - Each KZ opens the documents behind it and has a copy button. The due date is shown.
 - **ZM:** per EU client UID, the sum of reverse-charge services.
-- **EAR:** by payment date. Expenses grouped by category with an E1a suggestion, with warnings for assets over 1,000 € and for Bewirtung.
+- **EAR:** by payment date. Expenses grouped by category with an E1a suggestion, warning for Bewirtung. Expense lines with category `anlagen` are capitalized (not expensed); instead the AfA of the year and the remaining book value of assets disposed in the year come from the Anlagenverzeichnis under KZ 9130 ("Anlagen" group, expandable to the assets; also listed in the CSV). Warning when an expense of the year has `anlagen` lines but no linked asset. The UVA is unchanged: input VAT on assets is deductible at once.
 - CSV export for each report.
+
+### Anlagen / AfA (`/assets`) – a helper, not tax advice
+- `fixed_assets`, numbered `AV-0001` (max + 1). Math in `src/shared/assets.ts` (pure, cents), shared by server and the live preview in the form.
+- Straight-line AfA: annual = cost / useful life (rounded). Halbjahresregel: in service ≤ 30.6. → full AfA in the first year, otherwise half plus one extra year with the rest. The last year takes the remainder, so the AfA sums to the cost exactly. Cost = net + non-deductible VAT (Kleinunternehmer: gross).
+- Disposal (sold / scrapped): regular AfA in the disposal year (full-year rule, kept simple) plus the remaining book value written off in that year; proceeds are only shown ("als Einnahme erfassen"), not booked.
+- Useful-life suggestions (Computer 3, Smartphone 3, Software 4, Büromöbel 10, Maschinen 8, PKW 8 = § 8 Abs 6 minimum); free input 1–50.
+- Register per year (book value 1.1., AfA, Restbuchwert-Abgang, book value 31.12., totals, CSV), detail with schedule and link to the source expense, edit / Ausscheiden / delete.
+- Expense editor: a line with category `anlagen` shows a hint with "Im Anlagenverzeichnis anlegen" (prefilled from the saved expense's `anlagen` lines, minus assets already linked) or links to the linked assets.
+- Dashboard: `anlagen` lines are left out of expenses; the year's AfA is spread evenly over the 12 months (remainder in December, also for the current year), a disposal write-off counts in its month. The EAR monthly view uses the same split.
 
 ### Bank
 - **Import:** camt.053/052/054 and CSV.
@@ -131,6 +145,15 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - `src/web/sdk/`: one typed `hc` client per route module (typed only against that module, which keeps editor type checking light), `<resource>Api` functions, consistently named types (`Client`, `DocumentListItem`, `ExpenseInput`, …), query options + mutation hooks, a central query-key factory (`keys.ts`) and a cross-resource invalidation map (`invalidate.ts`). For example, a bank match refreshes bank, documents, expenses, dashboard, forecast, reminders and tax.
 - Features call the API only through `@/sdk`; new endpoints get added there.
 
+### Search & shortcuts
+- **⌘K / Ctrl+K** (or `/`, or „Suchen …“ in the sidebar) opens the command palette (`features/search/`, cmdk with `shouldFilter={false}`). Empty query: recently opened entries (localStorage `nesev.search.recent`, max 8), create actions, pages. Typing filters pages/actions client-side and queries `GET /api/search?q=&limit=` (debounced 150 ms), Enter opens the route.
+- **Server** (`services/search.ts`): grouped results (default 6 per group) for Kunden, Rechnungen, Angebote, Gutschriften, Mahnungen, Serienrechnungen, Ausgaben, Fixkosten, Anlagen, Artikel. Each result has `label`/`sublabel`/`meta` and the frontend `path`.
+  - Text: escaped LIKE over a folded form (lower-case, umlauts/ß/some accents, plus an "ae/oe/ue" variant, so Müller = Mueller = muller). The fold is nested `replace()` calls; SQLite's parser overflows at ~28 levels, so keep the pair list short.
+  - Numbers in any spelling: `RE-2026-0012`, `RE-2026-12`, `2026-0012`, `re12`, `12` (any year); a prefix (RE/AN/GS/MA/ER/K/A/AV) limits the number match to that type. Documents also match the live and the snapshot client name; reminders their invoice number.
+  - Amounts (`1.234,56`, `1234.56`, `500 €`) match gross/net (documents, expenses), the payment (Fixkosten) or the cost (Anlagen).
+  - Ranking: exact number → number of any year → amount → text, then newest; groups with a number/amount hit come first.
+- **Shortcuts** (`use-global-shortcuts.ts`, ignored while typing, while a dialog/menu is open and when a page already handled the key): `?` overview, `/` search (the bank list keeps its own `/`), `g` + d/p/a/r/g/m/w/e/f/v/b/s/k/i/x/, go to a page, `n` + r/a/g/k/e/w create. The map lives in `features/search/commands.ts` and the overview reads it.
+
 ### Data, export & backups
 - Everything lives in `data/` (gitignored).
 - Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
@@ -143,7 +166,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 2. **Wording of the tax notes** for reverse charge, third country and Kleinunternehmer (editable in Einstellungen).
 3. **Default interest rate** in Mahnwesen (placeholder 11.2 % p.a. = base rate + 9.2 pp). Check against the current OeNB base rate.
 4. **Ist- vs. Sollbesteuerung** and monthly vs. quarterly UVA: set in Einstellungen → Umsatzsteuer.
-5. **Optional DB constraint patch** for the two FK columns without `ON DELETE SET NULL` (handled in code today).
+5. **AfA details for the Steuerberater:** Halbjahresregel also in the disposal year (currently: full AfA + Restbuchwert, same total); whether the Restbuchwert belongs in KZ 9130; useful-life defaults; PKW Angemessenheitsgrenze (40.000 €) and private use; Investitionsfreibetrag / degressive AfA (not modelled); GWG ≤ 1.000 € may also be capitalized (allowed, form only warns).
+6. **Optional DB constraint patch** for the two FK columns without `ON DELETE SET NULL` (handled in code today).
 
 ---
 
@@ -152,7 +176,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 2. **Verify bank presets with real exports** from the user's bank (George / ELBA / …) and fix the presets.
 3. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
 4. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
-5. **Comfort:** dark mode, keyboard shortcuts overview, global search.
+5. **Comfort:** dark mode. (Global search and keyboard shortcuts are done.)
 6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
 
-Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking.
+Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, linking Fixkosten payments to booked expenses (avoids double counting in the forecast), live bank balance from the last import as the forecast start.

@@ -131,7 +131,8 @@ function isNonWorkingDay(date: string): boolean {
   return [-2, 1, 39, 50, 60].some((offset) => addDays(easter, offset) === date);
 }
 
-function nextWorkingDay(date: string): string {
+/** `date`, or the next day a deadline can end on (§ 108 Abs. 3 BAO). */
+export function nextWorkingDay(date: string): string {
   let d = date;
   while (isNonWorkingDay(d)) d = addDays(d, 1);
   return d;

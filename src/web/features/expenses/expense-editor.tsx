@@ -54,6 +54,7 @@ import {
   useUpdateExpense,
   useUploadReceipt,
 } from "@/sdk";
+import { AssetHint } from "./components/asset-hint";
 import { ExpenseBadges } from "./components/expense-badges";
 import { ExpenseLinesEditor, newLine } from "./components/expense-lines-editor";
 import { type ReceiptSource, ReceiptPane, receiptKind } from "./components/receipt-pane";
@@ -518,6 +519,9 @@ export function ExpenseEditor({ expense, onSavedNext }: { expense?: Expense; onS
               <div className={cn("rounded-md", hl("lines", "category"))}>
                 <ExpenseLinesEditor form={form} treatment={treatment} grossMode={grossMode} />
               </div>
+              {(lines ?? []).some((l) => l.category === "anlagen") && (
+                <AssetHint expenseId={expense?.id ?? null} number={expense?.number ?? null} dirty={dirty} />
+              )}
               <div className="mt-6 flex justify-end">
                 <ExpenseTotals lines={lines ?? []} treatment={treatment} />
               </div>
