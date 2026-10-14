@@ -13,6 +13,7 @@ import {
   streamChat,
   useChatTurnRefresh,
 } from "@/sdk";
+import { useRunUiAction } from "./chat-actions";
 import { chatUi } from "./chat-store";
 
 // One conversation in the panel: loads the detail, streams turns into its query cache (so the message list
@@ -90,6 +91,7 @@ export function applyEvent(d: ChatConversationDetail, e: ChatStreamEvent): ChatC
 export function useChatSession(conversationId: number | null) {
   const qc = useQueryClient();
   const refresh = useChatTurnRefresh();
+  const runUiAction = useRunUiAction();
   // no focus refetch: it could replace the cache mid-stream; turns invalidate it explicitly when they end
   const detail = useQuery({
     ...chatConversationQuery(conversationId ?? 0),
@@ -131,6 +133,9 @@ export function useChatSession(conversationId: number | null) {
         onEvent: (e) => {
           if (e.type === "error") setError(e.message);
           else qc.setQueryData<ChatConversationDetail>(key, (d) => applyEvent(d ?? emptyDetail(id), e));
+          // a UI action (open_in_app, download_pdf, …) runs once, live; the history only shows a button
+          const action = e.type === "tool_result" && e.message.toolResult?.ok ? e.message.toolResult.action : null;
+          if (action) runUiAction(action);
           setLive((s) => {
             switch (e.type) {
               case "thinking":

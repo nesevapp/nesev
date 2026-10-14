@@ -32,6 +32,10 @@ export const chatApi = {
 };
 
 export type {
+  ChatCard,
+  ChatLink,
+  ChatTone,
+  ChatUiAction,
   ChatConversationDetail,
   ChatConversationSummary,
   ChatMessageView,

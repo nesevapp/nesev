@@ -1,11 +1,14 @@
 import {
+  AppWindow,
   BellRing,
   Calculator,
   CheckCheck,
+  Download,
   FilePen,
   FilePlus,
   FileSearch,
   FileText,
+  FileType,
   HardDrive,
   LayoutDashboard,
   LineChart,
@@ -55,6 +58,9 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon }> = {
   list_assets: { label: "Anlagenverzeichnis", icon: HardDrive },
   get_receipt_analysis: { label: "Belegerkennung anzeigen", icon: ScanText },
   queue_receipt_analysis: { label: "Belegerkennung starten", icon: ScanText },
+  open_in_app: { label: "In nesev öffnen", icon: AppWindow },
+  open_pdf: { label: "PDF öffnen", icon: FileType },
+  download_pdf: { label: "PDF herunterladen", icon: Download },
 };
 
 export function toolMeta(name: string): { label: string; icon: LucideIcon } {

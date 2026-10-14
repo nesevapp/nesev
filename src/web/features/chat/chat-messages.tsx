@@ -4,6 +4,8 @@ import { ArrowUpRight, ChevronRight, CircleAlert, CircleSlash, Clock, Loader2, S
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatConversationDetail, ChatMessageView, ChatToolCall } from "@/sdk";
+import { ActionButton } from "./chat-actions";
+import { ChatCardView, cardPaths } from "./chat-cards";
 import { MarkdownView, type LinkRenderer } from "./markdown-view";
 import { appPath, isFilePath } from "./markdown";
 import { isIrreversibleTool, summarizeArgs, toolMeta } from "./tools";
@@ -81,44 +83,53 @@ function ToolCard({ call, result, state }: { call: ChatToolCall; result: ChatMes
     unknown: null,
   };
 
+  const card = state === "ok" ? r?.card : null;
+  const action = state === "ok" ? r?.action : null;
+  const covered = card ? cardPaths(card) : null;
+  const links = (r?.links ?? []).filter((l) => !covered?.has(l.path));
+
   return (
-    <div className={cn("rounded-lg border bg-card text-xs", state === "error" && "border-destructive/40 bg-destructive/5")}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
-        aria-expanded={open}
-      >
-        <Icon className="mt-px size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="shrink-0 font-medium">{label}</span>
-            {args && <span className="truncate text-muted-foreground">{args}</span>}
+    <div className="space-y-1.5">
+      <div className={cn("rounded-lg border bg-card text-xs", state === "error" && "border-destructive/40 bg-destructive/5")}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
+          aria-expanded={open}
+        >
+          <Icon className="mt-px size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 font-medium">{label}</span>
+              {args && <span className="truncate text-muted-foreground">{args}</span>}
+            </div>
+            {status[state]}
           </div>
-          {status[state]}
-        </div>
-        <ChevronRight className={cn("mt-px size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-      </button>
-      {r && r.links.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-2.5 pb-2 pl-8">
-          {r.links.map((l) => (
-            <Button
-              key={l.path}
-              variant="outline"
-              size="xs"
-              onClick={() => (isFilePath(l.path) ? window.open(l.path, "_blank", "noopener") : void navigate({ href: l.path }))}
-            >
-              {l.label}
-              <ArrowUpRight />
-            </Button>
-          ))}
-        </div>
-      )}
-      {open && (
-        <pre className="max-h-48 overflow-auto border-t bg-muted/40 px-2.5 py-2 font-mono text-[11px] whitespace-pre-wrap">
-          {call.name}({JSON.stringify(call.arguments, null, 2)})
-        </pre>
-      )}
+          <ChevronRight className={cn("mt-px size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+        </button>
+        {(links.length > 0 || action) && (
+          <div className="flex flex-wrap gap-1 px-2.5 pb-2 pl-8">
+            {action && <ActionButton action={action} />}
+            {links.map((l) => (
+              <Button
+                key={l.path}
+                variant="outline"
+                size="xs"
+                onClick={() => (isFilePath(l.path) ? window.open(l.path, "_blank", "noopener") : void navigate({ href: l.path }))}
+              >
+                {l.label}
+                <ArrowUpRight />
+              </Button>
+            ))}
+          </div>
+        )}
+        {open && (
+          <pre className="max-h-48 overflow-auto border-t bg-muted/40 px-2.5 py-2 font-mono text-[11px] whitespace-pre-wrap">
+            {call.name}({JSON.stringify(call.arguments, null, 2)})
+          </pre>
+        )}
+      </div>
+      {card && <ChatCardView card={card} />}
     </div>
   );
 }

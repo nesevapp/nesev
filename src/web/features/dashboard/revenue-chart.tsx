@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { formatCents } from "@shared/money";
+import { columnPath, euroAxis as euro, niceStep, useWidth } from "@/components/charts/chart-utils";
 import { cn } from "@/lib/utils";
 
 // Net revenue (blue) and optionally net expenses (orange) per month as columns, plus the result
@@ -12,44 +13,6 @@ const HEIGHT = 240;
 const PAD = { top: 12, right: 0, bottom: 28, left: 72 };
 const BAR_MAX = 24;
 const GAP = 2;
-const RADIUS = 4;
-
-const euro = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-
-/** Round step (1/2/5 × 10^n) so the axis gets ~4 ticks. */
-function niceStep(span: number): number {
-  if (span <= 0) return 100_00;
-  const raw = span / 4;
-  const pow = 10 ** Math.floor(Math.log10(raw));
-  const f = raw / pow;
-  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
-}
-
-/** Column path with a rounded data-end and a square baseline end (works for negative values). */
-function columnPath(x: number, w: number, y0: number, y1: number): string {
-  const h = Math.abs(y1 - y0);
-  if (h < 0.5) return "";
-  const r = Math.min(RADIUS, h, w / 2);
-  if (y1 < y0) {
-    return `M${x},${y0}V${y1 + r}Q${x},${y1} ${x + r},${y1}H${x + w - r}Q${x + w},${y1} ${x + w},${y1 + r}V${y0}Z`;
-  }
-  return `M${x},${y0}V${y1 - r}Q${x},${y1} ${x + r},${y1}H${x + w - r}Q${x + w},${y1} ${x + w},${y1 - r}V${y0}Z`;
-}
-
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
-}
-
 export interface MonthDatum {
   month: number;
   cents: number;

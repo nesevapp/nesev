@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { formatCents } from "@shared/money";
+import { columnPath, compactEuro, euroAxis as euro, niceStep, useWidth } from "@/components/charts/chart-utils";
 import { cn } from "@/lib/utils";
 import { type ForecastSource } from "@/sdk";
 
@@ -49,24 +50,7 @@ const LINE_HEIGHT = 112;
 const PAD = { top: 12, right: 8, bottom: 26, left: 72 };
 const BAR_MAX = 22;
 const GAP = 3;
-const RADIUS = 4;
 const SEG_GAP = 2;
-
-const euro = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-const compactEuro = new Intl.NumberFormat("de-AT", {
-  style: "currency",
-  currency: "EUR",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function niceStep(span: number): number {
-  if (span <= 0) return 100_00;
-  const raw = span / 4;
-  const pow = 10 ** Math.floor(Math.log10(raw));
-  const f = raw / pow;
-  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
-}
 
 function ticksFor(max: number) {
   const step = niceStep(max);
@@ -74,28 +58,6 @@ function ticksFor(max: number) {
   const ticks: number[] = [];
   for (let t = 0; t <= top + step / 2; t += step) ticks.push(t);
   return { top, ticks };
-}
-
-/** Column with a rounded top and square baseline. */
-function topRoundedPath(x: number, w: number, yBottom: number, yTop: number): string {
-  const h = yBottom - yTop;
-  if (h < 0.5) return "";
-  const r = Math.min(RADIUS, h, w / 2);
-  return `M${x},${yBottom}V${yTop + r}Q${x},${yTop} ${x + r},${yTop}H${x + w - r}Q${x + w},${yTop} ${x + w},${yTop + r}V${yBottom}Z`;
-}
-
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
 }
 
 export function ForecastChart({
@@ -184,7 +146,7 @@ export function ForecastChart({
       const yTop = y(acc) + (isTop ? 0 : SEG_GAP / 2);
       if (yBottom - yTop < 0.5) return null;
       return isTop ? (
-        <path key={s} d={topRoundedPath(x0, barW, yBottom, yTop)} fill={SOURCE_META[s].color} />
+        <path key={s} d={columnPath(x0, barW, yBottom, yTop)} fill={SOURCE_META[s].color} />
       ) : (
         <rect key={s} x={x0} y={yTop} width={barW} height={yBottom - yTop} fill={SOURCE_META[s].color} />
       );

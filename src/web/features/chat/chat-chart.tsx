@@ -1,0 +1,189 @@
+import { useState } from "react";
+import { formatCents } from "@shared/money";
+import { CHART_COLORS, columnPath, compactEuro, euroAxis, niceStep, useWidth } from "@/components/charts/chart-utils";
+import { cn } from "@/lib/utils";
+import type { ChatCard, ChatTone } from "@/sdk";
+
+// Small chart for assistant cards, in the visual language of the dashboard / forecast charts (rounded columns,
+// zinc grid, € axis, hover/focus tooltip per label) but compact for the side panel: compact € axis, no x-label
+// collisions, legend below when there is more than one series.
+
+type ChartCardData = Extract<ChatCard, { kind: "chart" }>;
+type Series = ChartCardData["series"][number];
+
+/** ChatTone → chart color (bars, lines, legend swatches). */
+export const TONE_COLOR: Record<ChatTone, string> = {
+  revenue: CHART_COLORS.revenue,
+  expenses: CHART_COLORS.expenses,
+  result: CHART_COLORS.result,
+  // like the forecast: inflow blue, outflow orange
+  positive: CHART_COLORS.revenue,
+  negative: CHART_COLORS.expenses,
+  neutral: CHART_COLORS.neutral,
+  muted: CHART_COLORS.muted,
+};
+
+const HEIGHT = 168;
+const PAD = { top: 8, right: 4, bottom: 22, left: 56 };
+
+/** "€ 8.000"; from a million on compact ("€ 1,2 Mio.") so the axis stays narrow */
+const axisLabel = (cents: number) => (Math.abs(cents) >= 100_000_000 ? compactEuro : euroAxis).format(cents / 100);
+const BAR_MAX = 18;
+const GAP = 2;
+
+const isLine = (s: Series, chart: ChartCardData["chart"]) => chart === "line" || s.type === "line";
+
+export function ChatChart({ card }: { card: ChartCardData }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [active, setActive] = useState<number | null>(null);
+  const { labels, series, chart } = card;
+  const bars = series.filter((s) => !isLine(s, chart));
+  const lines = series.filter((s) => isLine(s, chart));
+
+  const values = series.flatMap((s) => s.values);
+  const max = Math.max(0, ...values);
+  const min = Math.min(0, ...values);
+  const step = niceStep(max - min);
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  const bottom = Math.floor(min / step) * step;
+  const ticks: number[] = [];
+  for (let t = bottom; t <= top + step / 2; t += step) ticks.push(t);
+
+  const plotW = Math.max(0, width - PAD.left - PAD.right);
+  const plotH = HEIGHT - PAD.top - PAD.bottom;
+  const y = (v: number) => PAD.top + ((top - v) / (top - bottom)) * plotH;
+  const band = labels.length ? plotW / labels.length : 0;
+  const n = Math.max(1, bars.length);
+  const barW = Math.max(2, Math.min(BAR_MAX, (band * 0.72 - GAP * (n - 1)) / n));
+  const groupW = barW * n + GAP * (n - 1);
+  const cx = (i: number) => PAD.left + band * i + band / 2;
+  // keep x labels ≥ 34px apart
+  const labelEvery = Math.max(1, Math.ceil(34 / Math.max(1, band)));
+  // a line-only chart with a single series gets the forecast's soft area
+  const area = bars.length === 0 && lines.length === 1;
+
+  const aria = (i: number) => `${labels[i]}: ${series.map((s) => `${s.label} ${formatCents(s.values[i] ?? 0)}`).join(", ")}`;
+
+  return (
+    <div className="space-y-1.5">
+      <div ref={ref} className="relative" onPointerLeave={() => setActive(null)}>
+        {width > 0 && (
+          <svg width={width} height={HEIGHT} role="img" aria-label={card.title} className="block">
+            {/* below zero, like the forecast's balance chart */}
+            {area && bottom < 0 && <rect x={PAD.left} y={y(0)} width={plotW} height={y(bottom) - y(0)} className="fill-red-50" />}
+            {ticks.map((t) => (
+              <g key={t}>
+                <line
+                  x1={PAD.left}
+                  x2={width - PAD.right}
+                  y1={y(t)}
+                  y2={y(t)}
+                  className={t === 0 ? "stroke-zinc-300" : "stroke-zinc-100"}
+                  strokeWidth={1}
+                  shapeRendering="crispEdges"
+                />
+                <text x={PAD.left - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[10px] tabular">
+                  {axisLabel(t)}
+                </text>
+              </g>
+            ))}
+            {labels.map((label, i) => {
+              const x0 = cx(i) - groupW / 2;
+              return (
+                <g key={i}>
+                  {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-zinc-100/70" />}
+                  {bars.map((s, k) => (
+                    <path
+                      key={k}
+                      d={columnPath(x0 + k * (barW + GAP), barW, y(0), y(s.values[i] ?? 0))}
+                      fill={TONE_COLOR[s.tone]}
+                      className={cn(active !== null && active !== i && "opacity-60")}
+                    />
+                  ))}
+                  {i % labelEvery === 0 && (
+                    <text x={cx(i)} y={HEIGHT - 6} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+                      {label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            {lines.map((s, k) => {
+              const pts = labels.map((_, i) => [cx(i), y(s.values[i] ?? 0)] as const);
+              const d = pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
+              const color = TONE_COLOR[s.tone];
+              return (
+                <g key={k} className="pointer-events-none">
+                  {area && pts.length > 0 && (
+                    <path d={`${d}L${pts.at(-1)![0]},${y(0)}L${pts[0]![0]},${y(0)}Z`} fill={color} fillOpacity={0.07} />
+                  )}
+                  <path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+                  {pts.map(([px, py], i) =>
+                    pts.length <= 16 || active === i ? (
+                      <circle key={i} cx={px} cy={py} r={active === i ? 3.5 : 2.25} className="fill-background" stroke={color} strokeWidth={1.5} />
+                    ) : null,
+                  )}
+                </g>
+              );
+            })}
+            {labels.map((_, i) => (
+              // hit target: the whole label band (drawn last so lines don't block it)
+              <rect
+                key={i}
+                x={PAD.left + band * i}
+                y={0}
+                width={band}
+                height={HEIGHT}
+                fill="transparent"
+                tabIndex={0}
+                aria-label={aria(i)}
+                onPointerEnter={() => setActive(i)}
+                onFocus={() => setActive(i)}
+                onBlur={() => setActive(null)}
+                className="outline-none"
+              />
+            ))}
+          </svg>
+        )}
+        {active !== null && (
+          <div
+            className="pointer-events-none absolute z-10 rounded-md border bg-popover px-2.5 py-1.5 text-xs whitespace-nowrap shadow-md"
+            // the panel is narrow: pin the tooltip to the half away from the hovered band
+            style={cx(active) < width / 2 ? { right: PAD.right, top: PAD.top } : { left: PAD.left + 4, top: PAD.top }}
+          >
+            <div className="mb-1 text-muted-foreground">{labels[active]}</div>
+            {series.map((s, k) => {
+              const v = s.values[active] ?? 0;
+              return (
+                <div key={k} className="flex items-center gap-2">
+                  <Swatch series={s} chart={chart} />
+                  <span className={cn("font-medium tabular", v < 0 ? "text-red-600" : "text-foreground")}>{formatCents(v)}</span>
+                  <span className="ml-auto pl-3 text-muted-foreground">{s.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {series.length > 1 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground" style={{ paddingLeft: PAD.left }}>
+          {series.map((s, k) => (
+            <span key={k} className="flex items-center gap-1.5">
+              <Swatch series={s} chart={chart} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Swatch({ series, chart }: { series: Series; chart: ChartCardData["chart"] }) {
+  return (
+    <span
+      className={isLine(series, chart) ? "h-0.5 w-3 shrink-0 rounded-full" : "size-2.5 shrink-0 rounded-[3px]"}
+      style={{ background: TONE_COLOR[series.tone] }}
+    />
+  );
+}
