@@ -17,6 +17,7 @@ import receipts from "./routes/receipts";
 import recurringExpenses from "./routes/recurring-expenses";
 import assets from "./routes/assets";
 import search from "./routes/search";
+import chat from "./routes/chat";
 import tax from "./routes/tax";
 import templates from "./routes/templates";
 import units from "./routes/units";
@@ -50,7 +51,8 @@ export const app = base
   .route("/api/receipts", receipts)
   .route("/api/recurring-expenses", recurringExpenses)
   .route("/api/assets", assets)
-  .route("/api/search", search);
+  .route("/api/search", search)
+  .route("/api/chat", chat);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 

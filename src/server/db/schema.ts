@@ -71,6 +71,8 @@ export const settings = sqliteTable("settings", {
   cashBalanceDate: text("cash_balance_date"),
   /** forecast: quarterly income tax prepayment (ESt-Vorauszahlung, due 15.2./15.5./15.8./15.11.); 0 = none */
   incomeTaxPrepaymentCents: integer("income_tax_prepayment_cents").notNull().default(0),
+  /** in-app assistant config (JSON, shape = ChatSettings in src/shared/chat.ts, unknown keys ignored); null → defaults */
+  chatSettings: text("chat_settings", { mode: "json" }).$type<unknown>(),
   ...timestamps,
 });
 
@@ -574,6 +576,44 @@ export const fixedAssets = sqliteTable(
   (t) => [uniqueIndex("fixed_assets_number_uq").on(t.number), index("fixed_assets_expense_idx").on(t.expenseId)],
 );
 
+/** In-app assistant ("Assistent"): one row per conversation. */
+export const chatConversations = sqliteTable("chat_conversations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** short title, derived from the first user message (editable) */
+  title: str("title"),
+  ...timestamps,
+});
+
+/**
+ * Messages of a conversation in OpenAI chat format order. Assistant messages may carry tool calls; each tool
+ * result is its own row (role "tool"). A state-changing tool call waits for the user's confirmation
+ * (status "pending") before it is executed.
+ */
+export const chatMessages = sqliteTable(
+  "chat_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    conversationId: integer("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    role: text("role").$type<"user" | "assistant" | "tool">().notNull(),
+    content: str("content"),
+    /** assistant: [{ id, name, arguments }] (shape = ChatToolCall[]) */
+    toolCalls: text("tool_calls", { mode: "json" }).$type<unknown>(),
+    /** tool: the call this row answers */
+    toolCallId: text("tool_call_id"),
+    toolName: text("tool_name"),
+    /** tool: structured result for the UI (links, ids; shape = ChatToolResult) */
+    toolResult: text("tool_result", { mode: "json" }).$type<unknown>(),
+    /** "done" | "pending" (awaiting confirmation) | "cancelled" | "error" */
+    status: text("status").$type<"done" | "pending" | "cancelled" | "error">().notNull().default("done"),
+    /** page the user was on when sending (user messages), e.g. "/invoices/12" */
+    contextPath: text("context_path"),
+    ...timestamps,
+  },
+  (t) => [index("chat_messages_conversation_idx").on(t.conversationId, t.id)],
+);
+
 export const numberSequences = sqliteTable(
   "number_sequences",
   {
@@ -612,6 +652,8 @@ export type RecurringExpense = typeof recurringExpenses.$inferSelect;
 export type NewRecurringExpense = typeof recurringExpenses.$inferInsert;
 export type FixedAsset = typeof fixedAssets.$inferSelect;
 export type RecurringExpensePayment = typeof recurringExpensePayments.$inferSelect;
+export type ChatConversation = typeof chatConversations.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewFixedAsset = typeof fixedAssets.$inferInsert;
 export type NewPdfTemplate = typeof pdfTemplates.$inferInsert;
 

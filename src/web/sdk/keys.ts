@@ -110,6 +110,13 @@ export const keys = {
     list: (filter: object) => ["assets", "list", filter] as const,
     detail: (id: number) => ["assets", "detail", id] as const,
   },
+  chat: {
+    all: ["chat"] as const,
+    conversations: ["chat", "conversations"] as const,
+    conversation: (id: number) => ["chat", "conversation", id] as const,
+    settings: ["chat", "settings"] as const,
+    status: ["chat", "status"] as const,
+  },
   search: {
     all: ["search"] as const,
     query: (q: string) => ["search", q] as const,
