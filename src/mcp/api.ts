@@ -8,6 +8,7 @@ import type dashboardApp from "../server/routes/dashboard";
 import type documentsApp from "../server/routes/documents";
 import type expensesApp from "../server/routes/expenses";
 import type forecastApp from "../server/routes/forecast";
+import type receiptsApp from "../server/routes/receipts";
 import type recurringApp from "../server/routes/recurring";
 import type recurringExpensesApp from "../server/routes/recurring-expenses";
 import type remindersApp from "../server/routes/reminders";
@@ -22,7 +23,21 @@ import type unitsApp from "../server/routes/units";
 // Like src/web/sdk/client.ts, each client is typed against its route module only, not the merged AppType.
 
 const BASE = "http://nesev.local/api";
-const fetch = (input: RequestInfo | URL, init?: RequestInit) => app.fetch(new Request(input, init));
+
+/**
+ * Receipt analysis must never run in the MCP process: POST /api/receipts/analyze kicks the in-process worker (OCR,
+ * llama-server). Only GETs of /api/receipts are served in-process; queueing goes to the running nesev server over
+ * HTTP (remoteApi, tools/receipts.ts).
+ */
+const IN_PROCESS_BLOCKED = /^\/api\/receipts(\/|$)/;
+
+const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const req = new Request(input, init);
+  if (req.method !== "GET" && IN_PROCESS_BLOCKED.test(new URL(req.url).pathname)) {
+    return Response.json({ error: "Belegerkennung läuft nur im nesev-Server, nicht im MCP-Prozess" }, { status: 403 });
+  }
+  return app.fetch(req);
+};
 
 export const api = {
   articles: hc<typeof articlesApp>(`${BASE}/articles`, { fetch }),
@@ -33,6 +48,8 @@ export const api = {
   documents: hc<typeof documentsApp>(`${BASE}/documents`, { fetch }),
   expenses: hc<typeof expensesApp>(`${BASE}/expenses`, { fetch }),
   forecast: hc<typeof forecastApp>(`${BASE}/forecast`, { fetch }),
+  /** GET only (see IN_PROCESS_BLOCKED) */
+  receipts: hc<typeof receiptsApp>(`${BASE}/receipts`, { fetch }),
   recurring: hc<typeof recurringApp>(`${BASE}/recurring`, { fetch }),
   recurringExpenses: hc<typeof recurringExpensesApp>(`${BASE}/recurring-expenses`, { fetch }),
   reminders: hc<typeof remindersApp>(`${BASE}/reminders`, { fetch }),
@@ -43,6 +60,20 @@ export const api = {
   units: hc<typeof unitsApp>(`${BASE}/units`, { fetch }),
 };
 export type Api = typeof api;
+
+/**
+ * Clients for the running nesev server over HTTP (default http://localhost:3998, env NESEV_API_URL). Only for work
+ * that must happen in the server process (receipt analysis). Requests time out after `timeoutMs`.
+ */
+export function remoteApi(baseUrl: string, timeoutMs = 5000) {
+  const root = `${baseUrl.replace(/\/+$/, "")}/api`;
+  const remoteFetch = (input: RequestInfo | URL, init?: RequestInit) =>
+    globalThis.fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  return {
+    expenses: hc<typeof expensesApp>(`${root}/expenses`, { fetch: remoteFetch }),
+    receipts: hc<typeof receiptsApp>(`${root}/receipts`, { fetch: remoteFetch }),
+  };
+}
 
 /** Route param for `/:id` routes. */
 export const idParam = (id: number) => ({ id: String(id) });

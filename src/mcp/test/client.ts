@@ -9,12 +9,19 @@ import { PROJECT_ROOT } from "../../server/lib/paths";
 
 export const MODERN_VERSION = "2026-07-28";
 
+/** NESEV_* settings of this process (web/API URL) reach the server too; the SDK only passes a minimal env. */
+function passThrough(): Record<string, string> {
+  return Object.fromEntries(
+    ["NESEV_WEB_URL", "NESEV_API_URL"].flatMap((k) => (process.env[k] ? [[k, process.env[k]!]] : [])),
+  );
+}
+
 export async function connectClient(opts: { dataDir: string; era?: "legacy" | "modern"; env?: Record<string, string> }) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["run", "--silent", "mcp"],
     cwd: PROJECT_ROOT,
-    env: { ...getDefaultEnvironment(), NESEV_DATA_DIR: opts.dataDir, ...opts.env },
+    env: { ...getDefaultEnvironment(), ...passThrough(), NESEV_DATA_DIR: opts.dataDir, ...opts.env },
     stderr: "pipe",
   });
   const client = new Client(

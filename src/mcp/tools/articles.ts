@@ -7,6 +7,50 @@ import { defineTool, READ_ONLY, type ToolContext } from "../tool";
 
 // Article catalog (Artikel).
 
+export const ArticleRow = z.object({
+  id: z.number().int(),
+  number: z.string().describe('e.g. "A-0001"'),
+  title: z.string(),
+  description: z.string(),
+  unit: z.string(),
+  unitPrice: Money.describe("net"),
+  taxRatePercent: z.number(),
+  usageCount: z.number().int(),
+  lastUsedAt: z.string().nullable(),
+  archived: z.boolean(),
+  link: z.string(),
+});
+
+type ArticleLike = {
+  id: number;
+  number: number;
+  title: string;
+  description: string;
+  unit: string;
+  unitPriceCents: number;
+  taxRateBp: number;
+  usageCount: number;
+  lastUsedAt: string | null;
+  archivedAt: string | null;
+};
+
+export function articleRow(ctx: ToolContext, a: ArticleLike) {
+  const number = formatArticleNumber(a.number);
+  return {
+    id: a.id,
+    number,
+    title: a.title,
+    description: a.description,
+    unit: a.unit,
+    unitPrice: money(a.unitPriceCents),
+    taxRatePercent: percent(a.taxRateBp),
+    usageCount: a.usageCount,
+    lastUsedAt: a.lastUsedAt,
+    archived: a.archivedAt !== null,
+    link: ctx.webUrl(`/articles?q=${encodeURIComponent(number)}${a.archivedAt ? "&archived=all" : ""}`),
+  };
+}
+
 export function registerArticleTools(server: McpServer, ctx: ToolContext) {
   defineTool(
     server,
@@ -25,42 +69,13 @@ export function registerArticleTools(server: McpServer, ctx: ToolContext) {
       output: z.object({
         total: z.number().int(),
         truncated: z.boolean(),
-        articles: z.array(
-          z.object({
-            id: z.number().int(),
-            number: z.string().describe('e.g. "A-0001"'),
-            title: z.string(),
-            description: z.string(),
-            unit: z.string(),
-            unitPrice: Money.describe("net"),
-            taxRatePercent: z.number(),
-            usageCount: z.number().int(),
-            lastUsedAt: z.string().nullable(),
-            archived: z.boolean(),
-            link: z.string(),
-          }),
-        ),
+        articles: z.array(ArticleRow),
       }),
       annotations: READ_ONLY,
     },
     async ({ query, archived, sort, limit }) => {
       const rows = await call(ctx.api.articles.index.$get({ query: { q: query || undefined, archived, sort } }));
-      const articles = rows.slice(0, limit).map((a) => {
-        const number = formatArticleNumber(a.number);
-        return {
-          id: a.id,
-          number,
-          title: a.title,
-          description: a.description,
-          unit: a.unit,
-          unitPrice: money(a.unitPriceCents),
-          taxRatePercent: percent(a.taxRateBp),
-          usageCount: a.usageCount,
-          lastUsedAt: a.lastUsedAt,
-          archived: a.archivedAt !== null,
-          link: ctx.webUrl(`/articles?q=${encodeURIComponent(number)}${a.archivedAt ? "&archived=all" : ""}`),
-        };
-      });
+      const articles = rows.slice(0, limit).map((a) => articleRow(ctx, a));
       const text = [
         `${rows.length} Artikel${rows.length > articles.length ? ` (${articles.length} gezeigt)` : ""}:`,
         bullets(

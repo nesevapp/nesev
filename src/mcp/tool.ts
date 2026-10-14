@@ -14,9 +14,12 @@ export interface ToolContext {
   webUrl: (path: string) => string;
   /** absolute path of a file stored relative to the data dir ("pdfs/RE-2026-0001.pdf") */
   dataPath: (relative: string) => string;
+  /** the running nesev server (HTTP), for work that must not run in the MCP process (receipt analysis) */
+  apiUrl: string;
 }
 
 export const DEFAULT_WEB_URL = "http://localhost:5174";
+export const DEFAULT_API_URL = "http://localhost:3998";
 
 export function createContext(env: Record<string, string | undefined> = process.env): ToolContext {
   const base = (env.NESEV_WEB_URL?.trim() || DEFAULT_WEB_URL).replace(/\/+$/, "");
@@ -24,11 +27,24 @@ export function createContext(env: Record<string, string | undefined> = process.
     api,
     webUrl: (path) => `${base}${path.startsWith("/") ? path : `/${path}`}`,
     dataPath: (relative) => join(DATA_DIR, relative),
+    apiUrl: (env.NESEV_API_URL?.trim() || DEFAULT_API_URL).replace(/\/+$/, ""),
   };
 }
 
-/** Annotations for tools that only read. Write tools set their own (readOnlyHint: false, destructiveHint, …). */
+/** Annotations for tools that only read. */
 export const READ_ONLY: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
+/** Creates something new or edits a draft; nothing existing is lost (clients may allow these permanently). */
+export const CREATES: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+/** Changes the state of existing records, often irreversibly (finalize, mark paid, …): clients should ask first. */
+export const CHANGES_STATE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };
+
+/** A problem the tool itself detects (ambiguous client, unknown unit, missing file, …); reported like an ApiError. */
+export class ToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ToolError";
+  }
+}
 
 /** What a tool handler returns: a short text summary for the model and the structured data (matches `output`). */
 export interface ToolOutput<O> {
@@ -50,8 +66,8 @@ export interface ToolSpec<I extends ObjectSchema, O extends ObjectSchema> {
 /**
  * Registers one tool. The handler gets the validated input and returns `{ text, data }`; `data` becomes
  * `structuredContent` (validated against `output` by the SDK and the client). An ApiError (non-2xx from nesev's
- * API) becomes a tool error (`isError: true`) carrying the API's German message; anything else is thrown and the
- * SDK reports it as a tool error too.
+ * API) or a ToolError becomes a tool error (`isError: true`) carrying the German message; anything else is thrown
+ * and the SDK reports it as a tool error too.
  */
 export function defineTool<I extends ObjectSchema, O extends ObjectSchema>(
   server: McpServer,
@@ -74,7 +90,7 @@ export function defineTool<I extends ObjectSchema, O extends ObjectSchema>(
         const { text, data } = await run(input as z.output<I>);
         return { content: [{ type: "text" as const, text }], structuredContent: data as Record<string, unknown> };
       } catch (err) {
-        if (err instanceof ApiError) return { content: [{ type: "text" as const, text: `Fehler: ${err.message}` }], isError: true };
+        if (err instanceof ApiError || err instanceof ToolError) return { content: [{ type: "text" as const, text: `Fehler: ${err.message}` }], isError: true };
         console.error(`[nesev-mcp] ${name} failed`, err);
         throw err;
       }

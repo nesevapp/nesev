@@ -5,7 +5,7 @@ import { TAX_MODE_LABELS, TAX_MODES } from "../../shared/tax";
 import { calcTotals } from "../../shared/totals";
 import { call, idParam } from "../api";
 import { bullets, deDate, docStatusLabel, docTypeLabel, eur, isoDate, join, Money, money, percent, qty } from "../format";
-import { defineTool, READ_ONLY, type ToolContext } from "../tool";
+import { defineTool, READ_ONLY, type ToolContext, type ToolOutput } from "../tool";
 
 // Offers, invoices, credit notes and the dunning list.
 
@@ -50,6 +50,174 @@ function isOpen(d: { type: DocumentType; status: string; openCents: number | nul
   if (d.status !== "final" && d.status !== "sent") return false;
   if (d.type === "invoice") return (d.openCents ?? 0) > 0;
   return d.type === "offer";
+}
+
+/** get_document output; write tools that change a document return it too. */
+export const DocumentDetail = z.object({
+  ...DocumentRow.shape,
+  client: z.object({ id: z.number().int(), name: z.string(), address: z.string(), uid: z.string() }),
+  servicePeriodStart: z.string().nullable(),
+  servicePeriodEnd: z.string().nullable(),
+  sentAt: z.string().nullable(),
+  finalizedAt: z.string().nullable(),
+  taxMode: z.enum(TAX_MODES),
+  taxModeLabel: z.string(),
+  introText: z.string(),
+  closingText: z.string(),
+  items: z.array(
+    z.object({
+      position: z.number().int(),
+      title: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      unit: z.string(),
+      unitPrice: Money,
+      discountPercent: z.number(),
+      taxRatePercent: z.number().describe("rate actually applied under the tax mode"),
+      net: Money,
+      articleId: z.number().int().nullable(),
+    }),
+  ),
+  tax: Money,
+  taxGroups: z.array(z.object({ ratePercent: z.number(), net: Money, tax: Money })),
+  payment: z
+    .object({
+      credited: Money.describe("finalized credit notes"),
+      paid: Money.describe("bank payments"),
+      open: Money,
+      payments: z.array(z.object({ date: z.string(), amount: Money, account: z.string(), counterparty: z.string(), purpose: z.string() })),
+    })
+    .nullable()
+    .describe("finalized invoices only"),
+  parent: DocRef.nullable(),
+  children: z.array(DocRef.extend({ gross: Money })),
+  pdf: z.object({ path: z.string().describe("absolute file path"), url: z.string() }).nullable(),
+});
+
+/** Full document as text + structured data (get_document and the document write tools). */
+export async function documentDetail(ctx: ToolContext, id: number): Promise<ToolOutput<z.input<typeof DocumentDetail>>> {
+  const d = await call(ctx.api.documents[":id"].$get({ param: idParam(id) }));
+  const isFinalInvoice = d.type === "invoice" && d.status !== "draft";
+  const [payments, children] = await Promise.all([
+    isFinalInvoice ? call(ctx.api.bank.documents[":id"].payments.$get({ param: idParam(id) })) : null,
+    Promise.all(d.children.map((c) => call(ctx.api.documents[":id"].$get({ param: idParam(c.id) })))),
+  ]);
+  const client = d.clientSnapshot
+    ? { id: d.clientId, name: d.clientSnapshot.name, address: snapshotAddress(d.clientSnapshot), uid: d.clientSnapshot.uid ?? "" }
+    : await liveClient(ctx, d.clientId);
+  const totals = calcTotals(d.items, d.taxMode);
+  const ref = (r: { id: number; type: DocumentType; number: string | null; status: (typeof DOCUMENT_STATUSES)[number] }) => ({
+    id: r.id,
+    type: r.type,
+    number: r.number,
+    status: r.status,
+    statusLabel: docStatusLabel(r),
+    link: ctx.webUrl(documentPath(r.type, r.id)),
+  });
+  const items = d.items.map((it, i) => ({
+    position: i + 1,
+    title: it.title,
+    description: it.description,
+    quantity: qty(it.quantity),
+    unit: it.unit,
+    unitPrice: money(it.unitPriceCents),
+    discountPercent: percent(it.discountBp),
+    taxRatePercent: percent(totals.lines[i]!.taxRateBp),
+    net: money(totals.lines[i]!.netCents),
+    articleId: it.articleId,
+  }));
+  const payment = payments && {
+    credited: money(payments.creditedCents),
+    paid: money(payments.paidCents),
+    open: money(payments.openCents),
+    payments: payments.payments.map((p) => ({
+      date: p.bookingDate,
+      amount: money(p.amountCents),
+      account: p.accountName,
+      counterparty: p.counterpartyName,
+      purpose: p.purpose,
+    })),
+  };
+  const pdf = d.pdfPath ? { path: ctx.dataPath(d.pdfPath), url: ctx.webUrl(`/api/files/${d.pdfPath}`) } : null;
+  const data = {
+    id: d.id,
+    type: d.type,
+    typeLabel: docTypeLabel(d.type),
+    number: d.number,
+    clientId: d.clientId,
+    client,
+    title: d.title,
+    issueDate: d.issueDate,
+    dueDate: d.dueDate,
+    validUntil: d.validUntil,
+    paidAt: d.paidAt,
+    net: money(d.netCents),
+    gross: money(d.grossCents),
+    open: d.openCents === null ? null : money(d.openCents),
+    status: d.status,
+    statusLabel: docStatusLabel(d),
+    overdue: d.overdue,
+    partiallyPaid: d.partial,
+    link: ctx.webUrl(documentPath(d.type, d.id)),
+    servicePeriodStart: d.servicePeriodStart,
+    servicePeriodEnd: d.servicePeriodEnd,
+    sentAt: d.sentAt,
+    finalizedAt: d.finalizedAt,
+    taxMode: d.taxMode,
+    taxModeLabel: TAX_MODE_LABELS[d.taxMode],
+    introText: d.introText,
+    closingText: d.closingText,
+    items,
+    tax: money(d.taxCents),
+    taxGroups: totals.taxGroups.map((g) => ({ ratePercent: percent(g.rateBp), net: money(g.netCents), tax: money(g.taxCents) })),
+    payment,
+    parent: d.parent && ref(d.parent),
+    children: children.map((c) => ({ ...ref(c), gross: money(c.grossCents) })),
+    pdf,
+  };
+
+  const text = [
+    `${docTypeLabel(d.type)} ${d.number ?? "(Entwurf, noch ohne Nummer)"} (id ${d.id}) · ${docStatusLabel(d)}`,
+    join(`Kunde: ${client.name} (id ${client.id})`, client.address, client.uid && `UID ${client.uid}`),
+    join(
+      `Datum ${deDate(d.issueDate)}`,
+      d.servicePeriodStart && `Leistung ${deDate(d.servicePeriodStart)}–${deDate(d.servicePeriodEnd)}`,
+      d.dueDate && d.type !== "offer" && `fällig ${deDate(d.dueDate)}`,
+      d.validUntil && `gültig bis ${deDate(d.validUntil)}`,
+      d.paidAt && `bezahlt ${deDate(d.paidAt)}`,
+    ),
+    d.title && `Titel: ${d.title}`,
+    `Steuer: ${TAX_MODE_LABELS[d.taxMode]}`,
+    "Positionen:",
+    bullets(
+      items.map((it) =>
+        join(
+          `${it.position}. ${it.title}`,
+          `${it.quantity} ${it.unit} × ${it.unitPrice.formatted}`,
+          it.discountPercent ? `−${it.discountPercent} %` : null,
+          `${it.taxRatePercent} % USt`,
+          `netto ${it.net.formatted}`,
+        ),
+      ),
+    ),
+    `Netto ${eur(d.netCents)} · USt ${eur(d.taxCents)} · Brutto ${eur(d.grossCents)}`,
+    payment &&
+      "Zahlung: " +
+        join(
+        `gutgeschrieben ${payment.credited.formatted}`,
+        `bezahlt ${payment.paid.formatted}`,
+        `offen ${payment.open.formatted}`,
+        payment.payments.length ? `${payment.payments.length} Bankbuchung(en)` : null,
+      ),
+    d.parent && `Bezug: ${d.parent.number ?? "Entwurf"} (${d.parent.type} id ${d.parent.id})`,
+    children.length &&
+      `Folgebelege: ${children.map((c) => `${c.number ?? "Entwurf"} (${c.type} id ${c.id}, ${eur(c.grossCents)}, ${docStatusLabel(c)})`).join(", ")}`,
+    pdf ? `PDF: ${pdf.path}` : null,
+    `Link: ${data.link}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { text, data };
 }
 
 export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
@@ -161,172 +329,10 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
         "invoices the payment state (credit notes, bank payments, open amount). Includes the absolute path of the frozen " +
         "PDF once finalized, linked documents (offer → invoice → credit note) and the web link.",
       input: z.object({ id: z.number().int().positive().describe("document id") }),
-      output: z.object({
-        ...DocumentRow.shape,
-        client: z.object({ id: z.number().int(), name: z.string(), address: z.string(), uid: z.string() }),
-        servicePeriodStart: z.string().nullable(),
-        servicePeriodEnd: z.string().nullable(),
-        sentAt: z.string().nullable(),
-        finalizedAt: z.string().nullable(),
-        taxMode: z.enum(TAX_MODES),
-        taxModeLabel: z.string(),
-        introText: z.string(),
-        closingText: z.string(),
-        items: z.array(
-          z.object({
-            position: z.number().int(),
-            title: z.string(),
-            description: z.string(),
-            quantity: z.number(),
-            unit: z.string(),
-            unitPrice: Money,
-            discountPercent: z.number(),
-            taxRatePercent: z.number().describe("rate actually applied under the tax mode"),
-            net: Money,
-            articleId: z.number().int().nullable(),
-          }),
-        ),
-        tax: Money,
-        taxGroups: z.array(z.object({ ratePercent: z.number(), net: Money, tax: Money })),
-        payment: z
-          .object({
-            credited: Money.describe("finalized credit notes"),
-            paid: Money.describe("bank payments"),
-            open: Money,
-            payments: z.array(z.object({ date: z.string(), amount: Money, account: z.string(), counterparty: z.string(), purpose: z.string() })),
-          })
-          .nullable()
-          .describe("finalized invoices only"),
-        parent: DocRef.nullable(),
-        children: z.array(DocRef.extend({ gross: Money })),
-        pdf: z.object({ path: z.string().describe("absolute file path"), url: z.string() }).nullable(),
-      }),
+      output: DocumentDetail,
       annotations: READ_ONLY,
     },
-    async ({ id }) => {
-      const d = await call(ctx.api.documents[":id"].$get({ param: idParam(id) }));
-      const isFinalInvoice = d.type === "invoice" && d.status !== "draft";
-      const [payments, children] = await Promise.all([
-        isFinalInvoice ? call(ctx.api.bank.documents[":id"].payments.$get({ param: idParam(id) })) : null,
-        Promise.all(d.children.map((c) => call(ctx.api.documents[":id"].$get({ param: idParam(c.id) })))),
-      ]);
-      const client = d.clientSnapshot
-        ? { id: d.clientId, name: d.clientSnapshot.name, address: snapshotAddress(d.clientSnapshot), uid: d.clientSnapshot.uid ?? "" }
-        : await liveClient(ctx, d.clientId);
-      const totals = calcTotals(d.items, d.taxMode);
-      const ref = (r: { id: number; type: DocumentType; number: string | null; status: (typeof DOCUMENT_STATUSES)[number] }) => ({
-        id: r.id,
-        type: r.type,
-        number: r.number,
-        status: r.status,
-        statusLabel: docStatusLabel(r),
-        link: ctx.webUrl(documentPath(r.type, r.id)),
-      });
-      const items = d.items.map((it, i) => ({
-        position: i + 1,
-        title: it.title,
-        description: it.description,
-        quantity: qty(it.quantity),
-        unit: it.unit,
-        unitPrice: money(it.unitPriceCents),
-        discountPercent: percent(it.discountBp),
-        taxRatePercent: percent(totals.lines[i]!.taxRateBp),
-        net: money(totals.lines[i]!.netCents),
-        articleId: it.articleId,
-      }));
-      const payment = payments && {
-        credited: money(payments.creditedCents),
-        paid: money(payments.paidCents),
-        open: money(payments.openCents),
-        payments: payments.payments.map((p) => ({
-          date: p.bookingDate,
-          amount: money(p.amountCents),
-          account: p.accountName,
-          counterparty: p.counterpartyName,
-          purpose: p.purpose,
-        })),
-      };
-      const pdf = d.pdfPath ? { path: ctx.dataPath(d.pdfPath), url: ctx.webUrl(`/api/files/${d.pdfPath}`) } : null;
-      const data = {
-        id: d.id,
-        type: d.type,
-        typeLabel: docTypeLabel(d.type),
-        number: d.number,
-        clientId: d.clientId,
-        client,
-        title: d.title,
-        issueDate: d.issueDate,
-        dueDate: d.dueDate,
-        validUntil: d.validUntil,
-        paidAt: d.paidAt,
-        net: money(d.netCents),
-        gross: money(d.grossCents),
-        open: d.openCents === null ? null : money(d.openCents),
-        status: d.status,
-        statusLabel: docStatusLabel(d),
-        overdue: d.overdue,
-        partiallyPaid: d.partial,
-        link: ctx.webUrl(documentPath(d.type, d.id)),
-        servicePeriodStart: d.servicePeriodStart,
-        servicePeriodEnd: d.servicePeriodEnd,
-        sentAt: d.sentAt,
-        finalizedAt: d.finalizedAt,
-        taxMode: d.taxMode,
-        taxModeLabel: TAX_MODE_LABELS[d.taxMode],
-        introText: d.introText,
-        closingText: d.closingText,
-        items,
-        tax: money(d.taxCents),
-        taxGroups: totals.taxGroups.map((g) => ({ ratePercent: percent(g.rateBp), net: money(g.netCents), tax: money(g.taxCents) })),
-        payment,
-        parent: d.parent && ref(d.parent),
-        children: children.map((c) => ({ ...ref(c), gross: money(c.grossCents) })),
-        pdf,
-      };
-
-      const text = [
-        `${docTypeLabel(d.type)} ${d.number ?? "(Entwurf, noch ohne Nummer)"} (id ${d.id}) · ${docStatusLabel(d)}`,
-        join(`Kunde: ${client.name} (id ${client.id})`, client.address, client.uid && `UID ${client.uid}`),
-        join(
-          `Datum ${deDate(d.issueDate)}`,
-          d.servicePeriodStart && `Leistung ${deDate(d.servicePeriodStart)}–${deDate(d.servicePeriodEnd)}`,
-          d.dueDate && d.type !== "offer" && `fällig ${deDate(d.dueDate)}`,
-          d.validUntil && `gültig bis ${deDate(d.validUntil)}`,
-          d.paidAt && `bezahlt ${deDate(d.paidAt)}`,
-        ),
-        d.title && `Titel: ${d.title}`,
-        `Steuer: ${TAX_MODE_LABELS[d.taxMode]}`,
-        "Positionen:",
-        bullets(
-          items.map((it) =>
-            join(
-              `${it.position}. ${it.title}`,
-              `${it.quantity} ${it.unit} × ${it.unitPrice.formatted}`,
-              it.discountPercent ? `−${it.discountPercent} %` : null,
-              `${it.taxRatePercent} % USt`,
-              `netto ${it.net.formatted}`,
-            ),
-          ),
-        ),
-        `Netto ${eur(d.netCents)} · USt ${eur(d.taxCents)} · Brutto ${eur(d.grossCents)}`,
-        payment &&
-          "Zahlung: " +
-            join(
-            `gutgeschrieben ${payment.credited.formatted}`,
-            `bezahlt ${payment.paid.formatted}`,
-            `offen ${payment.open.formatted}`,
-            payment.payments.length ? `${payment.payments.length} Bankbuchung(en)` : null,
-          ),
-        d.parent && `Bezug: ${d.parent.number ?? "Entwurf"} (${d.parent.type} id ${d.parent.id})`,
-        children.length &&
-          `Folgebelege: ${children.map((c) => `${c.number ?? "Entwurf"} (${c.type} id ${c.id}, ${eur(c.grossCents)}, ${docStatusLabel(c)})`).join(", ")}`,
-        pdf ? `PDF: ${pdf.path}` : null,
-        `Link: ${data.link}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      return { text, data };
-    },
+    async ({ id }) => documentDetail(ctx, id),
   );
 
   defineTool(

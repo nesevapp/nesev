@@ -5,7 +5,7 @@ import { intervalLabel } from "../../shared/recurring";
 import { EXPENSE_ATTACHMENT_FILTERS, EXPENSE_STATUS_FILTERS } from "../../shared/schemas/expense";
 import { call, idParam } from "../api";
 import { bullets, deDate, eur, isoDate, join, Money, money, percent } from "../format";
-import { defineTool, READ_ONLY, type ToolContext } from "../tool";
+import { defineTool, READ_ONLY, type ToolContext, type ToolOutput } from "../tool";
 
 // Expenses (Ausgaben / Belege) and fixed costs (Fixkosten).
 
@@ -77,6 +77,93 @@ function expenseRow(ctx: ToolContext, e: ExpenseLike) {
   };
 }
 
+/** get_expense output; create_expense returns it too. */
+export const ExpenseDetail = z.object({
+  ...ExpenseRow.shape,
+  vatTreatmentDescription: z.string(),
+  notes: z.string(),
+  lines: z.array(
+    z.object({
+      category: z.string(),
+      categoryLabel: z.string(),
+      description: z.string(),
+      net: Money,
+      taxRatePercent: z.number(),
+      tax: Money,
+      deductiblePercent: z.number().describe("share of the VAT deductible as Vorsteuer"),
+    }),
+  ),
+  payment: z.object({
+    paid: Money.describe("bank payments"),
+    open: Money.describe("gross − bank payments; an expense marked paid by hand (paidAt) can still show an amount here"),
+    payments: z.array(z.object({ date: z.string(), amount: Money, account: z.string(), counterparty: z.string(), purpose: z.string() })),
+  }),
+  fixedCost: z.object({ id: z.number().int(), name: z.string(), scheduledDate: z.string(), link: z.string() }).nullable(),
+  receipt: z.object({ path: z.string().describe("absolute file path"), fileName: z.string(), url: z.string() }).nullable(),
+});
+
+/** Expense with lines, payments, Fixkosten link and receipt as text + structured data. */
+export async function expenseDetail(ctx: ToolContext, id: number): Promise<ToolOutput<z.input<typeof ExpenseDetail>>> {
+  const e = await call(ctx.api.expenses[":id"].$get({ param: idParam(id) }));
+  const [payments, link] = await Promise.all([
+    call(ctx.api.bank.expenses[":id"].payments.$get({ param: idParam(id) })),
+    call(ctx.api.recurringExpenses.link.$get({ query: { expenseId: String(id) } })),
+  ]);
+  const lines = e.lines.map((l) => ({
+    category: l.category,
+    categoryLabel: categoryLabel(l.category),
+    description: l.description,
+    net: money(l.netCents),
+    taxRatePercent: percent(l.taxRateBp),
+    tax: money(l.taxCents),
+    deductiblePercent: percent(l.deductibleBp),
+  }));
+  const data = {
+    ...expenseRow(ctx, e),
+    vatTreatmentDescription: VAT_TREATMENT_LABELS[e.vatTreatment],
+    notes: e.notes,
+    lines,
+    payment: {
+      paid: money(payments.paidCents),
+      open: money(payments.openCents),
+      payments: payments.payments.map((p) => ({
+        date: p.bookingDate,
+        amount: money(p.amountCents),
+        account: p.accountName,
+        counterparty: p.counterpartyName,
+        purpose: p.purpose,
+      })),
+    },
+    fixedCost: link && { id: link.recurringExpenseId, name: link.name, scheduledDate: link.scheduledDate, link: ctx.webUrl("/fixed-costs") },
+    receipt: e.attachmentPath
+      ? { path: ctx.dataPath(e.attachmentPath), fileName: e.attachmentName, url: ctx.webUrl(`/api/files/${e.attachmentPath}`) }
+      : null,
+  };
+  const text = [
+    `Ausgabe ${e.number ?? ""} (expense id ${e.id}) · ${data.statusLabel}`,
+    join(`Lieferant: ${e.supplierName || "(leer)"}`, e.supplierCountry, e.supplierUid && `UID ${e.supplierUid}`, e.supplierInvoiceNumber && `Rechnungsnr. ${e.supplierInvoiceNumber}`),
+    join(`Datum ${deDate(e.issueDate)}`, e.dueDate && `fällig ${deDate(e.dueDate)}`, e.paidAt && `bezahlt ${deDate(e.paidAt)}`),
+    e.description && `Beschreibung: ${e.description}`,
+    `USt-Behandlung: ${VAT_TREATMENT_LABELS[e.vatTreatment]}`,
+    "Zeilen:",
+    bullets(
+      lines.map((l) =>
+        join(l.categoryLabel, l.description, `netto ${l.net.formatted}`, `${l.taxRatePercent} % = ${l.tax.formatted}`, l.deductiblePercent !== 100 && `abzugsfähig ${l.deductiblePercent} %`),
+      ),
+      "(keine – unvollständig)",
+    ),
+    `Netto ${eur(e.netCents)} · USt ${eur(e.taxCents)} · Brutto (zahlbar) ${eur(e.grossCents)}`,
+    payments.payments.length ? `Bank: bezahlt ${eur(payments.paidCents)}, offen ${eur(payments.openCents)}` : null,
+    link && `Fixkosten: ${link.name} · ${deDate(link.scheduledDate)}`,
+    e.notes && `Notizen: ${e.notes}`,
+    data.receipt ? `Beleg: ${data.receipt.path}` : "Kein Beleg angehängt",
+    `Link: ${data.link}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { text, data };
+}
+
 export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
   defineTool(
     server,
@@ -85,8 +172,8 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
       title: "Ausgaben auflisten",
       description:
         "List expenses (Ausgaben / Eingangsrechnungen), newest first. Filters: issue date range, `query` (supplier, " +
-        "description, receipt number, supplier invoice number, notes), status (open = unpaid, paid, incomplete = draft " +
-        "without lines), category, receipt attached or not. Amounts: net, VAT and gross (= amount payable to the supplier; " +
+        "description, receipt number, supplier invoice number, notes), status (open = unpaid and complete, paid, " +
+        "incomplete = draft without lines, e.g. a dropped receipt), category, receipt attached or not. Amounts: net, VAT and gross (= amount payable to the supplier; " +
         "equals net for reverse charge / ig. Erwerb, where the VAT is self-assessed).",
       input: z.object({
         query: z.string().trim().max(200).optional().describe("e.g. supplier name"),
@@ -107,9 +194,11 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
       annotations: READ_ONLY,
     },
     async ({ query, from, to, status, category, receipt, limit }) => {
-      const rows = await call(
+      const all = await call(
         ctx.api.expenses.index.$get({ query: { q: query || undefined, from, to, status, category, attachment: receipt } }),
       );
+      // the API's "open" also contains incomplete drafts; here they only come with status "incomplete"
+      const rows = status === "open" ? all.filter((e) => !e.incomplete) : all;
       const expenses = rows.slice(0, limit).map((e) => ({ ...expenseRow(ctx, e), categories: e.categories.map(categoryLabel) }));
       const sumNet = rows.reduce((s, e) => s + e.netCents, 0);
       const sumGross = rows.reduce((s, e) => s + e.grossCents, 0);
@@ -144,91 +233,10 @@ export function registerExpenseTools(server: McpServer, ctx: ToolContext) {
         "share), totals, bank payments and open amount, the linked fixed-cost payment (Fixkosten) and the absolute path " +
         "of the attached receipt file.",
       input: z.object({ id: z.number().int().positive().describe("expense id") }),
-      output: z.object({
-        ...ExpenseRow.shape,
-        vatTreatmentDescription: z.string(),
-        notes: z.string(),
-        lines: z.array(
-          z.object({
-            category: z.string(),
-            categoryLabel: z.string(),
-            description: z.string(),
-            net: Money,
-            taxRatePercent: z.number(),
-            tax: Money,
-            deductiblePercent: z.number().describe("share of the VAT deductible as Vorsteuer"),
-          }),
-        ),
-        payment: z.object({
-          paid: Money.describe("bank payments"),
-          open: Money.describe("gross − bank payments; an expense marked paid by hand (paidAt) can still show an amount here"),
-          payments: z.array(z.object({ date: z.string(), amount: Money, account: z.string(), counterparty: z.string(), purpose: z.string() })),
-        }),
-        fixedCost: z.object({ id: z.number().int(), name: z.string(), scheduledDate: z.string(), link: z.string() }).nullable(),
-        receipt: z.object({ path: z.string().describe("absolute file path"), fileName: z.string(), url: z.string() }).nullable(),
-      }),
+      output: ExpenseDetail,
       annotations: READ_ONLY,
     },
-    async ({ id }) => {
-      const e = await call(ctx.api.expenses[":id"].$get({ param: idParam(id) }));
-      const [payments, link] = await Promise.all([
-        call(ctx.api.bank.expenses[":id"].payments.$get({ param: idParam(id) })),
-        call(ctx.api.recurringExpenses.link.$get({ query: { expenseId: String(id) } })),
-      ]);
-      const lines = e.lines.map((l) => ({
-        category: l.category,
-        categoryLabel: categoryLabel(l.category),
-        description: l.description,
-        net: money(l.netCents),
-        taxRatePercent: percent(l.taxRateBp),
-        tax: money(l.taxCents),
-        deductiblePercent: percent(l.deductibleBp),
-      }));
-      const data = {
-        ...expenseRow(ctx, e),
-        vatTreatmentDescription: VAT_TREATMENT_LABELS[e.vatTreatment],
-        notes: e.notes,
-        lines,
-        payment: {
-          paid: money(payments.paidCents),
-          open: money(payments.openCents),
-          payments: payments.payments.map((p) => ({
-            date: p.bookingDate,
-            amount: money(p.amountCents),
-            account: p.accountName,
-            counterparty: p.counterpartyName,
-            purpose: p.purpose,
-          })),
-        },
-        fixedCost: link && { id: link.recurringExpenseId, name: link.name, scheduledDate: link.scheduledDate, link: ctx.webUrl("/fixed-costs") },
-        receipt: e.attachmentPath
-          ? { path: ctx.dataPath(e.attachmentPath), fileName: e.attachmentName, url: ctx.webUrl(`/api/files/${e.attachmentPath}`) }
-          : null,
-      };
-      const text = [
-        `Ausgabe ${e.number ?? ""} (expense id ${e.id}) · ${data.statusLabel}`,
-        join(`Lieferant: ${e.supplierName || "(leer)"}`, e.supplierCountry, e.supplierUid && `UID ${e.supplierUid}`, e.supplierInvoiceNumber && `Rechnungsnr. ${e.supplierInvoiceNumber}`),
-        join(`Datum ${deDate(e.issueDate)}`, e.dueDate && `fällig ${deDate(e.dueDate)}`, e.paidAt && `bezahlt ${deDate(e.paidAt)}`),
-        e.description && `Beschreibung: ${e.description}`,
-        `USt-Behandlung: ${VAT_TREATMENT_LABELS[e.vatTreatment]}`,
-        "Zeilen:",
-        bullets(
-          lines.map((l) =>
-            join(l.categoryLabel, l.description, `netto ${l.net.formatted}`, `${l.taxRatePercent} % = ${l.tax.formatted}`, l.deductiblePercent !== 100 && `abzugsfähig ${l.deductiblePercent} %`),
-          ),
-          "(keine – unvollständig)",
-        ),
-        `Netto ${eur(e.netCents)} · USt ${eur(e.taxCents)} · Brutto (zahlbar) ${eur(e.grossCents)}`,
-        payments.payments.length ? `Bank: bezahlt ${eur(payments.paidCents)}, offen ${eur(payments.openCents)}` : null,
-        link && `Fixkosten: ${link.name} · ${deDate(link.scheduledDate)}`,
-        e.notes && `Notizen: ${e.notes}`,
-        data.receipt ? `Beleg: ${data.receipt.path}` : "Kein Beleg angehängt",
-        `Link: ${data.link}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      return { text, data };
-    },
+    async ({ id }) => expenseDetail(ctx, id),
   );
 
   defineTool(

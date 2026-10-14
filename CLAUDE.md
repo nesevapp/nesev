@@ -12,7 +12,7 @@ bun run typecheck         # tsc over everything – must be clean
 bun test                  # all *.test.ts (in-memory DBs via createTestDb)
 bun run build && bun start  # production: Hono serves SPA + API on PORT
 bun run db:generate       # after editing src/server/db/schema.ts → new migration file (commit it)
-NESEV_DATA_DIR=/tmp/nesev-mcp bun run mcp   # MCP server (stdio) for AI clients, see src/mcp/README.md
+NESEV_DATA_DIR=/tmp/nesev-mcp NESEV_API_URL=http://127.0.0.1:9 bun run mcp   # MCP server (stdio), see src/mcp/README.md
 ```
 Ports 3001/5173 are used by other projects on this machine, so always set `PORT`. The user's own instance runs on API 3998 / Vite 5174 with the real `data/`. Never touch it and never use `data/` for experiments.
 Isolated test runs: `NESEV_DATA_DIR=/tmp/nesev-x PORT=39xx bun run dev:api` plus `bunx vite --port 51xx --strictPort` (with `PORT` set the same). **Stop only processes you started, by PID.** Never `pkill`/`kill` by name, pattern or port range: that has killed the user's server before.
@@ -50,6 +50,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - The Apple Vision helper for receipt OCR is compiled on first use into `data/bin/`.
 - Receipt OCR uses only llama.cpp: nesev spawns `llama-server` as its own child (handle on `globalThis`, pid file `data/llama-server.pid`). In tests use fake `ManagerDeps`, never the real binary. When testing for real, check `pgrep -P <your API pid> llama-server` and kill only that child; stopping your API process (SIGTERM) stops it too. Note: the server inherits nesev's env. An empty model path auto-picks from the GGUFs on disk (Qwen3.5-4B preferred).
 - **MCP server: stdout is the JSON-RPC channel.** Anything printed to stdout breaks the client; `src/mcp/stdout-guard.ts` (first import of `src/mcp/server.ts`) routes `console.log/info/debug` to stderr. Don't write to `process.stdout` in server code, and keep the guard the first import.
+- **MCP `queue_receipt_analysis` talks to `NESEV_API_URL` (default `http://localhost:3998` = the user's server).** In experiments always set `NESEV_API_URL=http://127.0.0.1:9` (or a fake server) next to `NESEV_DATA_DIR`. Receipt analysis must never run in the MCP process; `src/mcp/api.ts` refuses non-GET `/api/receipts` in-process.
 - `src/server/lib/bank-parsers/fixtures/**` are byte-exact (CRLF, Windows-1252) via `.gitattributes`.
 
 ## Working style for this repo

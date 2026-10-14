@@ -29,7 +29,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 16 | Global search (⌘K) + keyboard shortcuts | ✅ done | sidebar „Suchen …“, `/api/search` |
 | 17 | Fixkosten + outflows/balance in the forecast | ✅ done | `/fixed-costs`, `/forecast` |
 | 18 | MCP server, part 1: core + read-only tools | ✅ done | `src/mcp`, `bun run mcp` |
-| 19 | MCP server, part 2: write tools | ⏳ next | `src/mcp/tools` |
+| 19 | MCP server, part 2: write tools + receipt analysis | ✅ done | `src/mcp/tools/write-*`, `receipts.ts` |
 
 ---
 
@@ -165,9 +165,12 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - In-process: typed `hc` clients per route module whose `fetch` is `app.fetch` (no HTTP, no port, no raw SQL). Validation, rules and German error messages come from the routes; a non-2xx becomes a tool error (`isError: true`) with the API's message. It never imports `src/server/index.ts`, so no schedulers / OCR queue / llama-server run in the MCP process; it exits when stdin closes.
 - stdout is reserved for JSON-RPC: `stdout-guard.ts` (first import) routes `console.log/info/debug` to stderr.
 - 14 read-only tools (`readOnlyHint`, `openWorldHint: false`), in a fixed order: `search`, `get_dashboard`, `list_documents` (status incl. `open`/`overdue`), `get_document` (items, tax groups, payments, credit notes, absolute PDF path), `list_reminders_due`, `list_clients`, `get_client` (open invoices), `list_articles`, `list_expenses`, `get_expense`, `list_fixed_costs`, `get_forecast`, `get_tax_report` (uva/zm/ear, with disclaimer), `list_assets`.
+- 14 write tools after them. Create (`destructiveHint: false`): `create_client` (refuses likely duplicates unless `allowDuplicate`), `create_article`, `create_invoice_draft` / `create_offer_draft` (client by id or unambiguous name, items with plain quantity, configured unit, net euro price, 20/13/10/0 %, optional `articleId`; tax mode/texts/dates default like the UI), `update_document_draft` (drafts only), `create_expense` (net or gross lines, VAT treatment from country/UID, optional local receipt file checked like the UI incl. content sniffing, optional Fixkosten slot link), `queue_receipt_analysis`. State-changing (`destructiveHint: true`): `finalize_document` (irreversible; number + PDF path), `mark_document_sent`, `mark_invoice_paid` (`expectedAmount` must equal the open amount), `convert_offer_to_invoice`, `create_credit_note` (full or selected positions with quantity/price overrides; a draft), `create_reminder` (finalized by default: MA number + PDF). Plus `get_receipt_analysis` (read). No delete/settings/bank/email tools.
+- Receipt analysis never runs in the MCP process: `api.ts` refuses non-GET `/api/receipts` in-process (the analyze route kicks the worker). `queue_receipt_analysis` calls the running nesev server over HTTP (`NESEV_API_URL`, default `http://localhost:3998`), first checking per expense (number, supplier, receipt path) that the server works on the same data, and fails with a clear message when it isn't reachable.
+- `list_expenses` status `open` excludes incomplete drafts (they come with `incomplete`).
 - Output: short text summary + `structuredContent` matching an `outputSchema`; money as `{ cents, formatted }`, dates `YYYY-MM-DD`, quantities/rates as plain numbers, German status labels, web links. Money input for write tools: `euroAmount` (euro number or "1.234,56" / "1234.56" → cents).
-- Adding a tool: `defineTool()` in `src/mcp/tools/<area>.ts`, module listed in `TOOL_MODULES` (`server.ts`), test in `mcp.test.ts` (convention in the README).
-- Tests spawn the real entry on a seeded temp dir (`src/mcp/test/seed.ts`, through the API) and drive it with the SDK client in both eras; plus a raw stdout-purity check.
+- Adding a tool: `defineTool()` in `src/mcp/tools/<area>.ts` with `READ_ONLY` / `CREATES` / `CHANGES_STATE`, module appended to `TOOL_MODULES` (`server.ts`), test in `mcp.test.ts` (convention, and which tools to allow permanently vs. confirm, in the README).
+- Tests spawn the real entry on a seeded temp dir (`src/mcp/test/seed.ts`, through the API) and drive it with the SDK client in both eras: every tool, annotations, gapless numbering, draft-only edits, receipt upload (fixtures), a fake nesev server on a random port for queueing, the in-process receipts guard, and a raw stdout-purity check.
 
 ### Data, export & backups
 - Everything lives in `data/` (gitignored).
@@ -193,6 +196,6 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 4. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
 5. **Comfort:** dark mode. (Global search and keyboard shortcuts are done.)
 6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
-7. **MCP write tools** on top of the core in `src/mcp` (create/update drafts, finalize, mark paid/sent, expenses, reminders), with honest annotations (`destructiveHint` for irreversible steps).
+7. **MCP follow-ups (if needed):** recurring invoices and Fixkosten write tools, applying receipt-analysis suggestions to an expense, email once SMTP exists.
 
 Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, live bank balance from the last import as the forecast start.
