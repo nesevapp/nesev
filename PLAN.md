@@ -30,6 +30,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 17 | Fixkosten + outflows/balance in the forecast | ✅ done | `/fixed-costs`, `/forecast` |
 | 18 | MCP server, part 1: core + read-only tools | ✅ done | `src/mcp`, `bun run mcp` |
 | 19 | MCP server, part 2: write tools + receipt analysis | ✅ done | `src/mcp/tools/write-*`, `receipts.ts` |
+| 20 | Crop/straighten photographed receipts | ✅ done | `/expenses/:id` receipt pane, `nesev-ocr detect-document`/`crop` |
 
 ---
 
@@ -97,6 +98,12 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Lines carry an EAR category, rate, stored tax (can be overridden to match the receipt) and deductible share.
 - `grossCents` = amount payable to the supplier. For reverse charge / ig. Erwerb that equals net, and the self-assessed tax is owed and deductible.
 - Receipts (PDF/JPG/PNG/WebP, ≤ 20 MB) go to `data/receipts/<year>/`. Dropping several files creates incomplete drafts (no lines), which reports exclude with a warning.
+- **Crop/straighten photo receipts** (receipt pane → crop icon; JPG/PNG/WebP only, on explicit action, never on upload). The dialog shows the original photo with the outline suggested by the Swift helper (`nesev-ocr detect-document`: Vision document segmentation, ignored below confidence 0.3 or 3 % of the image, then `VNDetectRectanglesRequest` tuned for long receipts; nothing found → whole image) and four draggable corners (pointer events, arrow keys ± 0.4 %, Shift ± 2 %; crossed/too small quads can't be saved). Buttons: „Automatisch erkennen“, „Ganzes Bild“, optional „Schwarz-Weiß, mehr Kontrast“, „Zuschneiden speichern“.
+  - `nesev-ocr crop` cuts the quad out with `CIPerspectiveCorrection` (EXIF orientation applied first; quads are normalized on the image as displayed), max. 3000 px long side, JPEG q 0.9 (PNG stays PNG). Core Image's output aspect was within ~4 % of the real sheet on rendered pinhole-camera test photos; a Zhang–He focal-length estimate was tried and dropped (no better, worse on small/off-center shots).
+  - Files: the crop is written next to the original (`<original stem>-crop-<ts>.jpg`), `attachmentPath` → crop, `attachmentOriginalPath` → original. Re-cropping always starts from the original and deletes the previous crop; „Original wiederherstellen“ deletes the crop and clears `attachmentOriginalPath`. Replacing/removing the receipt or deleting the expense removes both files.
+  - API: `GET /api/expenses/:id/receipt/detect`, `POST …/receipt/crop {quad, enhance}`, `POST …/receipt/restore` (422 for PDFs or without the helper). The pane shows „Zugeschnitten · Original anzeigen · Original wiederherstellen“.
+  - Analysis uses `attachmentPath`, so it reads the crop; earlier analyses become stale („Beleg wurde ersetzt oder zugeschnitten – neu analysieren“). On rendered test photos (tilted/perspective receipts on wood), Vision OCR of the uncropped photo mixed up the columns and the model got the 20 % tax line wrong on 2 of 3; after cropping, all 3 were fully correct.
+  - The backup ZIP now also contains `receipts/` (it had none before). The accountant export only covers outgoing documents, so receipts aren't part of it.
 
 ### Taxes (`/tax`) – a helper, not tax advice
 - **UVA:**

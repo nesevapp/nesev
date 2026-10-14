@@ -36,6 +36,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - An invoice's open amount = gross − finalized credit notes − bank allocations (`services/bank.ts` helpers). Use those helpers; don't recompute it ad hoc.
 - Expenses: `grossCents` = amount payable to the supplier (equals net for reverse charge / ig. Erwerb). Self-assessed tax is owed and deductible (see `src/shared/expenses.ts` header).
 - Expense lines with category `anlagen` are capitalized, never expensed (EAR, dashboard): the AfA comes from `fixed_assets` via `src/shared/assets.ts` / `services/assets.ts`. Their input VAT stays deductible in the UVA at once.
+- Cropping a photo receipt keeps the original in `expenses.attachmentOriginalPath` (`attachmentPath` = crop); re-crops start from the original, and every replace/remove/delete cleans up both files.
 - Receipt OCR never runs on upload. Analysis is queued only on explicit user action. It's fully local (PDF text, Apple Vision, a llama-server that nesev starts itself), and results never overwrite saved data automatically.
 - UI language is German. Tax output (UVA/ZM/EAR) is a helper, not tax advice.
 

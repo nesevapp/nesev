@@ -1,6 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { and, asc, desc, eq, gte, isNotNull, isNull, lte, ne, or, type SQL, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { HTTPException } from "hono/http-exception";
@@ -12,6 +12,7 @@ import {
   RECEIPT_MIME_TYPES,
   type VatTreatment,
 } from "../../shared/expenses";
+import { isCroppablePath, type Quad } from "../../shared/receipt-crop";
 import type {
   ExpenseCreate,
   ExpenseLineInput,
@@ -21,10 +22,14 @@ import type {
 import type { DbOrTx } from "../db/client";
 import { type Expense, type ExpenseLine, expenseLines, expenses } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
+import { runHelper } from "../lib/ocr/helper";
+import { CommandError } from "../lib/ocr/run";
 import { DATA_DIR } from "../lib/paths";
 
 // Expenses (Ausgaben / Belege). Semantics of the tables and totals: see src/shared/expenses.ts.
 // Receipts live under <DATA_DIR>/receipts/<year>/ and are stored as "receipts/<year>/<file>".
+// A cropped photo receipt keeps its original in attachmentOriginalPath; attachmentPath points to the crop
+// ("<original stem>-crop-<ts>.jpg" next to it). Every replace/remove/delete cleans up both files.
 
 export type ExpenseWithLines = Omit<Expense, "vatTreatment"> & {
   vatTreatment: VatTreatment;
@@ -203,13 +208,19 @@ export function setExpensePaid(db: DbOrTx, id: number, paidAt: string | null): E
 export async function deleteExpense(db: DbOrTx, id: number, dataDir = DATA_DIR): Promise<void> {
   const expense = requireExpense(db, id);
   db.delete(expenses).where(eq(expenses.id, id)).run();
-  await removeReceiptFile(expense.attachmentPath, dataDir);
+  await removeReceiptFiles(expense, dataDir);
 }
 
 // --- receipts ----------------------------------------------------------------------------------
 
 async function removeReceiptFile(relPath: string | null, dataDir: string) {
   if (relPath) await unlink(join(dataDir, relPath)).catch(() => {});
+}
+
+/** The receipt and, for a cropped one, its original. */
+async function removeReceiptFiles(e: Pick<Expense, "attachmentPath" | "attachmentOriginalPath">, dataDir: string) {
+  await removeReceiptFile(e.attachmentPath, dataDir);
+  if (e.attachmentOriginalPath !== e.attachmentPath) await removeReceiptFile(e.attachmentOriginalPath, dataDir);
 }
 
 /** Validates an upload; returns the file extension or throws 400. */
@@ -243,17 +254,129 @@ export async function setExpenseAttachment(
   mkdirSync(join(dataDir, "receipts", year), { recursive: true });
   await Bun.write(join(dataDir, relPath), file);
   db.update(expenses)
-    .set({ attachmentPath: relPath, attachmentName: file.name.slice(0, 255) })
+    .set({ attachmentPath: relPath, attachmentName: file.name.slice(0, 255), attachmentOriginalPath: null })
     .where(eq(expenses.id, id))
     .run();
-  if (expense.attachmentPath !== relPath) await removeReceiptFile(expense.attachmentPath, dataDir);
+  await removeReceiptFiles(expense, dataDir);
   return requireExpense(db, id);
 }
 
 export async function removeExpenseAttachment(db: DbOrTx, id: number, dataDir = DATA_DIR): Promise<ExpenseWithLines> {
   const expense = requireExpense(db, id);
-  db.update(expenses).set({ attachmentPath: null, attachmentName: "" }).where(eq(expenses.id, id)).run();
-  await removeReceiptFile(expense.attachmentPath, dataDir);
+  db.update(expenses)
+    .set({ attachmentPath: null, attachmentName: "", attachmentOriginalPath: null })
+    .where(eq(expenses.id, id))
+    .run();
+  await removeReceiptFiles(expense, dataDir);
+  return requireExpense(db, id);
+}
+
+// --- cropping photographed receipts (Swift helper: detect-document / crop) ------------------------
+
+export interface ReceiptDetection {
+  /** suggested corners on the original photo, or null when nothing was found */
+  quad: Quad | null;
+  confidence: number;
+  method: "segmentation" | "rectangles" | null;
+  /** size of the original as displayed (EXIF orientation applied) */
+  width: number;
+  height: number;
+}
+
+/** Runs a helper command and parses its JSON (tests pass a fake). */
+export type ReceiptImageHelper = <T>(args: string[]) => Promise<T>;
+
+export interface ReceiptCropOptions {
+  dataDir?: string;
+  helper?: ReceiptImageHelper;
+}
+
+const defaultImageHelper: ReceiptImageHelper = (args) => runHelper(args, { timeoutMs: 60_000 });
+
+async function callImageHelper<T>(helper: ReceiptImageHelper, args: string[]): Promise<T> {
+  try {
+    return await helper<T>(args);
+  } catch (err) {
+    if (err instanceof CommandError) throw new HTTPException(422, { message: `Zuschneiden nicht möglich: ${err.message}` });
+    throw err;
+  }
+}
+
+/** The file crops start from: the original of a cropped receipt, else the receipt itself (photos only). */
+function cropSource(e: Expense, dataDir: string): string {
+  const source = e.attachmentOriginalPath ?? e.attachmentPath;
+  if (!source) throw new HTTPException(422, { message: "Kein Beleg vorhanden" });
+  if (!isCroppablePath(source)) {
+    throw new HTTPException(422, { message: "Nur Fotos (JPG, PNG, WebP) können zugeschnitten werden" });
+  }
+  if (!existsSync(join(dataDir, source))) throw new HTTPException(404, { message: "Belegdatei fehlt" });
+  return source;
+}
+
+/** Suggested receipt outline on the original photo (explicit user action only, never on upload). */
+export async function detectReceiptQuad(
+  db: DbOrTx,
+  id: number,
+  { dataDir = DATA_DIR, helper = defaultImageHelper }: ReceiptCropOptions = {},
+): Promise<ReceiptDetection> {
+  const source = cropSource(requireExpense(db, id), dataDir);
+  return callImageHelper<ReceiptDetection>(helper, ["detect-document", join(dataDir, source)]);
+}
+
+/**
+ * Cuts the quad out of the ORIGINAL photo and straightens it. The crop becomes attachmentPath, the original
+ * is kept in attachmentOriginalPath; a previous crop is replaced (and its file deleted).
+ */
+export async function cropExpenseReceipt(
+  db: DbOrTx,
+  id: number,
+  { quad, enhance = false }: { quad: Quad; enhance?: boolean },
+  { dataDir = DATA_DIR, helper = defaultImageHelper }: ReceiptCropOptions = {},
+): Promise<ExpenseWithLines> {
+  const source = cropSource(requireExpense(db, id), dataDir);
+  const png = source.toLowerCase().endsWith(".png"); // screenshots stay lossless
+  const stem = basename(source).replace(/\.[^.]+$/, "");
+  const relPath = `${dirname(source)}/${stem}-crop-${Date.now()}.${png ? "png" : "jpg"}`;
+  const abs = join(dataDir, relPath);
+  // a partial file is dropped on any failure below
+  const discard = () => unlink(abs).catch(() => {});
+  try {
+    await callImageHelper(helper, [
+      "crop",
+      join(dataDir, source),
+      abs,
+      "--quad",
+      quad.flat().join(","),
+      "--format",
+      png ? "png" : "jpeg",
+      "--quality",
+      "0.9",
+      "--max-side",
+      "3000",
+      ...(enhance ? ["--enhance"] : []),
+    ]);
+  } catch (err) {
+    await discard();
+    throw err;
+  }
+  // the receipt may have been replaced while the helper ran
+  const current = requireExpense(db, id);
+  if ((current.attachmentOriginalPath ?? current.attachmentPath) !== source) {
+    await discard();
+    throw new HTTPException(409, { message: "Der Beleg wurde inzwischen geändert" });
+  }
+  db.update(expenses).set({ attachmentPath: relPath, attachmentOriginalPath: source }).where(eq(expenses.id, id)).run();
+  if (current.attachmentPath !== source) await removeReceiptFile(current.attachmentPath, dataDir);
+  return requireExpense(db, id);
+}
+
+/** Back to the original photo; the crop file is deleted. */
+export async function restoreExpenseReceipt(db: DbOrTx, id: number, dataDir = DATA_DIR): Promise<ExpenseWithLines> {
+  const expense = requireExpense(db, id);
+  const original = expense.attachmentOriginalPath;
+  if (!original) throw new HTTPException(409, { message: "Der Beleg ist nicht zugeschnitten" });
+  db.update(expenses).set({ attachmentPath: original, attachmentOriginalPath: null }).where(eq(expenses.id, id)).run();
+  if (expense.attachmentPath !== original) await removeReceiptFile(expense.attachmentPath, dataDir);
   return requireExpense(db, id);
 }
 

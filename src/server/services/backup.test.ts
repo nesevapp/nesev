@@ -34,7 +34,7 @@ describe("snapshot", () => {
     expect(openAndCount(dest)).toBe(1);
   });
 
-  test("backup zip contains db, assets and pdfs", () => {
+  test("backup zip contains db, assets, pdfs and receipts", () => {
     const { dir, db } = fileDb();
     const assets = join(dir, "assets");
     const pdfs = join(dir, "pdfs");
@@ -43,14 +43,20 @@ describe("snapshot", () => {
     writeFileSync(join(assets, "logo.png"), "png");
     writeFileSync(join(assets, "fonts", "a.ttf"), "ttf");
     writeFileSync(join(pdfs, "RE-2026-0001.pdf"), "%PDF");
+    const receipts = join(dir, "receipts");
+    mkdirSync(join(receipts, "2026"), { recursive: true });
+    writeFileSync(join(receipts, "2026", "ER-2026-0001-1.jpg"), "jpg");
+    writeFileSync(join(receipts, "2026", "ER-2026-0001-1-crop-2.jpg"), "jpg");
 
-    const files = unzipSync(createBackupZip(db, { assets, pdfs }));
+    const files = unzipSync(createBackupZip(db, { assets, pdfs, receipts }));
     expect(Object.keys(files).sort()).toEqual([
       "LIESMICH.txt",
       "assets/fonts/a.ttf",
       "assets/logo.png",
       "nesev.db",
       "pdfs/RE-2026-0001.pdf",
+      "receipts/2026/ER-2026-0001-1-crop-2.jpg",
+      "receipts/2026/ER-2026-0001-1.jpg",
     ]);
     const out = join(dir, "restored.db");
     writeFileSync(out, files["nesev.db"]!);

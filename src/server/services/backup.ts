@@ -5,7 +5,7 @@ import { join, relative } from "node:path";
 import { zipSync, type Zippable } from "fflate";
 import { todayIso } from "../../shared/dates";
 import type { Db } from "../db/client";
-import { ASSETS_DIR, DATA_DIR, PDFS_DIR } from "../lib/paths";
+import { ASSETS_DIR, DATA_DIR, PDFS_DIR, RECEIPTS_DIR } from "../lib/paths";
 
 export const BACKUPS_DIR = join(DATA_DIR, "backups");
 export const BACKUP_KEEP = 14;
@@ -35,17 +35,21 @@ Inhalt:
   nesev.db   Datenbank (konsistenter Snapshot)
   assets/    Logo, Briefpapier, Schriften
   pdfs/      Eingefrorene Beleg-PDFs
+  receipts/  Belege der Ausgaben (inkl. Originalfotos zugeschnittener Belege)
 
 Wiederherstellen:
   1. nesev-Server beenden.
   2. Im Datenordner (standardmäßig data/) nesev.db, nesev.db-wal und nesev.db-shm
      beiseite legen bzw. löschen.
-  3. nesev.db, assets/ und pdfs/ aus diesem Archiv in den Datenordner kopieren.
+  3. nesev.db, assets/, pdfs/ und receipts/ aus diesem Archiv in den Datenordner kopieren.
   4. Server wieder starten.
 `;
 
-/** ZIP of a fresh DB snapshot plus data/assets and data/pdfs (for "Backup herunterladen"). */
-export function createBackupZip(db: Db, dirs = { assets: ASSETS_DIR, pdfs: PDFS_DIR }): Uint8Array {
+/** ZIP of a fresh DB snapshot plus data/assets, data/pdfs and data/receipts (for "Backup herunterladen"). */
+export function createBackupZip(
+  db: Db,
+  dirs = { assets: ASSETS_DIR, pdfs: PDFS_DIR, receipts: RECEIPTS_DIR },
+): Uint8Array {
   const tmp = join(tmpdir(), `nesev-snapshot-${randomUUID()}.db`);
   try {
     snapshotDatabase(db, tmp);
@@ -55,6 +59,8 @@ export function createBackupZip(db: Db, dirs = { assets: ASSETS_DIR, pdfs: PDFS_
     };
     collectDir(dirs.assets, "assets", files, 6);
     collectDir(dirs.pdfs, "pdfs", files, 0);
+    // photos and PDFs are already compressed
+    collectDir(dirs.receipts, "receipts", files, 0);
     return zipSync(files);
   } finally {
     rmSync(tmp, { force: true });

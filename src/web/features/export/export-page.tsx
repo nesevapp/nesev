@@ -245,7 +245,7 @@ function BackupSection() {
     <>
       <FormSection
         title="Backup"
-        description="Datenbank, Logo/Briefpapier und alle gespeicherten PDFs in einer ZIP-Datei."
+        description="Datenbank, Logo/Briefpapier, alle gespeicherten PDFs und die Ausgabenbelege in einer ZIP-Datei."
       >
         <div>
           <Button asChild>
@@ -332,7 +332,7 @@ function RestoreSection() {
           <Code>nesev.db-shm</Code>.
         </li>
         <li>
-          Aus dem Backup-ZIP <Code>nesev.db</Code>, <Code>assets/</Code> und <Code>pdfs/</Code> in den Datenordner
+          Aus dem Backup-ZIP <Code>nesev.db</Code>, <Code>assets/</Code>, <Code>pdfs/</Code> und <Code>receipts/</Code> in den Datenordner
           kopieren. Bei einem automatischen Backup die Datei <Code>backups/nesev-JJJJ-MM-TT.db</Code> als{" "}
           <Code>nesev.db</Code> in den Datenordner kopieren.
         </li>

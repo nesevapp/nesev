@@ -20,6 +20,7 @@ import {
   type VatTreatment,
 } from "@shared/expenses";
 import { formatBp, formatCents } from "@shared/money";
+import { isCroppablePath } from "@shared/receipt-crop";
 import { type ExpenseFormData, type ExpenseFormValues, expenseFormSchema } from "@shared/schemas/expense";
 import { Page } from "@/components/page";
 import {
@@ -46,12 +47,14 @@ import {
   apiErrorMessage,
   type Expense,
   expensesQuery,
+  receiptOriginalUrl,
   receiptUrl,
   useCreateExpense,
   useLinkFixedCostPayment,
   useDeleteExpense,
   useMarkAnalysisApplied,
   useRemoveReceipt,
+  useRestoreReceipt,
   useUpdateExpense,
   useUploadReceipt,
 } from "@/sdk";
@@ -59,7 +62,8 @@ import { AssetHint } from "./components/asset-hint";
 import { FixedCostHint } from "./components/fixed-cost-hint";
 import { ExpenseBadges } from "./components/expense-badges";
 import { ExpenseLinesEditor, newLine } from "./components/expense-lines-editor";
-import { type ReceiptSource, ReceiptPane, receiptKind } from "./components/receipt-pane";
+import { ReceiptCropDialog } from "./components/receipt-crop-dialog";
+import { type ReceiptCropActions, type ReceiptSource, ReceiptPane, receiptKind } from "./components/receipt-pane";
 import { splitReceiptFiles } from "./components/file-drop";
 import { SupplierInput } from "./components/supplier-input";
 
@@ -151,6 +155,8 @@ export function ExpenseEditor({
   const remove = useDeleteExpense();
   const upload = useUploadReceipt();
   const removeReceipt = useRemoveReceipt();
+  const restoreReceipt = useRestoreReceipt();
+  const [cropOpen, setCropOpen] = useState(false);
   const markApplied = useMarkAnalysisApplied();
   const [grossMode, setGrossMode] = useGrossMode();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -336,6 +342,19 @@ export function ExpenseEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const crop: ReceiptCropActions | undefined =
+    expense?.attachmentPath && !pendingFile && isCroppablePath(expense.attachmentOriginalPath ?? expense.attachmentPath)
+      ? {
+          onCrop: () => setCropOpen(true),
+          originalUrl: expense.attachmentOriginalPath ? receiptOriginalUrl(expense) : null,
+          onRestore: () =>
+            restoreReceipt.mutate(expense.id, {
+              onSuccess: () => toast.success("Original wiederhergestellt"),
+              onError: (err) => toast.error(apiErrorMessage(err)),
+            }),
+        }
+      : undefined;
+
   const receipt: ReceiptSource | null = pendingFile
     ? { url: pendingUrl!, name: pendingFile.name, kind: receiptKind(pendingFile.name, pendingFile.type) }
     : expense?.attachmentPath
@@ -358,9 +377,11 @@ export function ExpenseEditor({
             receipt={receipt}
             onFile={onFile}
             onRemove={onRemoveReceipt}
-            busy={upload.isPending || removeReceipt.isPending}
+            crop={crop}
+            busy={upload.isPending || removeReceipt.isPending || restoreReceipt.isPending}
             className="min-h-0 flex-1"
           />
+          {expense && crop && <ReceiptCropDialog expense={expense} open={cropOpen} onOpenChange={setCropOpen} />}
           {expense && (
             <AnalysisPanel
               expenseId={expense.id}

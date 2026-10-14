@@ -74,6 +74,8 @@ export const keys = {
     detail: (id: number) => ["expenses", "detail", id] as const,
     suppliersAll: ["expenses", "suppliers"] as const,
     suppliers: (q: string, limit: number) => ["expenses", "suppliers", q, limit] as const,
+    /** suggested crop outline, per original photo */
+    receiptDetect: (id: number, originalPath: string) => ["expenses", "receipt-detect", id, originalPath] as const,
   },
   receipts: {
     all: ["receipts"] as const,

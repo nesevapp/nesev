@@ -215,7 +215,7 @@ export function AnalysisPanel({
 
 function StatusText({ analysis }: { analysis: ReceiptAnalysis | null }) {
   if (!analysis) return <>Noch nicht analysiert</>;
-  if (analysis.stale) return <>Beleg wurde ersetzt – neu analysieren</>;
+  if (analysis.stale) return <>Beleg wurde ersetzt oder zugeschnitten – neu analysieren</>;
   switch (analysis.status) {
     case "queued":
       return (

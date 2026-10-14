@@ -1,5 +1,6 @@
 import { z } from "./zod";
 import { DEFAULT_EXPENSE_CATEGORY, EXPENSE_CATEGORY_KEYS, VAT_TREATMENTS } from "../expenses";
+import { type Quad, quadProblem } from "../receipt-crop";
 
 const isoDate = () => z.iso.date();
 const text = (max = 500) => z.string().trim().max(max);
@@ -48,6 +49,21 @@ export const expenseUpdateSchema = expenseFormSchema.partial();
 
 export const expensePaidSchema = z.object({ paidAt: isoDate().nullable() });
 
+const quadCoord = z.number().min(0).max(1);
+const quadPoint = z.tuple([quadCoord, quadCoord]);
+
+/** Crop a photographed receipt: corners TL, TR, BR, BL, normalized (see src/shared/receipt-crop.ts). */
+export const receiptCropSchema = z.object({
+  quad: z
+    .tuple([quadPoint, quadPoint, quadPoint, quadPoint])
+    .superRefine((q, ctx) => {
+      const problem = quadProblem(q as Quad);
+      if (problem) ctx.addIssue({ code: "custom", message: problem });
+    }),
+  /** grayscale + a little more contrast */
+  enhance: z.boolean().default(false),
+});
+
 export const EXPENSE_STATUS_FILTERS = ["open", "paid", "incomplete"] as const;
 export const EXPENSE_ATTACHMENT_FILTERS = ["with", "without"] as const;
 
@@ -73,3 +89,4 @@ export type ExpenseUpdate = z.infer<typeof expenseUpdateSchema>;
 export type ExpenseFormData = z.infer<typeof expenseFormSchema>;
 export type ExpenseFormValues = z.input<typeof expenseFormSchema>;
 export type ExpenseListQuery = z.infer<typeof expenseListQuerySchema>;
+export type ReceiptCropInput = z.input<typeof receiptCropSchema>;

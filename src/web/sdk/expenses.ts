@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ExpenseCreate, ExpenseListQuery, ExpenseUpdate } from "@shared/schemas/expense";
+import type { ExpenseCreate, ExpenseListQuery, ExpenseUpdate, ReceiptCropInput } from "@shared/schemas/expense";
 import { expenses, idParam, parseResponse } from "./client";
 import { fileUrl } from "./files";
 import { useInvalidate } from "./invalidate";
@@ -33,6 +33,12 @@ export const expensesApi = {
   uploadReceipt: (id: number, file: File) =>
     parseResponse(expenses[":id"].attachment.$post({ param: idParam(id), form: { file } })),
   removeReceipt: (id: number) => parseResponse(expenses[":id"].attachment.$delete({ param: idParam(id) })),
+  /** Photo receipts: suggested outline on the original (runs the local macOS helper). */
+  detectReceipt: (id: number) => parseResponse(expenses[":id"].receipt.detect.$get({ param: idParam(id) })),
+  /** Cut out + straighten from the original photo; the original is kept. */
+  cropReceipt: (id: number, json: ReceiptCropInput) =>
+    parseResponse(expenses[":id"].receipt.crop.$post({ param: idParam(id), json })),
+  restoreReceipt: (id: number) => parseResponse(expenses[":id"].receipt.restore.$post({ param: idParam(id) })),
   /** Quick capture: one draft expense per receipt file. */
   createDrafts: (files: File[]) => parseResponse(expenses.drafts.$post({ form: { files } })),
 };
@@ -42,6 +48,8 @@ export type ExpenseListItem = Awaited<ReturnType<typeof expensesApi.list>>[numbe
 export type SupplierSuggestion = Awaited<ReturnType<typeof expensesApi.suppliers>>[number];
 export type ExpenseCreateInput = ExpenseCreate;
 export type ExpenseUpdateInput = ExpenseUpdate;
+export type ReceiptDetection = Awaited<ReturnType<typeof expensesApi.detectReceipt>>;
+export type { ReceiptCropInput };
 
 export const expensesQuery = (filter: ExpenseListFilter = {}) =>
   queryOptions({
@@ -67,6 +75,24 @@ export const supplierSuggestionsQuery = (q: string, limit = 8) =>
 export function receiptUrl(expense: { attachmentPath: string | null }): string | null {
   return expense.attachmentPath ? fileUrl(expense.attachmentPath) : null;
 }
+
+/** The uncropped photo of a cropped receipt, else the receipt itself. */
+export function receiptOriginalUrl(expense: {
+  attachmentPath: string | null;
+  attachmentOriginalPath: string | null;
+}): string | null {
+  const path = expense.attachmentOriginalPath ?? expense.attachmentPath;
+  return path ? fileUrl(path) : null;
+}
+
+/** Suggested crop outline; only fetched while the crop dialog is open (explicit user action). */
+export const receiptDetectQuery = (expense: Pick<Expense, "id" | "attachmentPath" | "attachmentOriginalPath">) =>
+  queryOptions({
+    queryKey: keys.expenses.receiptDetect(expense.id, expense.attachmentOriginalPath ?? expense.attachmentPath ?? ""),
+    queryFn: () => expensesApi.detectReceipt(expense.id),
+    staleTime: Infinity,
+    retry: false,
+  });
 
 /** Writes a fresh expense into the detail cache and refetches lists (and other features' views of expenses). */
 function useOnSaved(change: "expenses" | "expenseReceipt" = "expenses") {
@@ -127,6 +153,23 @@ export function useRemoveReceipt() {
   const onSaved = useOnSaved();
   return useMutation({
     mutationFn: (id: number) => expensesApi.removeReceipt(id),
+    onSuccess: onSaved,
+  });
+}
+
+/** Crop/straighten a photo receipt; like a new receipt, it makes earlier analysis results stale. */
+export function useCropReceipt() {
+  const onSaved = useOnSaved("expenseReceipt");
+  return useMutation({
+    mutationFn: ({ id, json }: { id: number; json: ReceiptCropInput }) => expensesApi.cropReceipt(id, json),
+    onSuccess: onSaved,
+  });
+}
+
+export function useRestoreReceipt() {
+  const onSaved = useOnSaved("expenseReceipt");
+  return useMutation({
+    mutationFn: (id: number) => expensesApi.restoreReceipt(id),
     onSuccess: onSaved,
   });
 }

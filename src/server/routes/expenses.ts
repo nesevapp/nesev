@@ -5,6 +5,7 @@ import {
   expenseListQuerySchema,
   expensePaidSchema,
   expenseUpdateSchema,
+  receiptCropSchema,
   supplierQuerySchema,
 } from "../../shared/schemas/expense";
 import { db } from "../db";
@@ -12,10 +13,13 @@ import { validate } from "../lib/validate";
 import {
   createDraftsFromFiles,
   createExpense,
+  cropExpenseReceipt,
   deleteExpense,
+  detectReceiptQuad,
   listExpenses,
   removeExpenseAttachment,
   requireExpense,
+  restoreExpenseReceipt,
   setExpenseAttachment,
   setExpensePaid,
   supplierSuggestions,
@@ -57,6 +61,13 @@ const app = new Hono()
     c.json(await setExpenseAttachment(db, c.req.valid("param").id, c.req.valid("form").file)),
   )
   .delete("/:id/attachment", idParam, async (c) => c.json(await removeExpenseAttachment(db, c.req.valid("param").id)))
+  /** Photo receipts: suggested outline on the original (422 for PDFs or without the macOS helper). */
+  .get("/:id/receipt/detect", idParam, async (c) => c.json(await detectReceiptQuad(db, c.req.valid("param").id)))
+  /** Cut out + straighten from the original; the original stays in attachmentOriginalPath. */
+  .post("/:id/receipt/crop", idParam, validate("json", receiptCropSchema), async (c) =>
+    c.json(await cropExpenseReceipt(db, c.req.valid("param").id, c.req.valid("json"))),
+  )
+  .post("/:id/receipt/restore", idParam, async (c) => c.json(await restoreExpenseReceipt(db, c.req.valid("param").id)))
   .delete("/:id", idParam, async (c) => {
     await deleteExpense(db, c.req.valid("param").id);
     return c.json({ ok: true });

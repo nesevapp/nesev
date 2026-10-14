@@ -4,19 +4,27 @@
 //   nesev-ocr ocr <file> [--langs de-DE,en-US] [--dpi 300] [--max-pages N]
 //                                                               Apple Vision OCR of an image or the rendered PDF pages
 //   nesev-ocr render <file> <outdir> [--dpi 150] [--max-pages N] PDF pages (or an image) as PNG files
+//   nesev-ocr detect-document <image>                           receipt outline in a photo (Vision document segmentation,
+//                                                               rectangle detection as fallback)
+//   nesev-ocr crop <image> <out> --quad x1,y1,...,x4,y4 [--format jpeg|png] [--quality 0.9] [--max-side 3000] [--enhance]
+//                                                               perspective-corrected cut-out of the quad (Core Image)
 //   nesev-ocr version
+//
+// Quads are normalized [x, y] corner points (top-left origin) in the order top-left, top-right, bottom-right,
+// bottom-left, measured on the image as displayed, i.e. after applying its EXIF orientation.
 //
 // All output is JSON on stdout; errors go to stderr with exit code 1. Everything runs locally.
 
 import AppKit
 import CoreGraphics
+import CoreImage
 import Foundation
 import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 import Vision
 
-let VERSION = "1"
+let VERSION = "2"
 
 struct Failure: Error { let message: String }
 
@@ -132,8 +140,128 @@ func savePNG(_ image: CGImage, to url: URL) -> Bool {
   return CGImageDestinationFinalize(dest)
 }
 
+// --- receipt photos: outline detection and perspective crop ---
+
+func round4(_ v: Double) -> Double { (v * 10000).rounded() / 10000 }
+
+/// Vision rectangle (normalized, origin bottom-left) → quad [[x, y]] TL, TR, BR, BL with origin top-left.
+func quadPoints(_ obs: VNRectangleObservation) -> [[Double]] {
+  [obs.topLeft, obs.topRight, obs.bottomRight, obs.bottomLeft].map { p in
+    [round4(min(max(Double(p.x), 0), 1)), round4(min(max(1 - Double(p.y), 0), 1))]
+  }
+}
+
+/// Shoelace area of a normalized quad (fraction of the image).
+func quadArea(_ q: [[Double]]) -> Double {
+  var sum = 0.0
+  for i in 0..<4 {
+    let a = q[i], b = q[(i + 1) % 4]
+    sum += a[0] * b[1] - b[0] * a[1]
+  }
+  return abs(sum) / 2
+}
+
+func detectDocument(_ url: URL) -> [String: Any] {
+  let (image, orientation) = loadImage(url)
+  let handler = VNImageRequestHandler(cgImage: image, orientation: orientation, options: [:])
+  let rotated = [.left, .right, .leftMirrored, .rightMirrored].contains(orientation)
+  var result: [String: Any] = [
+    "width": rotated ? image.height : image.width,
+    "height": rotated ? image.width : image.height,
+    "quad": NSNull(),
+    "confidence": 0,
+    "method": NSNull(),
+  ]
+  // Segmentation finds paper on cluttered backgrounds. Without a document it answers with ~the whole frame
+  // at confidence 0; a tiny hit is usually a label or a phone screen.
+  if #available(macOS 12.0, *) {
+    let request = VNDetectDocumentSegmentationRequest()
+    if (try? handler.perform([request])) != nil, let obs = request.results?.first, obs.confidence >= 0.3 {
+      let quad = quadPoints(obs)
+      if quadArea(quad) >= 0.03 {
+        result["quad"] = quad
+        result["confidence"] = round3(Double(obs.confidence))
+        result["method"] = "segmentation"
+        return result
+      }
+    }
+  }
+  let rect = VNDetectRectanglesRequest()
+  rect.minimumAspectRatio = 0.1  // long receipts
+  rect.maximumAspectRatio = 1
+  rect.minimumSize = 0.2
+  rect.minimumConfidence = 0.5
+  rect.quadratureTolerance = 30  // perspective
+  rect.maximumObservations = 1
+  if (try? handler.perform([rect])) != nil, let obs = rect.results?.first {
+    result["quad"] = quadPoints(obs)
+    result["confidence"] = round3(Double(obs.confidence))
+    result["method"] = "rectangles"
+  }
+  return result
+}
+
+func parseQuad(_ raw: String?) -> [[Double]] {
+  guard let raw else { fail("--quad fehlt") }
+  let v = raw.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+  guard v.count == 8, v.allSatisfy({ $0.isFinite }) else { fail("--quad braucht 8 Zahlen") }
+  func clamp(_ x: Double) -> Double { min(max(x, 0), 1) }
+  return (0..<4).map { (i: Int) -> [Double] in [clamp(v[i * 2]), clamp(v[i * 2 + 1])] }
+}
+
+func crop(_ url: URL, to out: URL, quad: [[Double]], args: [String]) -> [String: Any] {
+  guard let input = CIImage(contentsOf: url, options: [.applyOrientationProperty: true]) else {
+    fail("Bild kann nicht gelesen werden")
+  }
+  let extent = input.extent
+  // normalized, origin top-left → Core Image pixels, origin bottom-left
+  func point(_ p: [Double]) -> CIVector {
+    CIVector(x: extent.minX + p[0] * extent.width, y: extent.minY + (1 - p[1]) * extent.height)
+  }
+  guard let perspective = CIFilter(name: "CIPerspectiveCorrection") else { fail("CIPerspectiveCorrection fehlt") }
+  perspective.setValue(input, forKey: kCIInputImageKey)
+  perspective.setValue(point(quad[0]), forKey: "inputTopLeft")
+  perspective.setValue(point(quad[1]), forKey: "inputTopRight")
+  perspective.setValue(point(quad[2]), forKey: "inputBottomRight")
+  perspective.setValue(point(quad[3]), forKey: "inputBottomLeft")
+  guard var image = perspective.outputImage, !image.extent.isInfinite, image.extent.width >= 1, image.extent.height >= 1
+  else { fail("Zuschneiden fehlgeschlagen") }
+
+  let maxSide = Double(option(args, "--max-side") ?? "") ?? 3000
+  let longest = Double(max(image.extent.width, image.extent.height))
+  if maxSide > 0 && longest > maxSide {
+    image = image.applyingFilter(
+      "CILanczosScaleTransform", parameters: [kCIInputScaleKey: maxSide / longest, kCIInputAspectRatioKey: 1.0])
+  }
+  if args.contains("--enhance") {
+    // mild "scan" look: grayscale, a bit more contrast, slightly brighter paper
+    image = image.applyingFilter(
+      "CIColorControls",
+      parameters: [kCIInputSaturationKey: 0.0, kCIInputContrastKey: 1.15, kCIInputBrightnessKey: 0.03])
+  }
+  // integral extent at the origin (the filters leave fractional offsets)
+  let rect = image.extent.integral
+  image = image.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+
+  let context = CIContext()
+  let space = CGColorSpace(name: CGColorSpace.sRGB)!
+  let format = option(args, "--format") ?? "jpeg"
+  do {
+    if format == "png" {
+      try context.writePNGRepresentation(of: image, to: out, format: .RGBA8, colorSpace: space)
+    } else {
+      let quality = Double(option(args, "--quality") ?? "") ?? 0.9
+      let key = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
+      try context.writeJPEGRepresentation(of: image, to: out, colorSpace: space, options: [key: quality])
+    }
+  } catch {
+    fail("Bild konnte nicht gespeichert werden: \(error.localizedDescription)")
+  }
+  return ["file": out.path, "width": Int(rect.width), "height": Int(rect.height)]
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first else { fail("usage: nesev-ocr text|ocr|render|version ...") }
+guard let command = args.first else { fail("usage: nesev-ocr text|ocr|render|detect-document|crop|version ...") }
 let maxPages = Int(option(args, "--max-pages") ?? "") ?? 10
 
 switch command {
@@ -175,6 +303,18 @@ case "render":
     if savePNG(image, to: url) { files.append(url.path) }
   }
   printJSON(["pageCount": pageCount, "files": files])
+
+case "detect-document":
+  guard args.count >= 2 else { fail("usage: nesev-ocr detect-document <image>") }
+  let url = URL(fileURLWithPath: args[1])
+  if isPDF(url) { fail("Nur Bilder können erkannt werden") }
+  printJSON(detectDocument(url))
+
+case "crop":
+  guard args.count >= 3 else { fail("usage: nesev-ocr crop <image> <out> --quad x1,y1,...") }
+  let url = URL(fileURLWithPath: args[1])
+  if isPDF(url) { fail("Nur Bilder können zugeschnitten werden") }
+  printJSON(crop(url, to: URL(fileURLWithPath: args[2]), quad: parseQuad(option(args, "--quad")), args: args))
 
 default:
   fail("unknown command \(command)")
