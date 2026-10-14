@@ -28,6 +28,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 16 | Anlagenverzeichnis / AfA | ✅ done | `/assets` |
 | 16 | Global search (⌘K) + keyboard shortcuts | ✅ done | sidebar „Suchen …“, `/api/search` |
 | 17 | Fixkosten + outflows/balance in the forecast | ✅ done | `/fixed-costs`, `/forecast` |
+| 18 | MCP server, part 1: core + read-only tools | ✅ done | `src/mcp`, `bun run mcp` |
+| 19 | MCP server, part 2: write tools | ⏳ next | `src/mcp/tools` |
 
 ---
 
@@ -158,6 +160,15 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - Ranking: exact number → number of any year → amount → text, then newest; groups with a number/amount hit come first.
 - **Shortcuts** (`use-global-shortcuts.ts`, ignored while typing, while a dialog/menu is open and when a page already handled the key): `?` overview, `/` search (the bank list keeps its own `/`), `g` + d/p/a/r/g/m/w/e/f/v/b/s/k/i/x/, go to a page, `n` + r/a/g/k/e/w create. The map lives in `features/search/commands.ts` and the overview reads it.
 
+### MCP server (`src/mcp`, details in `src/mcp/README.md`)
+- Local stdio MCP server for AI clients (Claude Code / Desktop): `bun run mcp`, respects `NESEV_DATA_DIR`; web links use `NESEV_WEB_URL` (default `http://localhost:5174`). SDK v2 (`@modelcontextprotocol/server` 2.3.1, pinned) via `serveStdio` with `legacy: 'serve'`, so 2025-era (`initialize`) and 2026-07-28 clients both work.
+- In-process: typed `hc` clients per route module whose `fetch` is `app.fetch` (no HTTP, no port, no raw SQL). Validation, rules and German error messages come from the routes; a non-2xx becomes a tool error (`isError: true`) with the API's message. It never imports `src/server/index.ts`, so no schedulers / OCR queue / llama-server run in the MCP process; it exits when stdin closes.
+- stdout is reserved for JSON-RPC: `stdout-guard.ts` (first import) routes `console.log/info/debug` to stderr.
+- 14 read-only tools (`readOnlyHint`, `openWorldHint: false`), in a fixed order: `search`, `get_dashboard`, `list_documents` (status incl. `open`/`overdue`), `get_document` (items, tax groups, payments, credit notes, absolute PDF path), `list_reminders_due`, `list_clients`, `get_client` (open invoices), `list_articles`, `list_expenses`, `get_expense`, `list_fixed_costs`, `get_forecast`, `get_tax_report` (uva/zm/ear, with disclaimer), `list_assets`.
+- Output: short text summary + `structuredContent` matching an `outputSchema`; money as `{ cents, formatted }`, dates `YYYY-MM-DD`, quantities/rates as plain numbers, German status labels, web links. Money input for write tools: `euroAmount` (euro number or "1.234,56" / "1234.56" → cents).
+- Adding a tool: `defineTool()` in `src/mcp/tools/<area>.ts`, module listed in `TOOL_MODULES` (`server.ts`), test in `mcp.test.ts` (convention in the README).
+- Tests spawn the real entry on a seeded temp dir (`src/mcp/test/seed.ts`, through the API) and drive it with the SDK client in both eras; plus a raw stdout-purity check.
+
 ### Data, export & backups
 - Everything lives in `data/` (gitignored).
 - Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
@@ -182,5 +193,6 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 4. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
 5. **Comfort:** dark mode. (Global search and keyboard shortcuts are done.)
 6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
+7. **MCP write tools** on top of the core in `src/mcp` (create/update drafts, finalize, mark paid/sent, expenses, reminders), with honest annotations (`destructiveHint` for irreversible steps).
 
 Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, live bank balance from the last import as the forecast start.

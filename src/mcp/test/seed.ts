@@ -1,0 +1,166 @@
+import { join, resolve } from "node:path";
+import { addDays, todayIso } from "../../shared/dates";
+import { DATA_DIR, PROJECT_ROOT } from "../../server/lib/paths";
+import { api, call, idParam } from "../api";
+
+// Demo data for the MCP tests and for trying the server by hand, created through nesev's own API (in-process):
+//   NESEV_DATA_DIR=/tmp/nesev-mcp bun src/mcp/test/seed.ts
+// Refuses to run against the default data dir (the user's real data). Dates are relative to today, so the first
+// invoice is always overdue. Prints the created ids as JSON on stdout.
+
+export async function seed() {
+  const today = todayIso();
+  const year = Number(today.slice(0, 4));
+
+  const settings = await call(api.settings.index.$get());
+  await call(
+    api.settings.index.$put({
+      json: {
+        ...settings,
+        companyName: "Muster IT e.U.",
+        ownerName: "Max Muster",
+        street: "Hauptstraße 1",
+        zip: "1010",
+        city: "Wien",
+        country: "AT",
+        uid: "ATU12345678",
+        email: "office@muster.at",
+        iban: "AT61 1904 3002 3457 3201",
+        bic: "BKAUATWW",
+        bankName: "Testbank",
+        vatBasis: "accrual",
+        vatPeriod: "monthly",
+      },
+    }),
+  );
+
+  const alpen = await call(
+    api.clients.index.$post({
+      json: { type: "company", name: "Alpen Software GmbH", street: "Ringstraße 5", zip: "1010", city: "Wien", country: "AT", email: "buchhaltung@alpen.at" },
+    }),
+  );
+  const berlin = await call(
+    api.clients.index.$post({
+      json: { type: "company", name: "Berlin Digital GmbH", street: "Torstraße 10", zip: "10119", city: "Berlin", country: "DE", uid: "DE123456789" },
+    }),
+  );
+
+  const article = await call(
+    api.articles.index.$post({ json: { title: "Webentwicklung", unit: "Std.", unitPriceCents: 9500, taxRateBp: 2000 } }),
+  );
+
+  const line = (title: string, quantity: number, unitPriceCents: number, taxRateBp = 2000, unit = "Std.") => ({
+    title,
+    quantity: quantity * 1000,
+    unitPriceCents,
+    taxRateBp,
+    unit,
+  });
+
+  // overdue invoice with a partial credit note: gross 1.284,00 − 144,00 = open 1.140,00
+  const inv1 = await call(
+    api.documents.index.$post({
+      json: {
+        type: "invoice",
+        clientId: alpen.id,
+        issueDate: addDays(today, -45),
+        dueDate: addDays(today, -31),
+        title: "Website-Relaunch",
+        items: [{ ...line("Webentwicklung", 10, 9500), articleId: article.id }, line("Hosting", 1, 12000, 2000, "Monat")],
+      },
+    }),
+  );
+  await call(api.documents[":id"].finalize.$post({ param: idParam(inv1.id) }));
+  const cn = await call(api.documents[":id"]["credit-note"].$post({ param: idParam(inv1.id) }));
+  await call(api.documents[":id"].$put({ param: idParam(cn.id), json: { items: [line("Hosting (Gutschrift)", 1, 12000, 2000, "Monat")] } }));
+  await call(api.documents[":id"].finalize.$post({ param: idParam(cn.id) }));
+
+  // paid reverse-charge invoice to a German client
+  const inv2 = await call(
+    api.documents.index.$post({
+      json: { type: "invoice", clientId: berlin.id, issueDate: addDays(today, -20), title: "API-Integration", taxMode: "EU_REVERSE_CHARGE", items: [line("Entwicklung", 8, 9500, 0)] },
+    }),
+  );
+  await call(api.documents[":id"].finalize.$post({ param: idParam(inv2.id) }));
+  await call(api.documents[":id"].status.$post({ param: idParam(inv2.id), json: { action: "paid", paidAt: addDays(today, -5) } }));
+
+  const draft = await call(
+    api.documents.index.$post({ json: { type: "invoice", clientId: alpen.id, issueDate: today, title: "Wartung", items: [line("Wartung", 2, 9500)] } }),
+  );
+  const offer = await call(
+    api.documents.index.$post({ json: { type: "offer", clientId: alpen.id, issueDate: addDays(today, -3), title: "Shop-Erweiterung", items: [line("Konzept", 6, 9500)] } }),
+  );
+  await call(api.documents[":id"].finalize.$post({ param: idParam(offer.id) }));
+
+  const telekom = await call(
+    api.expenses.index.$post({
+      json: {
+        supplierName: "A1 Telekom Austria AG",
+        supplierCountry: "AT",
+        issueDate: addDays(today, -10),
+        paidAt: addDays(today, -8),
+        vatTreatment: "domestic",
+        description: "Internet",
+        lines: [{ category: "telefon_internet", description: "Internet", netCents: 5000, taxRateBp: 2000, taxCents: 1000 }],
+      },
+    }),
+  );
+  const adobe = await call(
+    api.expenses.index.$post({
+      json: {
+        supplierName: "Adobe Systems Software Ireland Ltd",
+        supplierCountry: "IE",
+        supplierUid: "IE6364992H",
+        issueDate: addDays(today, -4),
+        dueDate: addDays(today, 10),
+        vatTreatment: "reverse_charge",
+        description: "Creative Cloud",
+        lines: [{ category: "software_abos", description: "Creative Cloud", netCents: 6000, taxRateBp: 2000, taxCents: 1200 }],
+      },
+    }),
+  );
+  const incomplete = await call(api.expenses.index.$post({ json: { supplierName: "", issueDate: today } }));
+
+  const rent = await call(
+    api.recurringExpenses.index.$post({
+      json: {
+        name: "Büromiete",
+        supplierName: "Hausverwaltung Wien",
+        category: "miete",
+        active: true,
+        intervalUnit: "month",
+        intervalCount: 1,
+        startDate: `${year}-01-01`,
+        endDate: null,
+        grossCents: 60000,
+        taxCents: 10000,
+        notes: "",
+      },
+    }),
+  );
+  const asset = await call(
+    api.assets.index.$post({
+      json: { name: "MacBook Pro", acquisitionDate: `${year}-02-10`, inServiceDate: `${year}-02-12`, costCents: 240000, usefulLifeYears: 3 },
+    }),
+  );
+
+  return {
+    clients: { alpen: alpen.id, berlin: berlin.id },
+    article: article.id,
+    documents: { overdueInvoice: inv1.id, creditNote: cn.id, paidInvoice: inv2.id, draftInvoice: draft.id, offer: offer.id },
+    expenses: { telekom: telekom.id, adobe: adobe.id, incomplete: incomplete.id },
+    fixedCost: rent.id,
+    asset: asset.id,
+  };
+}
+
+export type SeedIds = Awaited<ReturnType<typeof seed>>;
+
+if (import.meta.main) {
+  if (resolve(DATA_DIR) === resolve(join(PROJECT_ROOT, "data"))) {
+    console.error("Refusing to seed the default data dir. Set NESEV_DATA_DIR to a temp dir.");
+    process.exit(1);
+  }
+  const ids = await seed();
+  process.stdout.write(`${JSON.stringify(ids)}\n`);
+}
