@@ -73,3 +73,13 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Horizontal scroll hint for wide tables: a soft shadow on the edge that has more content. The "local" covers move
+   with the content and hide the shadow once that edge is reached (pure CSS, no scroll listener). */
+@utility scroll-shadow-x {
+  background:
+    linear-gradient(to right, var(--background) 40%, transparent) left center / 2.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--background) 40%, transparent) right center / 2.5rem 100% no-repeat local,
+    linear-gradient(to right, oklch(0 0 0 / 0.09), transparent) left center / 0.75rem 100% no-repeat scroll,
+    linear-gradient(to left, oklch(0 0 0 / 0.09), transparent) right center / 0.75rem 100% no-repeat scroll;
+}

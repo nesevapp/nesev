@@ -41,6 +41,9 @@ type DialogState =
   | null;
 
 
+/** Low-priority columns, hidden while the table container is narrow (e.g. next to the assistant panel). */
+const NARROW = "@max-[56rem]/table:hidden";
+
 export function FixedCostsPage() {
   const { data = [] } = useQuery(recurringExpensesQuery);
   const update = useUpdateRecurringExpense();
@@ -101,9 +104,9 @@ export function FixedCostsPage() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>Bezeichnung</TableHead>
-                  <TableHead>Kategorie</TableHead>
+                  <TableHead className={NARROW}>Kategorie</TableHead>
                   <TableHead>Intervall</TableHead>
-                  <TableHead>Nächste Zahlung</TableHead>
+                  <TableHead className={NARROW}>Nächste Zahlung</TableHead>
                   <TableHead className="text-right">Betrag</TableHead>
                   <TableHead className="text-right">pro Monat</TableHead>
                   <TableHead>Belege</TableHead>
@@ -122,12 +125,12 @@ export function FixedCostsPage() {
                       <div className="font-medium text-foreground">{r.name}</div>
                       {r.supplierName && <div className="text-xs text-muted-foreground">{r.supplierName}</div>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{categoryLabel(r.category)}</TableCell>
+                    <TableCell className={cn("text-muted-foreground", NARROW)}>{categoryLabel(r.category)}</TableCell>
                     <TableCell>
                       {intervalLabel(r)}
                       {r.endDate && <div className="text-xs text-muted-foreground">bis {formatDate(r.endDate)}</div>}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={NARROW}>
                       {r.nextPaymentDate ? <span className="tabular">{formatDate(r.nextPaymentDate)}</span> : <span>beendet</span>}
                       {!r.active && !r.ended && <div className="text-xs text-muted-foreground">pausiert</div>}
                     </TableCell>
@@ -192,7 +195,11 @@ export function FixedCostsPage() {
               </TableBody>
               <TableFooter>
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={5}>Summe aktiv</TableCell>
+                  <TableCell>Summe aktiv</TableCell>
+                  <TableCell className={NARROW} />
+                  <TableCell />
+                  <TableCell className={NARROW} />
+                  <TableCell />
                   <TableCell className="text-right tabular">{formatCents(monthly)}</TableCell>
                   <TableCell colSpan={3} />
                 </TableRow>

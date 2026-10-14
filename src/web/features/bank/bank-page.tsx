@@ -369,7 +369,8 @@ function Transactions({
       </div>
 
       <div className="rounded-lg border">
-        <Table className="table-fixed">
+        {/* fixed columns add up to 840px: keep room for Verwendungszweck, scroll horizontally in a narrow content area */}
+        <Table className="min-w-[60rem] table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className={cn(th, "w-24")}>Datum</TableHead>

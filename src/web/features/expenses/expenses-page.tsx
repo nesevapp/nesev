@@ -45,6 +45,10 @@ import { DropOverlay, pickReceiptFiles, splitReceiptFiles, useWindowFileDrag } f
 
 const ALL = "all";
 const RIGHT = new Set(["netCents", "taxCents", "grossCents"]);
+/** Low-priority columns, hidden while the table container is narrower than the full table (~72rem, e.g. next to the assistant panel). */
+const NARROW_HIDDEN = new Set(["categories", "netCents", "taxCents", "analysis"]);
+const NARROW = "@max-[72rem]/table:hidden";
+const narrow = (id: string) => NARROW_HIDDEN.has(id) && NARROW;
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -398,7 +402,7 @@ export function ExpensesPage({
                   return (
                     <TableHead
                       key={header.id}
-                      className={cn("h-9 text-xs font-medium text-muted-foreground", right && "text-right")}
+                      className={cn("h-9 text-xs font-medium text-muted-foreground", right && "text-right", narrow(header.column.id))}
                     >
                       <button
                         type="button"
@@ -430,7 +434,7 @@ export function ExpensesPage({
                 className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none"
               >
                 {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id} className={cn("py-2", RIGHT.has(cell.column.id) && "text-right")}>
+                  <TableCell key={cell.id} className={cn("py-2", RIGHT.has(cell.column.id) && "text-right", narrow(cell.column.id))}>
                     <table.FlexRender cell={cell} />
                   </TableCell>
                 ))}
@@ -459,13 +463,15 @@ export function ExpensesPage({
           {data.length > 0 && (
             <TableFooter className="bg-transparent">
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className="py-2.5 text-xs font-normal text-muted-foreground">
+                <TableCell colSpan={4} className="py-2.5 text-xs font-normal text-muted-foreground">
                   Summe{filtered ? " (gefiltert)" : ""}
                 </TableCell>
-                <TableCell className="tabular py-2.5 text-right">{formatCents(sum("netCents"))}</TableCell>
-                <TableCell className="tabular py-2.5 text-right">{formatCents(sum("taxCents"))}</TableCell>
+                <TableCell className={NARROW} />
+                <TableCell className={cn("tabular py-2.5 text-right", NARROW)}>{formatCents(sum("netCents"))}</TableCell>
+                <TableCell className={cn("tabular py-2.5 text-right", NARROW)}>{formatCents(sum("taxCents"))}</TableCell>
                 <TableCell className="tabular py-2.5 text-right">{formatCents(sum("grossCents"))}</TableCell>
-                <TableCell colSpan={3} />
+                <TableCell colSpan={2} />
+                <TableCell className={NARROW} />
               </TableRow>
             </TableFooter>
           )}

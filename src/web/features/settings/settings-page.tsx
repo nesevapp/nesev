@@ -93,7 +93,7 @@ export function SettingsPage() {
   return (
     <Page title="Einstellungen" description="Unternehmensdaten, Belege, Mahnwesen, Prognose, Belegerkennung und Assistent.">
       <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-6">
-        <TabsList variant="line" className="h-auto w-full max-w-4xl flex-wrap justify-start border-b pb-1">
+        <TabsList variant="line" className="w-full max-w-4xl flex-wrap justify-start border-b pb-1 group-data-[orientation=horizontal]/tabs:h-auto">
           {SETTINGS_TABS.map((t) => (
             <TabsTrigger key={t} value={t} className="flex-none px-3">
               {SETTINGS_TAB_LABELS[t]}
@@ -199,11 +199,11 @@ export function SettingsPage() {
                     control={control}
                     name="vatBasis"
                     render={({ field }) => (
-                      <FormItem className="content-start">
+                      <FormItem className="min-w-0 content-start">
                         <FormLabel>Besteuerungsart</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger className="w-full min-w-0">
                               <SelectValue />
                             </SelectTrigger>
                           </FormControl>
@@ -224,11 +224,11 @@ export function SettingsPage() {
                     control={control}
                     name="vatPeriod"
                     render={({ field }) => (
-                      <FormItem className="content-start">
+                      <FormItem className="min-w-0 content-start">
                         <FormLabel>UVA-Zeitraum</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange}>
                           <FormControl>
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger className="w-full min-w-0">
                               <SelectValue />
                             </SelectTrigger>
                           </FormControl>
