@@ -25,6 +25,11 @@ export const CONFIRM_TOOLS = [
   "mark_document_sent",
   "convert_offer_to_invoice",
   "create_credit_note",
+  "match_bank_transaction",
+  "unmatch_bank_transaction",
+  "set_bank_transaction_ignored",
+  "set_recurring_invoice_active",
+  "generate_recurring_invoice",
 ] as const;
 
 export interface ChatSettings {

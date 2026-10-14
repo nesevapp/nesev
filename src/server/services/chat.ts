@@ -15,7 +15,7 @@ import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
 import { ChatModelError } from "./chat-settings";
-import { confirmSummary, documentLookup, estimateTokens, needsConfirm, selectTools, type ToolHost, toChatToolResult, toLlmTool, toolTokens } from "./chat-tools";
+import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
 import { getSettings } from "./settings";
 
 // In-app assistant: conversations (CRUD) and the agent loop. A turn: user message → model call (streamed) → tool
@@ -219,6 +219,8 @@ Regeln:
 - Steuerzahlen (UVA, ZM, EAR, AfA) sind eine Hilfe, keine Steuerberatung – sag das dazu.
 - Löschen, Einstellungen, Bankimport und E-Mail-Versand gehen nur in der Web-App; verweise darauf.
 - Verlinke Datensätze als Markdown mit dem Pfad aus dem Werkzeug-Ergebnis, z. B. [RE-2026-0004](/invoices/12).
+- „Öffne …“ / „geh zu …“ → open_in_app (Seite oder Datensatz), „PDF zeigen“ → open_pdf, „herunterladen“ → download_pdf – mit der id aus einem Werkzeug-Ergebnis (sonst zuerst search). Danach nur kurz bestätigen; Nummern nur aus Werkzeug-Ergebnissen (Entwürfe haben keine).
+- Tabellen, Diagramme und Belege aus Werkzeug-Ergebnissen sieht der Nutzer direkt im Chat. Wiederhole sie nicht als Liste, sondern nenne in 1–3 Sätzen das Wesentliche (Summe, Auffälliges, nächster Schritt).
 - Beginnt eine Nutzernachricht mit „(Kontext: …)“, steht dort, was der Nutzer gerade in der App sieht; „diese Rechnung“ usw. meint diesen Datensatz. Schreib selbst keine solche Kontext-Zeile.`;
 }
 
@@ -353,7 +355,8 @@ export async function confirmToolCall(deps: ChatDeps, conversationId: number, me
     if (approve) {
       const host = await deps.host();
       const outcome = await host.call(call.name, call.arguments);
-      done = updateMessage(db, row.id, { content: outcome.text, toolResult: toChatToolResult(outcome), status: outcome.isError ? "error" : "done" });
+      const result = toChatToolResult(outcome, call.name);
+      done = updateMessage(db, row.id, { content: toolContent(outcome, result), toolResult: result, status: outcome.isError ? "error" : "done" });
     } else {
       done = updateMessage(db, row.id, {
         content: "Der Nutzer hat abgelehnt; die Aktion wurde nicht ausgeführt.",
@@ -408,7 +411,7 @@ function parseArgs(raw: string): Record<string, unknown> | null {
 export function needsData(text: string): boolean {
   const t = text.toLowerCase();
   if (/^\s*(hallo|hi|hey|servus|grüß|danke|ok|okay|super|passt|alles klar|wer bist|was kannst)/.test(t) && t.length < 40) return false;
-  return /\d|€|rechnung|angebot|gutschrift|mahnung|kunde|kundin|ausgabe|beleg|umsatz|gewinn|ergebnis|uva|zm\b|ear\b|steuer|ust|afa|anlage|fixkost|prognose|offen|bezahlt|überfällig|fällig|summe|betrag|wie viel|wieviel|welche|zeig|such|finde|liste|anleg|erstell|finalisier|markier|artikel/.test(t);
+  return /\d|€|rechnung|angebot|gutschrift|mahnung|kunde|kundin|ausgabe|beleg|umsatz|gewinn|ergebnis|uva|zm\b|ear\b|steuer|ust|afa|anlage|fixkost|prognose|offen|bezahlt|überfällig|fällig|summe|betrag|wie viel|wieviel|welche|zeig|such|finde|liste|anleg|erstell|finalisier|markier|artikel|öffne|oeffne|pdf|herunterlad|download|vorschau|bank|konto|buchung|zuordn|wie lief|wie läuft|wie steh|monat|quartal|jänner|januar|februar|märz|april|mai\b|juni|juli|august|september|oktober|november|dezember/.test(t);
 }
 
 let callSeq = 0;
@@ -432,8 +435,9 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
     const recentTools = rows.slice(-12).filter((r) => r.role === "tool" && r.toolName).map((r) => r.toolName!);
     const reserve = reasoning ? 8192 : ANSWER_RESERVE;
     const available = settings.contextSize - estimateTokens(system) - reserve - SAFETY;
-    // tools may take up to 60 % of what is left; with 32k all of them fit
-    const tools = selectTools(host.tools, { userTexts, contextPath: lastUser?.contextPath, recentTools, budgetTokens: Math.floor(available * 0.6) });
+    // tools may take up to 60 % of what is left
+    const selection = selectToolsDetailed(host.tools, { userTexts, contextPath: lastUser?.contextPath, recentTools, budgetTokens: Math.floor(available * 0.6) });
+    const tools = selection.tools;
     const history = buildHistory(rows, available - toolTokens(tools), state.contextTitle);
 
     // first call after a new user message (not after a confirmation, which already ran a tool)
@@ -472,7 +476,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           throw err;
         });
         deps.log?.(
-          `[chat] conv ${state.conversationId} step ${step + 1}: ${tools.length} tools, prompt ${out.promptTokens ?? "?"} tok, ` +
+          `[chat] conv ${state.conversationId} step ${step + 1}: ${tools.length} tools (${selection.groups.join("+")}${selection.fallback ? " +read" : ""}), prompt ${out.promptTokens ?? "?"} tok, ` +
             `first token ${Math.round(out.firstTokenMs ?? 0)} ms, total ${Math.round(out.totalMs)} ms${endpoint.startMs ? `, server start ${endpoint.startMs} ms` : ""}`,
         );
         return out;
@@ -523,7 +527,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
         continue;
       }
       if (needsConfirm(tool)) {
-        const text = await confirmSummary(call.name, call.arguments, documentLookup(host));
+        const text = await confirmSummary(call.name, call.arguments, confirmLookups(host));
         const row = insertMessage(db, { ...base, content: text, status: "pending" });
         // later calls of the same message wait: the model may repeat them after the confirmation
         for (const later of calls.slice(i + 1)) {
@@ -552,7 +556,8 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       }
       const outcome = await host.call(call.name, call.arguments);
       if (outcome.isError) state.failed.add(key);
-      const row = insertMessage(db, { ...base, content: outcome.text, status: outcome.isError ? "error" : "done", toolResult: toChatToolResult(outcome) });
+      const result = toChatToolResult(outcome, call.name);
+      const row = insertMessage(db, { ...base, content: toolContent(outcome, result), status: outcome.isError ? "error" : "done", toolResult: result });
       await emit({ type: "tool_result", message: messageView(row) });
     }
     if (state.malformed >= MAX_MALFORMED) {

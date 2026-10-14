@@ -19,7 +19,8 @@ import {
   sendMessage,
 } from "../services/chat";
 import { chatLlamaConfig, chatStatus, getChatSettings, syncChatServer, updateChatSettings } from "../services/chat-settings";
-import { mcpToolHost } from "../services/chat-tools";
+import { mcpToolHost, type ToolHost } from "../services/chat-tools";
+import { withUiTools } from "../services/chat-ui-tools";
 import { getLlamaLease, getLlamaServer } from "../services/receipt-llama";
 import { getReceiptWorker } from "../services/receipt-queue";
 import { getOcrSettings } from "../services/receipt-settings";
@@ -30,9 +31,17 @@ import { getOcrSettings } from "../services/receipt-settings";
 
 const idParam = validate("param", z.object({ id: z.coerce.number().int().positive() }));
 
+/** the MCP tools plus the assistant-only UI tools, composed once per MCP host */
+let composed: { mcp: ToolHost; host: ToolHost } | null = null;
+async function assistantHost(): Promise<ToolHost> {
+  const mcp = await mcpToolHost();
+  if (composed?.mcp !== mcp) composed = { mcp, host: withUiTools(mcp, db) };
+  return composed.host;
+}
+
 const deps: ChatDeps = {
   db,
-  host: mcpToolHost,
+  host: assistantHost,
   settings: () => getChatSettings(db),
   log: (line) => console.log(line),
   async withModel(fn, { signal, onStatus }) {

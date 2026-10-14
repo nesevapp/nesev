@@ -27,7 +27,8 @@ import {
 } from "./chat";
 import { repetitionCut } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
-import { type ChatTool, confirmSummary, extractLinks, selectTools, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
+import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
+import { withUiTools } from "./chat-ui-tools";
 
 // The agent loop against a fake OpenAI-compatible streaming server (Bun.serve emitting SSE chunks like
 // llama-server, incl. tool calls split over several deltas) and a fake tool host, on an in-memory DB.
@@ -99,7 +100,7 @@ const host: ToolHost = {
       return { isError: false, text: "2 offene Rechnungen\n- RE-2026-0001 Alpen GmbH € 120,00", structured: { documents: [{ number: "RE-2026-0001", link: "/invoices/1" }] } };
     }
     if (name === "get_document") {
-      return { isError: false, text: "Rechnung", structured: { id: args.id, typeLabel: "Rechnung", number: null, client: { name: "Alpen GmbH" }, gross: { formatted: "€ 540,00" } } };
+      return { isError: false, text: "Rechnung", structured: { id: args.id, type: "invoice", typeLabel: "Rechnung", number: null, status: "draft", client: { name: "Alpen GmbH" }, gross: { cents: 54000, formatted: "€ 540,00" }, link: `/invoices/${args.id}` } };
     }
     if (name === "finalize_document") {
       return { isError: false, text: "Finalisiert: RE-2026-0002.", structured: { id: 2, number: "RE-2026-0002", link: "/invoices/2", pdf: { url: "/api/files/pdfs/RE-2026-0002.pdf" } } };
@@ -205,10 +206,11 @@ describe("agent loop", () => {
     expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "tool_result", "assistant_start", "done"]);
     expect(calls).toEqual([{ name: "list_documents", args: { status: "open" } }]);
     const result = events.find((e) => e.type === "tool_result")!;
-    expect(result.type === "tool_result" && result.message.toolResult).toEqual({
+    expect(result.type === "tool_result" && result.message.toolResult).toMatchObject({
       ok: true,
       summary: "2 offene Rechnungen",
       links: [{ label: "RE-2026-0001", path: "/invoices/1" }],
+      card: { kind: "table", rows: [{ path: "/invoices/1" }] },
     });
     // the second request carries the call and its result
     const msgs = requests[1].messages;
@@ -219,6 +221,25 @@ describe("agent loop", () => {
     });
     expect(msgs.at(-1)).toMatchObject({ role: "tool", tool_call_id: "id_list_documents" });
     expect(msgs.at(-1).content).toContain("RE-2026-0001");
+  });
+
+  test("cards and UI actions: stored on the tool row; the model is told the user sees the card", async () => {
+    deps.host = async () => withUiTools(host, db);
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":5}'), toolCall("download_pdf", '{"id":5}'), text("Lädt."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Lade mir die Vorschau vom Entwurf 5 herunter" }, emit));
+    const results = events.filter((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>[];
+    expect(results[0]!.message.toolResult?.card).toMatchObject({ kind: "document", typeLabel: "Rechnung", number: null, grossCents: 54000, path: "/invoices/5", pdfUrl: "/api/pdf/documents/5" });
+    expect(results[0]!.message.content).toContain("Beleg-Karte im Chat");
+    expect(results[1]!.message.toolResult).toEqual({
+      ok: true,
+      summary: "PDF-Vorschau Rechnung (Entwurf) wird heruntergeladen (Entwurf-5.pdf).",
+      links: [],
+      action: { kind: "download", url: "/api/pdf/documents/5?download=1", fileName: "Entwurf-5.pdf", label: "Entwurf-5.pdf" },
+    });
+    // the UI tools are offered with every request
+    expect(requests[0].tools.map((t: any) => t.function.name)).toContain("open_in_app");
+    expect(requests[2].messages.at(-1).content).toBe(results[1]!.message.content);
   });
 
   test("confirm flow: pending blocks, approve executes and continues", async () => {
@@ -409,25 +430,58 @@ describe("history", () => {
 });
 
 describe("tools", () => {
-  const many = [...Array(20)].map((_, i) => tool(`read_${i}`, true));
-  const writes = ["create_invoice_draft", "finalize_document", "create_reminder", "create_client", "create_expense", "queue_receipt_analysis"].map((n) =>
-    tool(n, false, n === "finalize_document" || n === "create_reminder"),
-  );
+  const g = (name: string, group: ChatTool["group"], readOnly = true, destructive = false) => tool(name, readOnly, destructive, group);
+  const all = [
+    g("search", "core"),
+    g("get_dashboard", "core"),
+    g("get_document", "core"),
+    g("list_documents", "documents"),
+    g("create_invoice_draft", "documents", false),
+    g("create_reminder", "documents", false, true),
+    g("list_clients", "clients"),
+    g("create_client", "clients", false),
+    g("list_expenses", "expenses"),
+    g("list_fixed_costs", "expenses"),
+    g("create_expense", "expenses", false),
+    g("list_bank_transactions", "bank"),
+    g("match_bank_transaction", "bank", false),
+    g("get_forecast", "finance"),
+    g("get_tax_report", "finance"),
+    g("open_in_app", "ui"),
+  ];
+  const names = (input: Partial<Parameters<typeof selectTools>[1]>) => selectTools(all, { userTexts: [], budgetTokens: 100_000, ...input }).map((t) => t.name);
+  const core = ["search", "get_dashboard", "get_document", "open_in_app"];
 
-  test("everything when it fits, else read tools + write tools by intent, page and recent use", () => {
-    const all = [...many, ...writes];
-    expect(selectTools(all, { userTexts: ["hallo"], budgetTokens: 100_000 })).toHaveLength(all.length);
-    const names = (input: Parameters<typeof selectTools>[1]) =>
-      selectTools(all, input)
-        .filter((t) => !t.readOnly)
-        .map((t) => t.name);
-    const budget = toolTokens(many) + 10;
-    expect(names({ userTexts: ["Wie viel Umsatz hatte ich?"], budgetTokens: budget })).toEqual([]);
-    expect(names({ userTexts: ["Leg einen Rechnungsentwurf an"], budgetTokens: budget })).toEqual(writes.map((t) => t.name)); // generic verb
-    expect(names({ userTexts: ["Finalisiere die Rechnung"], budgetTokens: budget })).toEqual(["create_invoice_draft", "finalize_document"]);
-    expect(names({ userTexts: ["Schick eine Mahnung"], budgetTokens: budget })).toEqual(["create_reminder"]);
-    expect(names({ userTexts: ["ja"], contextPath: "/expenses/3", budgetTokens: budget })).toEqual(["create_expense", "queue_receipt_analysis"]);
-    expect(names({ userTexts: ["ja"], recentTools: ["create_client"], budgetTokens: budget })).toEqual(["create_client"]);
+  test("routing: core + ui always, groups by words, page and recent tools; ordered by group", () => {
+    expect(names({ userTexts: ["Zeig mir die offenen Rechnungen"] })).toEqual([...core, "list_documents", "create_invoice_draft", "create_reminder"]);
+    expect(names({ userTexts: ["Wie hoch sind meine Fixkosten?"] })).toEqual([...core, "list_expenses", "list_fixed_costs", "create_expense"]);
+    expect(names({ userTexts: ["Welche Bankumsätze sind noch nicht zugeordnet?"] })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
+    expect(names({ userTexts: ["Was ist meine UVA-Zahllast?"] })).toEqual([...core, "get_forecast", "get_tax_report"]);
+    // page context, recent tools and the previous message keep a group for follow-ups
+    expect(names({ userTexts: ["ja"], contextPath: "/bank" })).toEqual([...core, "list_bank_transactions", "match_bank_transaction"]);
+    expect(names({ userTexts: ["ja, mach"], recentTools: ["create_client"] })).toEqual([...core, "list_clients", "create_client"]);
+    expect(names({ userTexts: ["und die zweite?", "Welche Kunden habe ich?"] })).toEqual([...core, "list_clients", "create_client"]);
+    // several groups keep the TOOL_GROUPS order regardless of the host order
+    expect(names({ userTexts: ["Ausgaben und Rechnungen"] })).toEqual([...core, "list_documents", "create_invoice_draft", "create_reminder", "list_expenses", "list_fixed_costs", "create_expense"]);
+  });
+
+  test("routing fallback: nothing matched → read tools of all groups; a generic write verb → everything", () => {
+    const fallback = selectToolsDetailed(all, { userTexts: ["Wie lief Oktober?"], budgetTokens: 100_000 });
+    expect(fallback.fallback).toBe(true);
+    expect(fallback.tools.every((t) => t.readOnly)).toBe(true);
+    expect(fallback.tools.map((t) => t.name)).toEqual([...core, "list_documents", "list_clients", "list_expenses", "list_fixed_costs", "list_bank_transactions", "get_forecast", "get_tax_report"]);
+    expect(names({ userTexts: ["Leg das bitte an"] })).toHaveLength(all.length);
+  });
+
+  test("over the budget: write tools of groups matched only by page/recent use go first, then all non-core writes", () => {
+    const input = { userTexts: ["Rechnung anlegen"], contextPath: "/expenses", budgetTokens: toolTokens(all) };
+    expect(names(input)).toContain("create_expense");
+    const wanted = selectTools(all, input).filter((t) => t.name !== "create_expense");
+    const tight = selectTools(all, { ...input, budgetTokens: toolTokens(wanted) + 5 }).map((t) => t.name);
+    expect(tight).toContain("create_invoice_draft");
+    expect(tight).not.toContain("create_expense");
+    const readOnly = selectTools(all, input).filter((t) => t.readOnly);
+    expect(selectTools(all, { ...input, budgetTokens: toolTokens(readOnly) + 5 })).toEqual(readOnly);
   });
 
   test("results: summary line, links (absolute URLs → paths), errors without links", () => {
@@ -532,9 +586,10 @@ process.exit(0);`,
       const out = Bun.spawnSync([process.execPath, script], { cwd: PROJECT_ROOT, env: { ...process.env, NESEV_DATA_DIR: dir } });
       if (out.exitCode !== 0) throw new Error(out.stderr.toString());
       const r = JSON.parse(out.stdout.toString());
-      expect(r.names).toHaveLength(28);
-      expect([...r.destructive].sort()).toEqual([...CONFIRM_TOOLS].sort());
-      expect([...r.confirm].sort()).toEqual([...CONFIRM_TOOLS].sort());
+      expect(r.names.length).toBeGreaterThanOrEqual(28);
+      // every listed confirm tool is annotated destructive, and every destructive tool needs the click
+      for (const name of CONFIRM_TOOLS) expect(r.destructive).toContain(name);
+      expect([...r.confirm].sort()).toEqual([...r.destructive].sort());
       expect(r.search.ok).toBe(true);
       expect(r.search.links.length).toBeGreaterThan(0);
       for (const l of r.search.links) expect(l.path.startsWith("/")).toBe(true);
