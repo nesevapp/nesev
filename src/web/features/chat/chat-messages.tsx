@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronRight, CircleAlert, CircleSlash, Clock, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ChatConversationDetail, ChatMessageView, ChatToolCall } from "@/sdk";
+import type { ChatCard, ChatConversationDetail, ChatMessageView, ChatToolCall } from "@/sdk";
 import { ActionButton } from "./chat-actions";
 import { ChatCardView, cardPaths } from "./chat-cards";
 import { MarkdownView, type LinkRenderer } from "./markdown-view";
@@ -52,9 +52,28 @@ function UserBubble({ message }: { message: ChatMessageView }) {
 
 type CallState = "running" | "ok" | "error" | "pending" | "cancelled" | "unknown";
 
-function ToolCard({ call, result, state }: { call: ChatToolCall; result: ChatMessageView | undefined; state: CallState }) {
+const CARD_LABELS: Record<ChatCard["kind"], string> = {
+  kpis: "Kennzahlen anzeigen",
+  chart: "Diagramm anzeigen",
+  document: "Beleg anzeigen",
+  table: "Tabelle anzeigen",
+};
+
+function ToolCard({
+  call,
+  result,
+  state,
+  collapsed = false,
+}: {
+  call: ChatToolCall;
+  result: ChatMessageView | undefined;
+  state: CallState;
+  /** card of an intermediate step (not the turn's last card): one-line toggle instead of the full card */
+  collapsed?: boolean;
+}) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const { label, icon: Icon } = toolMeta(call.name);
   const args = summarizeArgs(call.arguments);
   const r = result?.toolResult;
@@ -129,7 +148,18 @@ function ToolCard({ call, result, state }: { call: ChatToolCall; result: ChatMes
           </pre>
         )}
       </div>
-      {card && <ChatCardView card={card} />}
+      {card && collapsed && (
+        <button
+          type="button"
+          onClick={() => setShowCard((v) => !v)}
+          aria-expanded={showCard}
+          className="flex items-center gap-1 pl-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronRight className={cn("size-3.5 transition-transform", showCard && "rotate-90")} />
+          {CARD_LABELS[card.kind]}
+        </button>
+      )}
+      {card && (!collapsed || showCard) && <ChatCardView card={card} />}
     </div>
   );
 }
@@ -144,6 +174,35 @@ function callState(call: ChatToolCall, result: ChatMessageView | undefined, pend
   if (call.id === pendingId) return "pending";
   if (live.runningCalls.has(call.id) || streaming) return "running";
   return "unknown";
+}
+
+/**
+ * Tool call ids whose card is shown expanded: per turn (messages from one user message to the next) only the last
+ * tool result with a card; cards of intermediate lookups (search before open/download) collapse to a toggle.
+ */
+function lastCardPerTurn(messages: ChatMessageView[], results: Map<string, ChatMessageView>): Set<string> {
+  const expanded = new Set<string>();
+  const shown = new Set<string>();
+  let lastInTurn: string | null = null;
+  const flush = () => {
+    if (lastInTurn) expanded.add(lastInTurn);
+    lastInTurn = null;
+  };
+  for (const m of messages) {
+    if (m.role === "user") flush();
+    else if (m.role === "assistant") {
+      for (const c of m.toolCalls ?? []) {
+        shown.add(c.id);
+        if (results.get(c.id)?.toolResult?.card) lastInTurn = c.id;
+      }
+    } else if (m.toolResult?.card) {
+      // a result without its call in an assistant message is rendered on its own (same id as in MessageList)
+      const id = m.toolCallId ?? String(m.id);
+      if (!m.toolCallId || !shown.has(m.toolCallId)) lastInTurn = id;
+    }
+  }
+  flush();
+  return expanded;
 }
 
 /** Nothing visible yet for the newest step: the user's message or a tool result, or an assistant message still empty. */
@@ -176,6 +235,7 @@ export function MessageList({
   const shownCalls = new Set<string>();
   const pendingId = detail.pending?.toolCall.id ?? null;
   const last = detail.messages[detail.messages.length - 1];
+  const expanded = lastCardPerTurn(detail.messages, results);
 
   return (
     <div className="space-y-3">
@@ -185,7 +245,15 @@ export function MessageList({
           if (m.toolCallId && shownCalls.has(m.toolCallId)) return null;
           // a result whose call isn't part of an assistant message (shouldn't happen): show it on its own
           const call: ChatToolCall = { id: m.toolCallId ?? String(m.id), name: m.toolName ?? "tool", arguments: {} };
-          return <ToolCard key={m.id} call={call} result={m} state={callState(call, m, pendingId, live, false)} />;
+          return (
+            <ToolCard
+              key={m.id}
+              call={call}
+              result={m}
+              state={callState(call, m, pendingId, live, false)}
+              collapsed={!!m.toolResult?.card && !expanded.has(call.id)}
+            />
+          );
         }
         for (const c of m.toolCalls ?? []) shownCalls.add(c.id);
         const thinking = live.thinkingId === m.id && !m.content;
@@ -196,7 +264,13 @@ export function MessageList({
             {m.status === "error" && !m.content && <p className="text-sm text-destructive">Antwort fehlgeschlagen.</p>}
             {m.status === "cancelled" && <p className="text-xs text-muted-foreground italic">abgebrochen</p>}
             {(m.toolCalls ?? []).map((c) => (
-              <ToolCard key={c.id} call={c} result={results.get(c.id)} state={callState(c, results.get(c.id), pendingId, live, streaming)} />
+              <ToolCard
+                key={c.id}
+                call={c}
+                result={results.get(c.id)}
+                state={callState(c, results.get(c.id), pendingId, live, streaming)}
+                collapsed={!expanded.has(c.id)}
+              />
             ))}
           </div>
         );
