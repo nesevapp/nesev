@@ -7,6 +7,7 @@ import { expenses, type ReceiptAnalysis, receiptAnalyses } from "../db/schema";
 import { DATA_DIR } from "../lib/paths";
 import { AbortedError } from "../lib/ocr/run";
 import { analyzeReceipt, type AnalyzeOutput } from "./receipt-pipeline";
+import { getLlamaServer } from "./receipt-llama";
 import { unloadModel } from "./receipt-ollama";
 import { getOcrSettings } from "./receipt-settings";
 import { getSettings } from "./settings";
@@ -304,6 +305,12 @@ export function getReceiptWorker(db: DbOrTx): ReceiptWorker {
   const g = globalThis as { [WORKER_KEY]?: ReceiptWorker };
   g[WORKER_KEY] ??= new ReceiptWorker(db, runAnalysis, async (models) => {
     const settings = getOcrSettings(db);
+    // llama.cpp: nesev's own llama-server – stop it now, or after 5 min idle (a new batch reuses it)
+    const llama = getLlamaServer();
+    if (llama.activeKey()) {
+      if (settings.provider === "llamacpp" && !settings.unloadAfterBatch) llama.scheduleIdleStop();
+      else await llama.stop();
+    }
     // OpenAI-compatible servers (Unsloth Studio, …) manage loading in their own UI: nothing to unload
     if (settings.provider !== "ollama" || !settings.unloadAfterBatch) return;
     for (const model of models) await unloadModel(settings.ollamaUrl, model);

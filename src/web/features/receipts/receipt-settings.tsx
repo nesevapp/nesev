@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, CircleCheck, CircleDashed, Hammer, Loader2, PlugZap } from "lucide-react";
+import { Hammer, Loader2, PlugZap } from "lucide-react";
 import { toast } from "sonner";
 import { DEFAULT_OCR_SETTINGS, modelLabel, OCR_PROVIDER_LABELS, OCR_PROVIDERS, type OcrSettings } from "@shared/receipts";
 import { ocrSettingsSchema, type OcrSettingsInput } from "@shared/schemas/receipt";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import {
   apiErrorMessage,
   type OcrStatusProbe,
@@ -22,6 +21,8 @@ import {
   useUpdateOcrSettings,
 } from "@/sdk";
 import { CodeText } from "./code-text";
+import { LlamaFields, LlamaStatusRows } from "./llama-settings";
+import { formatGb, StatusRow } from "./status-row";
 
 /** "Belegerkennung" section on the settings page (own form, saved via PUT /api/receipts/settings). */
 export function ReceiptSettingsSection() {
@@ -32,17 +33,33 @@ export function ReceiptSettingsSection() {
     defaultValues: data ?? DEFAULT_OCR_SETTINGS,
   });
   const { control } = form;
-  const [mode, llmEnabled, model, visionModel, ollamaUrl, provider, openaiUrl, openaiApiKey, openaiModel] = useWatch({
-    control,
-    name: ["mode", "llmEnabled", "model", "visionModel", "ollamaUrl", "provider", "openaiUrl", "openaiApiKey", "openaiModel"],
-  });
+  const [mode, llmEnabled, model, visionModel, ollamaUrl, provider, openaiUrl, openaiApiKey, openaiModel, llamaServerPath, llamaModelPath, llamaMmprojPath] =
+    useWatch({
+      control,
+      name: [
+        "mode",
+        "llmEnabled",
+        "model",
+        "visionModel",
+        "ollamaUrl",
+        "provider",
+        "openaiUrl",
+        "openaiApiKey",
+        "openaiModel",
+        "llamaServerPath",
+        "llamaModelPath",
+        "llamaMmprojPath",
+      ],
+    });
   const activeProvider = provider ?? "ollama";
   // the status probes the saved settings until "Verbindung testen" or a provider switch in the form
   const [probe, setProbe] = useState<OcrStatusProbe>({});
   const formProbe = (): OcrStatusProbe =>
     activeProvider === "openai"
       ? { provider: "openai", url: openaiUrl || undefined, apiKey: openaiApiKey ?? "", model: openaiModel ?? "" }
-      : { provider: "ollama", url: ollamaUrl || undefined };
+      : activeProvider === "llamacpp"
+        ? { provider: "llamacpp", serverPath: llamaServerPath ?? "", modelPath: llamaModelPath ?? "", mmprojPath: llamaMmprojPath ?? "" }
+        : { provider: "ollama", url: ollamaUrl || undefined };
   useEffect(() => {
     setProbe(data && activeProvider === data.provider ? {} : formProbe());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on provider switches
@@ -114,7 +131,11 @@ export function ReceiptSettingsSection() {
             control={control}
             name="llmEnabled"
             label="Lokales KI-Modell verwenden"
-            description="Aus: nur regelbasierte Erkennung (UID, Datum, Summen, Steuersätze, IBAN). nesev startet den Modell-Server nie selbst."
+            description={
+              activeProvider === "llamacpp"
+                ? "Aus: nur regelbasierte Erkennung (UID, Datum, Summen, Steuersätze, IBAN). Mit llama.cpp startet nesev den Modell-Server nur für eine Analyse und beendet ihn danach."
+                : "Aus: nur regelbasierte Erkennung (UID, Datum, Summen, Steuersätze, IBAN). nesev startet Ollama bzw. Unsloth Studio nie selbst."
+            }
           />
 
           {llmEnabled && (
@@ -195,6 +216,8 @@ export function ReceiptSettingsSection() {
                     description="Gibt den Arbeitsspeicher frei, sobald die Warteschlange leer ist (keep_alive 0)."
                   />
                 </>
+              ) : activeProvider === "llamacpp" ? (
+                <LlamaFields control={control} mode={mode ?? "text"} />
               ) : (
                 <>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -268,36 +291,6 @@ export function ReceiptSettingsSection() {
 
 /** Radix Select can't hold "": stands for an empty openaiModel (first loaded model) */
 const AUTO_MODEL = "__auto__";
-
-function StatusRow({
-  state,
-  label,
-  children,
-}: {
-  state: "ok" | "warn" | "off";
-  label: string;
-  children?: React.ReactNode;
-}) {
-  const Icon = state === "ok" ? CircleCheck : state === "warn" ? CircleAlert : CircleDashed;
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <Icon
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          state === "ok" ? "text-emerald-600" : state === "warn" ? "text-amber-600" : "text-muted-foreground",
-        )}
-      />
-      <div className="min-w-0">
-        <span className="font-medium">{label}</span>
-        {children && <span className="text-muted-foreground"> · {children}</span>}
-      </div>
-    </div>
-  );
-}
-
-function formatGb(bytes: number) {
-  return `${(bytes / 1e9).toLocaleString("de-AT", { maximumFractionDigits: 1 })} GB`;
-}
 
 function ComponentStatus({
   status: s,
@@ -392,6 +385,7 @@ function ComponentStatus({
               )}
             </>
           )}
+          {s.llamacpp && <LlamaStatusRows status={s.llamacpp} />}
         </>
       )}
       <div className="flex flex-wrap gap-2 pt-1">

@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { OcrProvider, OcrSettings } from "@shared/receipts";
+import type { LlamaTestRequest } from "@shared/schemas/receipt";
 import { idParam, parseResponse, receipts } from "./client";
 import { useInvalidate } from "./invalidate";
 import { keys } from "./keys";
@@ -19,6 +20,10 @@ export const receiptsApi = {
   markApplied: (analysisId: number) => parseResponse(receipts[":id"].applied.$post({ param: idParam(analysisId) })),
   updateSettings: (json: OcrSettings) => parseResponse(receipts.settings.$put({ json })),
   buildHelper: () => parseResponse(receipts.helper.build.$post()),
+  /** llama.cpp: GGUF models found on disk */
+  llamaModels: () => parseResponse(receipts.llamacpp.models.$get()),
+  /** llama.cpp: start llama-server with the form values, extract a sample receipt, stop it again */
+  testLlama: (json: LlamaTestRequest) => parseResponse(receipts.llamacpp.test.$post({ json })),
 };
 
 /** unsaved settings-form values to test ("Verbindung testen"); missing → saved settings */
@@ -27,11 +32,17 @@ export interface OcrStatusProbe {
   url?: string;
   apiKey?: string;
   model?: string;
+  /** llama.cpp paths (empty = auto) */
+  serverPath?: string;
+  modelPath?: string;
+  mmprojPath?: string;
 }
 
 export type ReceiptAnalysis = NonNullable<Awaited<ReturnType<typeof receiptsApi.analysis>>>;
 export type ReceiptQueue = Awaited<ReturnType<typeof receiptsApi.queue>>;
 export type ReceiptEngineStatus = Awaited<ReturnType<typeof receiptsApi.status>>;
+export type LlamaModel = Awaited<ReturnType<typeof receiptsApi.llamaModels>>[number];
+export type LlamaTestResult = Awaited<ReturnType<typeof receiptsApi.testLlama>>;
 
 const POLL_MS = 1500;
 const isActive = (status: string | undefined) => status === "queued" || status === "running";
@@ -60,6 +71,20 @@ export const receiptStatusQuery = (probe: OcrStatusProbe = {}) =>
     queryFn: () => receiptsApi.status(probe),
     staleTime: 5_000,
   });
+
+export const llamaModelsQuery = queryOptions({
+  queryKey: keys.receipts.llamaModels,
+  queryFn: receiptsApi.llamaModels,
+  staleTime: 30_000,
+});
+
+export function useTestLlama() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: LlamaTestRequest) => receiptsApi.testLlama(json),
+    onSettled: () => void qc.invalidateQueries({ queryKey: keys.receipts.statusAll }),
+  });
+}
 
 export function useAnalyzeReceipts() {
   const invalidate = useInvalidate();

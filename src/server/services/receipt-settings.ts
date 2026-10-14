@@ -13,6 +13,7 @@ import {
   type OllamaModel,
   ollamaVersion,
 } from "./receipt-ollama";
+import { type LlamaCppStatus, llamaCppStatus } from "./receipt-llama";
 import { listOpenAiModels, resolveOpenAiModel } from "./receipt-openai";
 import { getSettings } from "./settings";
 
@@ -59,9 +60,10 @@ export interface ReceiptComponentStatus {
   helper: HelperStatus;
   tesseract: TesseractStatus;
   provider: OcrProvider;
-  /** only the active provider is probed; the other one is null */
+  /** only the active provider is probed; the others are null */
   ollama: OllamaStatus | null;
   openai: OpenAiStatus | null;
+  llamacpp: LlamaCppStatus | null;
 }
 
 /** unsaved values from the settings form ("Verbindung testen") */
@@ -70,6 +72,10 @@ export interface OcrProbe {
   url?: string;
   apiKey?: string;
   model?: string;
+  /** llama.cpp paths */
+  serverPath?: string;
+  modelPath?: string;
+  mmprojPath?: string;
 }
 
 export async function ollamaStatus(config: OcrSettings, url = config.ollamaUrl, fetchFn: FetchFn = fetch): Promise<OllamaStatus> {
@@ -118,10 +124,13 @@ export async function componentStatus(db: DbOrTx, probe: OcrProbe = {}, fetchFn:
     ...(provider === "openai" && probe.apiKey !== undefined ? { openaiApiKey: probe.apiKey } : {}),
     ...(provider === "openai" && probe.model !== undefined ? { openaiModel: probe.model } : {}),
   };
-  const [tesseract, ollama, openai] = await Promise.all([
+  const [tesseract, ollama, openai, llamacpp] = await Promise.all([
     tesseractStatus(),
     provider === "ollama" ? ollamaStatus(config, probe.url || config.ollamaUrl, fetchFn) : null,
     provider === "openai" ? openAiStatus(config, probe.url || config.openaiUrl, fetchFn) : null,
+    provider === "llamacpp"
+      ? llamaCppStatus(config, { serverPath: probe.serverPath, modelPath: probe.modelPath, mmprojPath: probe.mmprojPath })
+      : null,
   ]);
-  return { platform: process.platform, helper: helperStatus(), tesseract, provider, ollama, openai };
+  return { platform: process.platform, helper: helperStatus(), tesseract, provider, ollama, openai, llamacpp };
 }

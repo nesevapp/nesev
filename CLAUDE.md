@@ -33,7 +33,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - Credit notes store **positive** amounts. Every revenue figure has to subtract them.
 - An invoice's open amount = gross − finalized credit notes − bank allocations (`services/bank.ts` helpers). Use those helpers; don't recompute it ad hoc.
 - Expenses: `grossCents` = amount payable to the supplier (equals net for reverse charge / ig. Erwerb). Self-assessed tax is owed and deductible (see `src/shared/expenses.ts` header).
-- Receipt OCR never runs on upload. Analysis is queued only on explicit user action. It's fully local (PDF text, Apple Vision, Ollama), and results never overwrite saved data automatically.
+- Receipt OCR never runs on upload. Analysis is queued only on explicit user action. It's fully local (PDF text, Apple Vision, Ollama / llama.cpp), and results never overwrite saved data automatically.
 - UI language is German. Tax output (UVA/ZM/EAR) is a helper, not tax advice.
 
 ## Gotchas
@@ -45,6 +45,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - Never type an `hc` client against the merged `AppType` in web code (the editor's TS server degrades to `never`); `sdk/client.ts` types each client against its route module. If the editor still shows `never` errors, trust `bun run typecheck`.
 - Receipt OCR needs Ollama ≥ 0.19 for the default `qwen3.5:4b`. The Homebrew build lacks `libollama_xgrammar` for MLX models, so a JSON-schema `format` is rejected ("structured output is unavailable"). `receipt-ollama.ts` then retries with the schema in the prompt (and sends `think: false`). The Apple Vision helper is compiled on first use into `data/bin/`.
 - Receipt OCR provider "OpenAI-kompatibel" (Unsloth Studio etc.): the model must be loaded in Studio's UI and requests need its API key (Studio → Settings → API, `sk-unsloth-…`); base URL includes `/v1` (port usually 8888). llama-server serves `/v1/models` without auth, so a wrong key only shows up on analysis (401). Vision mode needs a model with mmproj.
+- Receipt OCR provider "llama.cpp": nesev spawns `llama-server` as its own child (handle on `globalThis`, pid file `data/llama-server.pid`). In tests use fake `ManagerDeps`, never the real binary. When testing for real, check `pgrep -P <your API pid> llama-server` and kill only that child; stopping your API process (SIGTERM) stops it too. Note: the server inherits nesev's env.
 - `src/server/lib/bank-parsers/fixtures/**` are byte-exact (CRLF, Windows-1252) via `.gitattributes`.
 
 ## Working style for this repo

@@ -30,6 +30,9 @@ import {
   OllamaError,
   type PromptContext,
 } from "./receipt-ollama";
+import { modelAlias } from "../lib/llama/paths";
+import type { LlamaServerManager } from "../lib/llama/server";
+import { getLlamaServer, llamaConfigFor, toLlmError } from "./receipt-llama";
 import { extractWithOpenAi, listOpenAiModels, resolveOpenAiModel } from "./receipt-openai";
 import { normalizeSupplierName, normalizeUid } from "./receipt-parse";
 import { mergeFields, validateFields } from "./receipt-validate";
@@ -57,6 +60,8 @@ export interface AnalyzeInput {
   db: DbOrTx;
   tools?: ReceiptTools;
   fetchFn?: FetchFn;
+  /** llama.cpp provider: the server manager (default: the process-wide one) */
+  llama?: Pick<LlamaServerManager, "ensure">;
   today?: string;
 }
 
@@ -244,11 +249,13 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
       const llm = await runModel(input, text, tools, step);
       fields = mergeFields(llm.fields, rules.fields);
       if (llm.warning) warnings.push(llm.warning);
+      if (step.serverStartMs) timings.server = step.serverStartMs;
       llmSkipped = false;
     } catch (err) {
       if (signal?.aborted) throw new AbortedError();
       if (!(err instanceof LlmError)) throw err;
       error = err.message;
+      if (step.serverStartMs) timings.server = step.serverStartMs;
       warnings.push("Nur regelbasierte Erkennung – Felder bitte besonders sorgfältig prüfen");
     }
     timings.llm = elapsed(t);
@@ -280,11 +287,14 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
 interface ModelStep {
   model: string;
   usedModel: boolean;
+  /** llama.cpp: ms spent starting llama-server in this run */
+  serverStartMs?: number;
 }
 
 /** configured model of the active provider ("" for OpenAI-compatible = first loaded model) */
 function activeModel(settings: OcrSettings): string {
   if (settings.provider === "openai") return settings.openaiModel;
+  if (settings.provider === "llamacpp") return settings.llamaModelPath ? modelAlias(settings.llamaModelPath) : "";
   return settings.mode === "vision" ? settings.visionModel : settings.model;
 }
 
@@ -293,6 +303,31 @@ async function runModel(input: AnalyzeInput, text: string, tools: ReceiptTools, 
   const { settings, signal } = input;
   const fetchFn = input.fetchFn ?? fetch;
   const pageImages = () => (settings.mode === "vision" ? tools.pageImages(input.file, signal) : Promise.resolve(undefined));
+  if (settings.provider === "llamacpp") {
+    // nesev starts llama-server itself (first run of a batch) and talks to it OpenAI-style
+    const config = llamaConfigFor(settings);
+    let server;
+    try {
+      server = await (input.llama ?? getLlamaServer()).ensure(config, signal);
+    } catch (err) {
+      if (signal?.aborted) throw new AbortedError();
+      throw toLlmError(err);
+    }
+    step.model = server.model;
+    step.serverStartMs = server.startMs;
+    const images = await pageImages();
+    step.usedModel = true;
+    return extractWithOpenAi({
+      baseUrl: server.baseUrl,
+      apiKey: server.apiKey,
+      model: server.model,
+      text,
+      images,
+      context: input.context,
+      signal,
+      fetchFn,
+    });
+  }
   if (settings.provider === "openai") {
     const loaded = await listOpenAiModels(settings.openaiUrl, settings.openaiApiKey, fetchFn, signal);
     step.model = resolveOpenAiModel(loaded, settings.openaiModel);

@@ -10,8 +10,8 @@
 //   vision    Apple Vision OCR (macOS helper) of images / scanned PDFs
 //   tesseract Tesseract CLI fallback
 // Then field extraction by a local model (structured JSON output) plus a rule-based extractor, which also
-// covers the case that the model server isn't running. Providers: Ollama (native API) or any OpenAI-compatible
-// server (Unsloth Studio, LM Studio, llama-server). Validation (sums, rates, UID, IBAN, dates) happens in code.
+// covers the case that the model server isn't running. Providers: Ollama (native API), any OpenAI-compatible
+// server (Unsloth Studio, LM Studio, llama-server), or a llama-server that nesev starts itself per batch. Validation (sums, rates, UID, IBAN, dates) happens in code.
 
 import {
   EXPENSE_CATEGORY_KEYS,
@@ -42,13 +42,17 @@ export const OCR_MODES = ["text", "vision"] as const;
 export type OcrMode = (typeof OCR_MODES)[number];
 export const OCR_ENGINES = ["vision", "tesseract"] as const;
 export type OcrEngine = (typeof OCR_ENGINES)[number];
-/** "ollama": Ollama's native API; "openai": OpenAI-compatible /v1 API (Unsloth Studio, LM Studio, llama-server) */
-export const OCR_PROVIDERS = ["ollama", "openai"] as const;
+/**
+ * "ollama": Ollama's native API; "openai": OpenAI-compatible /v1 API (Unsloth Studio, LM Studio, llama-server);
+ * "llamacpp": nesev starts llama-server itself for a batch and stops it again (OpenAI-compatible client).
+ */
+export const OCR_PROVIDERS = ["ollama", "openai", "llamacpp"] as const;
 export type OcrProvider = (typeof OCR_PROVIDERS)[number];
 
 export const OCR_PROVIDER_LABELS: Record<OcrProvider, string> = {
   ollama: "Ollama",
   openai: "OpenAI-kompatibel (Unsloth Studio)",
+  llamacpp: "llama.cpp (von nesev gestartet)",
 };
 
 /** Stored in settings.ocr_settings (null → defaults). */
@@ -73,8 +77,17 @@ export interface OcrSettings {
   visionModel: string;
   /** OCR engine for images and scanned PDFs */
   ocrEngine: OcrEngine;
-  /** Ollama only: unload the model (keep_alive 0) after the last receipt of a batch */
+  /** Ollama: unload the model (keep_alive 0) after the last receipt of a batch; llama.cpp: stop llama-server
+   *  after the batch (off = after 5 min idle) */
   unloadAfterBatch: boolean;
+  /** llama.cpp: llama-server binary; empty = auto-detect (Unsloth's build, PATH, Homebrew) */
+  llamaServerPath: string;
+  /** llama.cpp: GGUF model file (absolute or ~/…) */
+  llamaModelPath: string;
+  /** llama.cpp: multimodal projector for vision mode; empty = an mmproj*.gguf next to the model, if any */
+  llamaMmprojPath: string;
+  /** llama.cpp: context size (-c) */
+  llamaContextSize: number;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
@@ -89,6 +102,10 @@ export const DEFAULT_OCR_SETTINGS: OcrSettings = {
   visionModel: "qwen3.5:4b",
   ocrEngine: "vision",
   unloadAfterBatch: true,
+  llamaServerPath: "",
+  llamaModelPath: "",
+  llamaMmprojPath: "",
+  llamaContextSize: 8192,
 };
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -167,7 +184,8 @@ export interface ReceiptExtraction {
   /** page count of the receipt */
   pageCount?: number;
   /** milliseconds per step */
-  timings?: { text?: number; ocr?: number; llm?: number; total?: number };
+  /** ms; `server` = llama-server start incl. model load (llama.cpp provider, first run of a batch), part of `llm` */
+  timings?: { text?: number; ocr?: number; llm?: number; server?: number; total?: number };
   /** the model step was skipped or failed; the fields come from rules only */
   llmSkipped?: boolean;
 }

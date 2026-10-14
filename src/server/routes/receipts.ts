@@ -1,10 +1,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { analyzeRequestSchema, ocrProbeQuerySchema, ocrSettingsSchema } from "../../shared/schemas/receipt";
+import { analyzeRequestSchema, llamaTestSchema, ocrProbeQuerySchema, ocrSettingsSchema } from "../../shared/schemas/receipt";
 import { db } from "../db";
 import { ensureHelper, helperStatus } from "../lib/ocr/helper";
 import { DB_PATH } from "../lib/paths";
+import { discoverModels } from "../lib/llama/paths";
 import { validate } from "../lib/validate";
+import { getLlamaServer, syncLlamaServer, testLlama } from "../services/receipt-llama";
+import { LlmError } from "../services/receipt-ollama";
 import {
   cancelAnalysis,
   enqueueAnalyses,
@@ -21,7 +24,11 @@ import { componentStatus, getOcrSettings, updateOcrSettings } from "../services/
 
 const idParam = validate("param", z.object({ id: z.coerce.number().int().positive() }));
 
-if (DB_PATH !== ":memory:") initReceiptQueue(db);
+if (DB_PATH !== ":memory:") {
+  initReceiptQueue(db);
+  // llama.cpp provider: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
+  getLlamaServer();
+}
 
 const app = new Hono()
   /** Queue runs for expenses with a receipt; skips ones without receipt or already queued/running. */
@@ -46,7 +53,27 @@ const app = new Hono()
     return c.json({ id: row.id, appliedAt: row.appliedAt });
   })
   .get("/settings", (c) => c.json(getOcrSettings(db)))
-  .put("/settings", validate("json", ocrSettingsSchema), (c) => c.json(updateOcrSettings(db, c.req.valid("json"))))
+  .put("/settings", validate("json", ocrSettingsSchema), async (c) => {
+    const saved = updateOcrSettings(db, c.req.valid("json"));
+    // an idle llama-server started for other settings (model, context, provider) is stopped
+    await syncLlamaServer(saved, getReceiptWorker(db).busy);
+    return c.json(saved);
+  })
+  /** llama.cpp: GGUF models found on disk (HF cache, llama.cpp cache, Unsloth, LM Studio) for the model picker. */
+  .get("/llamacpp/models", (c) => c.json(discoverModels()))
+  /**
+   * llama.cpp: start a separate llama-server with the (unsaved) form values, extract a sample receipt, stop it.
+   * Only on explicit click; refused while a batch runs.
+   */
+  .post("/llamacpp/test", validate("json", llamaTestSchema), async (c) => {
+    if (getReceiptWorker(db).busy) return c.json({ error: "Gerade läuft eine Analyse – Test danach wiederholen" }, 409);
+    try {
+      return c.json(await testLlama(getOcrSettings(db), c.req.valid("json"), c.req.raw.signal));
+    } catch (err) {
+      if (err instanceof LlmError) return c.json({ error: err.message }, 422);
+      throw err;
+    }
+  })
   /**
    * Health of the components: Swift helper, Tesseract and the active model server (Ollama: installed models;
    * OpenAI-compatible: loaded models). provider/url/apiKey/model test unsaved form values.

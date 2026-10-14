@@ -81,6 +81,7 @@ export const keys = {
     settings: ["receipts", "settings"] as const,
     statusAll: ["receipts", "status"] as const,
     status: (probe: object) => ["receipts", "status", probe] as const,
+    llamaModels: ["receipts", "llamacpp", "models"] as const,
   },
   bank: {
     all: ["bank"] as const,
