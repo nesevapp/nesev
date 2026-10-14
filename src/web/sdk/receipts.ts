@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { OcrSettings } from "@shared/receipts";
+import type { OcrProvider, OcrSettings } from "@shared/receipts";
 import { idParam, parseResponse, receipts } from "./client";
 import { useInvalidate } from "./invalidate";
 import { keys } from "./keys";
@@ -12,14 +12,22 @@ export const receiptsApi = {
   analysis: async (expenseId: number) =>
     (await parseResponse(receipts.expenses[":id"].$get({ param: idParam(expenseId) }))).analysis,
   settings: () => parseResponse(receipts.settings.$get()),
-  /** Status of the OCR components (Vision helper, Ollama). */
-  status: (ollamaUrl?: string) => parseResponse(receipts.status.$get({ query: { ollamaUrl } })),
+  /** Status of the OCR components (Vision helper, Tesseract, active model server); `probe` tests unsaved form values. */
+  status: (probe: OcrStatusProbe = {}) => parseResponse(receipts.status.$get({ query: probe })),
   analyze: (expenseIds: number[]) => parseResponse(receipts.analyze.$post({ json: { expenseIds } })),
   cancel: (analysisId: number) => parseResponse(receipts[":id"].cancel.$post({ param: idParam(analysisId) })),
   markApplied: (analysisId: number) => parseResponse(receipts[":id"].applied.$post({ param: idParam(analysisId) })),
   updateSettings: (json: OcrSettings) => parseResponse(receipts.settings.$put({ json })),
   buildHelper: () => parseResponse(receipts.helper.build.$post()),
 };
+
+/** unsaved settings-form values to test ("Verbindung testen"); missing → saved settings */
+export interface OcrStatusProbe {
+  provider?: OcrProvider;
+  url?: string;
+  apiKey?: string;
+  model?: string;
+}
 
 export type ReceiptAnalysis = NonNullable<Awaited<ReturnType<typeof receiptsApi.analysis>>>;
 export type ReceiptQueue = Awaited<ReturnType<typeof receiptsApi.queue>>;
@@ -46,10 +54,10 @@ export const ocrSettingsQuery = queryOptions({
   queryFn: receiptsApi.settings,
 });
 
-export const receiptStatusQuery = (ollamaUrl?: string) =>
+export const receiptStatusQuery = (probe: OcrStatusProbe = {}) =>
   queryOptions({
-    queryKey: keys.receipts.status(ollamaUrl),
-    queryFn: () => receiptsApi.status(ollamaUrl),
+    queryKey: keys.receipts.status(probe),
+    queryFn: () => receiptsApi.status(probe),
     staleTime: 5_000,
   });
 

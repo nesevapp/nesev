@@ -24,11 +24,13 @@ import {
   extractWithOllama,
   type FetchFn,
   hasModel,
+  LlmError,
   listModels,
   modelMissingMessage,
   OllamaError,
   type PromptContext,
 } from "./receipt-ollama";
+import { extractWithOpenAi, listOpenAiModels, resolveOpenAiModel } from "./receipt-openai";
 import { normalizeSupplierName, normalizeUid } from "./receipt-parse";
 import { mergeFields, validateFields } from "./receipt-validate";
 
@@ -48,7 +50,7 @@ export interface AnalyzeInput {
   /** absolute path of the receipt */
   file: string;
   settings: OcrSettings;
-  /** Ollama keep_alive for this request (0 = unload right after) */
+  /** Ollama keep_alive for this request (0 = unload right after); ignored by the OpenAI-compatible provider */
   keepAlive: number | string;
   context: RulesContext & PromptContext;
   signal?: AbortSignal;
@@ -63,7 +65,7 @@ export interface AnalyzeOutput {
   textSource: TextSource | null;
   text: string;
   result: ReceiptExtraction;
-  /** model used ("" when none) */
+  /** model id used, or configured when the model step failed before choosing one ("" when none) */
   model: string;
   error: string;
   /** a model request was sent (the worker unloads it after the batch) */
@@ -235,32 +237,17 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
   let fields = rules.fields;
   let error = "";
   let llmSkipped = true;
-  let usedModel = false;
-  const model = settings.mode === "vision" ? settings.visionModel : settings.model;
+  const step: ModelStep = { model: activeModel(settings), usedModel: false };
   if (settings.llmEnabled) {
     t = performance.now();
     try {
-      const fetchFn = input.fetchFn ?? fetch;
-      const models = await listModels(settings.ollamaUrl, fetchFn, signal);
-      if (!hasModel(models, model)) throw new OllamaError(modelMissingMessage(model), "model_missing");
-      const images = settings.mode === "vision" ? await tools.pageImages(input.file, signal) : undefined;
-      usedModel = true;
-      const llm = await extractWithOllama({
-        baseUrl: settings.ollamaUrl,
-        model,
-        text,
-        images,
-        context: input.context,
-        keepAlive: input.keepAlive,
-        signal,
-        fetchFn,
-      });
+      const llm = await runModel(input, text, tools, step);
       fields = mergeFields(llm.fields, rules.fields);
       if (llm.warning) warnings.push(llm.warning);
       llmSkipped = false;
     } catch (err) {
       if (signal?.aborted) throw new AbortedError();
-      if (!(err instanceof OllamaError)) throw err;
+      if (!(err instanceof LlmError)) throw err;
       error = err.message;
       warnings.push("Nur regelbasierte Erkennung – Felder bitte besonders sorgfältig prüfen");
     }
@@ -275,9 +262,9 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
     status: error ? "failed" : "done",
     textSource,
     text,
-    model: settings.llmEnabled ? model : "",
+    model: settings.llmEnabled ? step.model : "",
     error,
-    usedModel,
+    usedModel: step.usedModel,
     result: {
       fields: v.fields,
       warnings: [...warnings, ...v.warnings],
@@ -287,6 +274,55 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
       llmSkipped,
     },
   };
+}
+
+/** model step progress: the model id actually used, and whether a request was sent (→ unload after batch) */
+interface ModelStep {
+  model: string;
+  usedModel: boolean;
+}
+
+/** configured model of the active provider ("" for OpenAI-compatible = first loaded model) */
+function activeModel(settings: OcrSettings): string {
+  if (settings.provider === "openai") return settings.openaiModel;
+  return settings.mode === "vision" ? settings.visionModel : settings.model;
+}
+
+/** Field extraction by the configured provider. Throws LlmError (→ rules-only result) when it can't run. */
+async function runModel(input: AnalyzeInput, text: string, tools: ReceiptTools, step: ModelStep) {
+  const { settings, signal } = input;
+  const fetchFn = input.fetchFn ?? fetch;
+  const pageImages = () => (settings.mode === "vision" ? tools.pageImages(input.file, signal) : Promise.resolve(undefined));
+  if (settings.provider === "openai") {
+    const loaded = await listOpenAiModels(settings.openaiUrl, settings.openaiApiKey, fetchFn, signal);
+    step.model = resolveOpenAiModel(loaded, settings.openaiModel);
+    const images = await pageImages();
+    step.usedModel = true;
+    return extractWithOpenAi({
+      baseUrl: settings.openaiUrl,
+      apiKey: settings.openaiApiKey,
+      model: step.model,
+      text,
+      images,
+      context: input.context,
+      signal,
+      fetchFn,
+    });
+  }
+  const models = await listModels(settings.ollamaUrl, fetchFn, signal);
+  if (!hasModel(models, step.model)) throw new OllamaError(modelMissingMessage(step.model), "model_missing");
+  const images = await pageImages();
+  step.usedModel = true;
+  return extractWithOllama({
+    baseUrl: settings.ollamaUrl,
+    model: step.model,
+    text,
+    images,
+    context: input.context,
+    keepAlive: input.keepAlive,
+    signal,
+    fetchFn,
+  });
 }
 
 /**

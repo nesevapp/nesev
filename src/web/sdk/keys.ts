@@ -80,7 +80,7 @@ export const keys = {
     expense: (expenseId: number) => ["receipts", "expense", expenseId] as const,
     settings: ["receipts", "settings"] as const,
     statusAll: ["receipts", "status"] as const,
-    status: (ollamaUrl: string | undefined) => ["receipts", "status", ollamaUrl ?? ""] as const,
+    status: (probe: object) => ["receipts", "status", probe] as const,
   },
   bank: {
     all: ["bank"] as const,

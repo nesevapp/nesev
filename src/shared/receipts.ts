@@ -9,8 +9,9 @@
 //   pdf_text  PDF text layer
 //   vision    Apple Vision OCR (macOS helper) of images / scanned PDFs
 //   tesseract Tesseract CLI fallback
-// Then field extraction by a local Ollama model (structured JSON output) plus a rule-based extractor, which
-// also covers the case that Ollama isn't running. Validation (sums, rates, UID, IBAN, dates) happens in code.
+// Then field extraction by a local model (structured JSON output) plus a rule-based extractor, which also
+// covers the case that the model server isn't running. Providers: Ollama (native API) or any OpenAI-compatible
+// server (Unsloth Studio, LM Studio, llama-server). Validation (sums, rates, UID, IBAN, dates) happens in code.
 
 import {
   EXPENSE_CATEGORY_KEYS,
@@ -41,28 +42,48 @@ export const OCR_MODES = ["text", "vision"] as const;
 export type OcrMode = (typeof OCR_MODES)[number];
 export const OCR_ENGINES = ["vision", "tesseract"] as const;
 export type OcrEngine = (typeof OCR_ENGINES)[number];
+/** "ollama": Ollama's native API; "openai": OpenAI-compatible /v1 API (Unsloth Studio, LM Studio, llama-server) */
+export const OCR_PROVIDERS = ["ollama", "openai"] as const;
+export type OcrProvider = (typeof OCR_PROVIDERS)[number];
+
+export const OCR_PROVIDER_LABELS: Record<OcrProvider, string> = {
+  ollama: "Ollama",
+  openai: "OpenAI-kompatibel (Unsloth Studio)",
+};
 
 /** Stored in settings.ocr_settings (null → defaults). */
 export interface OcrSettings {
   /** run the local LLM at all; off = rule-based extraction only */
   llmEnabled: boolean;
+  /** which local model server to talk to */
+  provider: OcrProvider;
   /** Ollama base URL; only loopback addresses are accepted (nothing leaves the machine) */
   ollamaUrl: string;
+  /** OpenAI-compatible base URL incl. /v1 (loopback only, like ollamaUrl) */
+  openaiUrl: string;
+  /** Bearer token, e.g. Unsloth Studio's `sk-unsloth-…` (empty = no auth header); never logged */
+  openaiApiKey: string;
+  /** model id for both modes; empty = the first model from GET /v1/models (i.e. the one loaded in Studio) */
+  openaiModel: string;
   /** "text": text model on the extracted text; "vision": vision model on the page images */
   mode: OcrMode;
-  /** model for mode "text" */
+  /** Ollama model for mode "text" */
   model: string;
-  /** model for mode "vision" */
+  /** Ollama model for mode "vision" */
   visionModel: string;
   /** OCR engine for images and scanned PDFs */
   ocrEngine: OcrEngine;
-  /** unload the model (keep_alive 0) after the last receipt of a batch */
+  /** Ollama only: unload the model (keep_alive 0) after the last receipt of a batch */
   unloadAfterBatch: boolean;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
   llmEnabled: true,
+  provider: "ollama",
   ollamaUrl: "http://127.0.0.1:11434",
+  openaiUrl: "http://127.0.0.1:8888/v1",
+  openaiApiKey: "",
+  openaiModel: "",
   mode: "text",
   model: "qwen3.5:4b",
   visionModel: "qwen3.5:4b",
@@ -72,7 +93,7 @@ export const DEFAULT_OCR_SETTINGS: OcrSettings = {
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
-/** Only local Ollama instances: http(s)://localhost|127.x.x.x|[::1]. */
+/** Only local model servers: http(s)://localhost|127.x.x.x|[::1]. */
 export function isLoopbackUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -81,6 +102,11 @@ export function isLoopbackUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Short display name of a model id: OpenAI-compatible servers may report a file path ("/…/gemma-4-E2B-it-Q4.gguf"). */
+export function modelLabel(id: string): string {
+  return id.includes("/") ? id.split("/").filter(Boolean).at(-1)!.replace(/\.gguf$/i, "") : id;
 }
 
 // --- result ----------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { analyzeRequestSchema, ollamaProbeQuerySchema, ocrSettingsSchema } from "../../shared/schemas/receipt";
+import { analyzeRequestSchema, ocrProbeQuerySchema, ocrSettingsSchema } from "../../shared/schemas/receipt";
 import { db } from "../db";
 import { ensureHelper, helperStatus } from "../lib/ocr/helper";
 import { DB_PATH } from "../lib/paths";
@@ -47,10 +47,11 @@ const app = new Hono()
   })
   .get("/settings", (c) => c.json(getOcrSettings(db)))
   .put("/settings", validate("json", ocrSettingsSchema), (c) => c.json(updateOcrSettings(db, c.req.valid("json"))))
-  /** Health of the components: Swift helper, Tesseract, Ollama (+ installed models). `ollamaUrl` tests an unsaved URL. */
-  .get("/status", validate("query", ollamaProbeQuerySchema), async (c) =>
-    c.json(await componentStatus(db, c.req.valid("query").ollamaUrl)),
-  )
+  /**
+   * Health of the components: Swift helper, Tesseract and the active model server (Ollama: installed models;
+   * OpenAI-compatible: loaded models). provider/url/apiKey/model test unsaved form values.
+   */
+  .get("/status", validate("query", ocrProbeQuerySchema), async (c) => c.json(await componentStatus(db, c.req.valid("query"))))
   /** Compile the Swift OCR helper now (otherwise it is compiled on the first analysis). */
   .post("/helper/build", async (c) => {
     try {

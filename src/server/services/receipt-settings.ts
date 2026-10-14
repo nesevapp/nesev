@@ -1,4 +1,4 @@
-import { DEFAULT_OCR_SETTINGS, isLoopbackUrl, type OcrSettings } from "../../shared/receipts";
+import { DEFAULT_OCR_SETTINGS, isLoopbackUrl, type OcrProvider, type OcrSettings } from "../../shared/receipts";
 import { ocrSettingsSchema } from "../../shared/schemas/receipt";
 import type { DbOrTx } from "../db/client";
 import { settings } from "../db/schema";
@@ -7,12 +7,13 @@ import { tesseractStatus, type TesseractStatus } from "../lib/ocr/tesseract";
 import {
   type FetchFn,
   hasModel,
+  LlmError,
   listModels,
   modelMissingMessage,
-  OllamaError,
   type OllamaModel,
   ollamaVersion,
 } from "./receipt-ollama";
+import { listOpenAiModels, resolveOpenAiModel } from "./receipt-openai";
 import { getSettings } from "./settings";
 
 // "Belegerkennung" settings live in settings.ocr_settings (JSON; null → defaults).
@@ -41,11 +42,34 @@ export interface OllamaStatus {
   modelHint?: string;
 }
 
+export interface OpenAiStatus {
+  url: string;
+  reachable: boolean;
+  error?: string;
+  /** ids from GET /v1/models (Unsloth Studio: the models loaded in the app) */
+  models: string[];
+  /** model an analysis would use now (configured, or the first loaded one) */
+  activeModel?: string;
+  /** German hint when no / not the configured model is loaded */
+  modelHint?: string;
+}
+
 export interface ReceiptComponentStatus {
   platform: string;
   helper: HelperStatus;
   tesseract: TesseractStatus;
-  ollama: OllamaStatus;
+  provider: OcrProvider;
+  /** only the active provider is probed; the other one is null */
+  ollama: OllamaStatus | null;
+  openai: OpenAiStatus | null;
+}
+
+/** unsaved values from the settings form ("Verbindung testen") */
+export interface OcrProbe {
+  provider?: OcrProvider;
+  url?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 export async function ollamaStatus(config: OcrSettings, url = config.ollamaUrl, fetchFn: FetchFn = fetch): Promise<OllamaStatus> {
@@ -65,12 +89,39 @@ export async function ollamaStatus(config: OcrSettings, url = config.ollamaUrl, 
       ...(hasModel(models, active) ? {} : { modelHint: modelMissingMessage(active) }),
     };
   } catch (err) {
-    return { ...empty, reachable: false, error: err instanceof OllamaError ? err.message : String(err) };
+    return { ...empty, reachable: false, error: err instanceof LlmError ? err.message : String(err) };
   }
 }
 
-export async function componentStatus(db: DbOrTx, ollamaUrl?: string): Promise<ReceiptComponentStatus> {
-  const config = getOcrSettings(db);
-  const [tesseract, ollama] = await Promise.all([tesseractStatus(), ollamaStatus(config, ollamaUrl || config.ollamaUrl)]);
-  return { platform: process.platform, helper: helperStatus(), tesseract, ollama };
+export async function openAiStatus(config: OcrSettings, url = config.openaiUrl, fetchFn: FetchFn = fetch): Promise<OpenAiStatus> {
+  const base = url.replace(/\/+$/, "");
+  if (!isLoopbackUrl(base)) return { url: base, models: [], reachable: false, error: "Nur lokale Adressen (localhost / 127.0.0.1) erlaubt" };
+  let models: string[];
+  try {
+    models = await listOpenAiModels(base, config.openaiApiKey, fetchFn);
+  } catch (err) {
+    return { url: base, models: [], reachable: false, error: err instanceof LlmError ? err.message : String(err) };
+  }
+  try {
+    return { url: base, models, reachable: true, activeModel: resolveOpenAiModel(models, config.openaiModel) };
+  } catch (err) {
+    return { url: base, models, reachable: true, modelHint: (err as Error).message };
+  }
+}
+
+export async function componentStatus(db: DbOrTx, probe: OcrProbe = {}, fetchFn: FetchFn = fetch): Promise<ReceiptComponentStatus> {
+  const saved = getOcrSettings(db);
+  const provider = probe.provider ?? saved.provider;
+  const config: OcrSettings = {
+    ...saved,
+    provider,
+    ...(provider === "openai" && probe.apiKey !== undefined ? { openaiApiKey: probe.apiKey } : {}),
+    ...(provider === "openai" && probe.model !== undefined ? { openaiModel: probe.model } : {}),
+  };
+  const [tesseract, ollama, openai] = await Promise.all([
+    tesseractStatus(),
+    provider === "ollama" ? ollamaStatus(config, probe.url || config.ollamaUrl, fetchFn) : null,
+    provider === "openai" ? openAiStatus(config, probe.url || config.openaiUrl, fetchFn) : null,
+  ]);
+  return { platform: process.platform, helper: helperStatus(), tesseract, provider, ollama, openai };
 }

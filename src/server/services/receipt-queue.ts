@@ -290,7 +290,7 @@ export const runAnalysis: RunFn = async (db, row, { signal, lastInBatch }) => {
   return analyzeReceipt({
     file: join(DATA_DIR, row.attachmentPath),
     settings,
-    keepAlive: settings.unloadAfterBatch && lastInBatch ? 0 : "10m",
+    keepAlive: settings.provider === "ollama" && settings.unloadAfterBatch && lastInBatch ? 0 : "10m",
     context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban },
     signal,
     db,
@@ -304,7 +304,8 @@ export function getReceiptWorker(db: DbOrTx): ReceiptWorker {
   const g = globalThis as { [WORKER_KEY]?: ReceiptWorker };
   g[WORKER_KEY] ??= new ReceiptWorker(db, runAnalysis, async (models) => {
     const settings = getOcrSettings(db);
-    if (!settings.unloadAfterBatch) return;
+    // OpenAI-compatible servers (Unsloth Studio, …) manage loading in their own UI: nothing to unload
+    if (settings.provider !== "ollama" || !settings.unloadAfterBatch) return;
     for (const model of models) await unloadModel(settings.ollamaUrl, model);
   });
   return g[WORKER_KEY];

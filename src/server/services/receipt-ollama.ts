@@ -7,16 +7,19 @@ import { eurToCents, parseDate } from "./receipt-parse";
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
-export type OllamaErrorKind = "unreachable" | "model_missing" | "bad_response";
+export type LlmErrorKind = "unreachable" | "model_missing" | "bad_response" | "unauthorized" | "no_vision";
 
-export class OllamaError extends Error {
+/** A model step failure that degrades to rules-only results (any provider). */
+export class LlmError extends Error {
   constructor(
     message: string,
-    readonly kind: OllamaErrorKind,
+    readonly kind: LlmErrorKind,
   ) {
     super(message);
   }
 }
+
+export class OllamaError extends LlmError {}
 
 export const ollamaUnreachableMessage = () => "Ollama läuft nicht – starte es mit `ollama serve`";
 export const modelMissingMessage = (model: string) =>
@@ -102,7 +105,7 @@ const CONFIDENCE_KEYS = [
   "vatTreatment",
 ] as const;
 
-/** JSON schema passed as Ollama `format`. */
+/** JSON schema of the answer (Ollama `format`, OpenAI `response_format.json_schema.schema`). */
 export const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -190,7 +193,7 @@ export function buildPrompt(text: string, ctx: PromptContext, withImages: boolea
   return { system, user };
 }
 
-interface LlmOutput {
+export interface LlmOutput {
   supplierName?: string | null;
   supplierUid?: string | null;
   supplierCountry?: string | null;
@@ -293,7 +296,7 @@ export interface OllamaExtractResult {
 }
 
 /** Shape the model has to answer with when the runner cannot enforce the schema (prompt-only fallback). */
-const JSON_SHAPE_HINT = `Antworte NUR mit einem JSON-Objekt genau dieser Form (null wo unbekannt):
+export const JSON_SHAPE_HINT = `Antworte NUR mit einem JSON-Objekt genau dieser Form (null wo unbekannt):
 {"supplierName": string|null, "supplierUid": string|null, "supplierCountry": string|null, "supplierInvoiceNumber": string|null,
  "issueDate": "YYYY-MM-DD"|null, "dueDate": "YYYY-MM-DD"|null, "currency": string|null, "grossTotal": number|null,
  "taxLines": [{"ratePercent": number, "net": number|null, "tax": number|null, "gross": number|null}],

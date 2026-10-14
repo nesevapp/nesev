@@ -17,6 +17,7 @@ import {
   confidenceLevel,
   FIELD_SOURCE_LABELS,
   type FieldSuggestion,
+  modelLabel,
   type ReceiptFields,
   suggestedLines,
   TEXT_SOURCE_LABELS,
@@ -235,7 +236,7 @@ function StatusText({ analysis }: { analysis: ReceiptAnalysis | null }) {
     default: {
       const parts = [
         analysis.textSource ? TEXT_SOURCE_LABELS[analysis.textSource] : null,
-        analysis.model || (analysis.textSource === "xml" ? null : "ohne KI"),
+        analysis.model ? modelLabel(analysis.model) : analysis.textSource === "xml" ? null : "ohne KI",
         analysis.result?.timings?.total != null ? `${(analysis.result.timings.total / 1000).toLocaleString("de-AT", { maximumFractionDigits: 1 })} s` : null,
       ].filter(Boolean);
       return <>{parts.join(" · ")}</>;
