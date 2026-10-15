@@ -60,7 +60,7 @@ describe("neutralizeNumbers", () => {
 
   test("anything else becomes a stand-in; known numbers and the rest of the text stay", () => {
     expect(n("RE-2026-0004 ist angelegt, RE-2026-0001 ist offen.")).toBe("Der Entwurf ist angelegt, RE-2026-0001 ist offen.");
-    expect(n("Angelegt: AN-2026-0009 über € 100,00")).toBe("Angelegt: Der Entwurf über € 100,00");
+    expect(n("Angelegt: AN-2026-0009 über € 100,00")).toBe("Angelegt: der Entwurf über € 100,00");
     expect(n("- Position 1\n  - Unterpunkt mit ER-2026-0002")).toBe("- Position 1\n  - Unterpunkt mit ER-2026-0002");
   });
 });

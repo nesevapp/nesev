@@ -79,7 +79,7 @@ const STAND_IN: Record<string, string> = {
 const LINK_LABEL: Record<string, string> = { RE: "Rechnung", AN: "Angebot", GS: "Gutschrift", MA: "Mahnung", ER: "Ausgabe", K: "Kunde", AV: "Anlage" };
 /** a noun right before the number ("Rechnungsentwurf Nr. RE-…", "die Rechnung RE-…"): the number can just go */
 const NOUN_BEFORE = /([\p{L}]*(?:rechnung|entwurf|angebot|gutschrift|mahnung|ausgabe|beleg|kunde|kunden|kundin|anlage))(\s*(?:nr\.?|nummer)?\s*:?\s*)$/iu;
-const SENTENCE_START = /(?:^|[.!?:]\s+|\n\s*(?:[-*•]\s+|\d+\.\s+)?)$/;
+const SENTENCE_START = /(?:^|[.!?]\s+|\n\s*(?:[-*•]\s+|\d+\.\s+)?)$/;
 
 /**
  * The text with each unknown number replaced by neutral wording: dropped after a noun ("die Rechnung RE-… für
