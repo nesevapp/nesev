@@ -129,3 +129,11 @@ Client numbers are integers shown as `K-0001` (`formatClientNumber`/`parseClient
 
 Server: `getClient(db, id)`, `requireClient(db, id)` (404) and `clientSnapshot(client)` (→ `ClientSnapshot` for finalize) in `services/clients.ts`.
 Web: `Client`, `clientQuery(id)`, `clientsQuery(filter)` and `clientPickerQuery(q)` in `sdk/clients.ts` (import from `@/sdk`). Use `<ClientPicker value={clientId} onChange={(client) => ...} />` from `features/clients/components/ClientPicker.tsx` (`client` is a `Client` or `null`). It also takes `placeholder`, `disabled`, `className`, `id` and `aria-invalid`. The "Dokumente" section on the client detail page renders `features/clients/components/client-documents.tsx`. The documents feature owns that component's body.
+
+## Colors & dark mode
+- Theme: `app/theme.ts` (light / dark / system per browser, class `dark` on `<html>`, set before paint in `index.html`); switch in the sidebar footer.
+- Never hard-code palette colors (`text-red-700`, `bg-amber-50`, `#2a78d6`, `bg-white`). Use the tokens from `styles.css`:
+  - surfaces/text: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`, `border-border` …
+  - status: `text-success|warning|danger|info`, soft background `bg-*-muted`, border `border-*-border` (e.g. a notice: `border-warning-border bg-warning-muted text-warning`).
+  - charts: `CHART_COLORS` (CSS variables) or `fill-chart-revenue`, `stroke-chart-grid`, `fill-chart-result` …
+- Exceptions: PDF content and the pdfme designer canvas (paper is white in both themes), image previews/crop overlays (`bg-black/50` scrims are fine).

@@ -2,16 +2,20 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 // Pure helpers and color tokens shared by the SVG charts (dashboard revenue chart, forecast chart, assistant cards).
 
-/** Platform chart colors: revenue / inflow blue, expenses / outflow orange (+ their light previous-year shades). */
+/**
+ * Platform chart colors: revenue / inflow blue, expenses / outflow orange (+ their light previous-year shades).
+ * CSS variables from styles.css, so they switch with the dark theme (also usable as Tailwind classes:
+ * fill-chart-revenue, stroke-chart-grid, …).
+ */
 export const CHART_COLORS = {
-  revenue: "#2a78d6",
-  revenueLight: "#93bdf0",
-  expenses: "#e5813e",
-  expensesLight: "#f3cfae",
-  /** result / balance line (zinc-800) */
-  result: "#27272a",
-  neutral: "#71717a",
-  muted: "#d4d4d8",
+  revenue: "var(--chart-revenue)",
+  revenueLight: "var(--chart-revenue-light)",
+  expenses: "var(--chart-expenses)",
+  expensesLight: "var(--chart-expenses-light)",
+  /** result / balance line */
+  result: "var(--chart-result)",
+  neutral: "var(--chart-neutral)",
+  muted: "var(--chart-muted)",
 } as const;
 
 export const euroAxis = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });

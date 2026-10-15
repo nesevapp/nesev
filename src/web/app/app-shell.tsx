@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ChatButton, ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
+import { ThemeToggle } from "./theme-toggle";
 import { InboxNavBadge } from "@/features/expenses/inbox/inbox-badge";
 
 interface NavItem {
@@ -131,6 +132,9 @@ export function AppShell() {
             </div>
           ))}
         </nav>
+        <div className="px-3 py-3">
+          <ThemeToggle />
+        </div>
       </aside>
       {/* `relative`: absolutely positioned descendants (Radix Select/Switch/Checkbox render hidden native inputs with
           position:absolute) must resolve against main, not the viewport; otherwise they stretch the document, the

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --radius: 0.5rem;
@@ -28,6 +28,78 @@
   --sidebar-accent: oklch(0.94 0.003 286.3);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.9);
   --sidebar-border: oklch(0.92 0.004 286.3);
+  /* status colors (badges, notices, amounts): text / soft background / border */
+  --success: oklch(0.508 0.118 165.6);
+  --success-muted: oklch(0.979 0.021 166.1);
+  --success-border: oklch(0.905 0.093 164.2);
+  --warning: oklch(0.555 0.163 48.998);
+  --warning-muted: oklch(0.987 0.022 95.3);
+  --warning-border: oklch(0.924 0.12 95.7);
+  --danger: oklch(0.505 0.213 27.5);
+  --danger-muted: oklch(0.971 0.013 17.4);
+  --danger-border: oklch(0.885 0.062 18.3);
+  --info: oklch(0.5 0.134 242.7);
+  --info-muted: oklch(0.977 0.013 236.6);
+  --info-border: oklch(0.901 0.058 230.9);
+  /* charts: revenue/inflow blue, expenses/outflow orange (+ previous-year shades), result line, grid */
+  --chart-revenue: #2a78d6;
+  --chart-revenue-light: #93bdf0;
+  --chart-expenses: #e5813e;
+  --chart-expenses-light: #f3cfae;
+  --chart-result: #27272a;
+  --chart-neutral: #71717a;
+  --chart-muted: #d4d4d8;
+  --chart-grid: oklch(0.967 0.001 286.4);
+  --shadow-edge: oklch(0 0 0 / 0.09);
+}
+
+/* Dark theme: class "dark" on <html> (set before first paint by index.html, see app/theme.ts). */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.004 285.9);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.2 0.005 285.9);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.22 0.006 285.9);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.92 0.004 286.3);
+  --primary-foreground: oklch(0.21 0.006 285.9);
+  --secondary: oklch(0.27 0.006 286);
+  --secondary-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.25 0.006 286);
+  --muted-foreground: oklch(0.71 0.015 286.1);
+  --accent: oklch(0.27 0.006 286);
+  --accent-foreground: oklch(0.96 0 0);
+  --destructive: oklch(0.704 0.191 22.2);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.9);
+  --sidebar: oklch(0.19 0.005 285.9);
+  --sidebar-foreground: oklch(0.8 0.01 286);
+  --sidebar-accent: oklch(0.27 0.006 286);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --success: oklch(0.8 0.15 162.5);
+  --success-muted: oklch(0.3 0.06 166 / 0.45);
+  --success-border: oklch(0.5 0.1 165 / 0.5);
+  --warning: oklch(0.84 0.15 84);
+  --warning-muted: oklch(0.33 0.07 70 / 0.45);
+  --warning-border: oklch(0.55 0.12 70 / 0.5);
+  --danger: oklch(0.76 0.15 22);
+  --danger-muted: oklch(0.32 0.09 22 / 0.45);
+  --danger-border: oklch(0.55 0.16 22 / 0.5);
+  --info: oklch(0.8 0.11 235);
+  --info-muted: oklch(0.32 0.07 240 / 0.45);
+  --info-border: oklch(0.55 0.11 240 / 0.5);
+  --chart-revenue: #4b93ea;
+  --chart-revenue-light: #2c4f7c;
+  --chart-expenses: #ef9450;
+  --chart-expenses-light: #7a4a28;
+  --chart-result: #e4e4e7;
+  --chart-neutral: #a1a1aa;
+  --chart-muted: #52525b;
+  --chart-grid: oklch(1 0 0 / 7%);
+  --shadow-edge: oklch(0 0 0 / 0.45);
 }
 
 @theme inline {
@@ -59,6 +131,26 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-muted: var(--danger-muted);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-muted: var(--info-muted);
+  --color-info-border: var(--info-border);
+  --color-chart-revenue: var(--chart-revenue);
+  --color-chart-revenue-light: var(--chart-revenue-light);
+  --color-chart-expenses: var(--chart-expenses);
+  --color-chart-expenses-light: var(--chart-expenses-light);
+  --color-chart-result: var(--chart-result);
+  --color-chart-neutral: var(--chart-neutral);
+  --color-chart-muted: var(--chart-muted);
+  --color-chart-grid: var(--chart-grid);
 }
 
 @layer base {
@@ -80,6 +172,6 @@
   background:
     linear-gradient(to right, var(--background) 40%, transparent) left center / 2.5rem 100% no-repeat local,
     linear-gradient(to left, var(--background) 40%, transparent) right center / 2.5rem 100% no-repeat local,
-    linear-gradient(to right, oklch(0 0 0 / 0.09), transparent) left center / 0.75rem 100% no-repeat scroll,
-    linear-gradient(to left, oklch(0 0 0 / 0.09), transparent) right center / 0.75rem 100% no-repeat scroll;
+    linear-gradient(to right, var(--shadow-edge), transparent) left center / 0.75rem 100% no-repeat scroll,
+    linear-gradient(to left, var(--shadow-edge), transparent) right center / 0.75rem 100% no-repeat scroll;
 }
