@@ -89,6 +89,7 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `get_tax_report` | `uva` / `zm` / `ear` with Kennzahlen, warnings and a disclaimer (a helper, not tax advice) |
 | `list_assets` | Anlagenverzeichnis of a year: AfA and book values |
 | `get_receipt_analysis` | latest OCR result of an expense: suggested fields with confidence. Nothing is applied. |
+| `list_receipt_inbox` | receipts waiting in the Belege-Eingang (inbox folder / inbox page), plus the configured folder |
 | `get_bank_overview` | bank accounts (counts, sum of imported amounts, last booking) and the unallocated sums of open transactions |
 | `list_bank_transactions` | default open (unmatched) transactions. Filters: status (`all` too), direction, account, dates, query, exact amount; rows show the allocations |
 | `get_bank_transaction` | one transaction with allocations (`matchId`) and up to 3 suggested invoices/expenses (proposed amount, confidence, reasons); `query` searches open candidates instead |
@@ -104,6 +105,7 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `update_document_draft` | Drafts only. Changes the given fields; `items` replaces all lines |
 | `create_expense` | Lines with net or gross, rate and deductible %; the VAT treatment defaults from country and UID. For reverse charge / ig. Erwerb a gross amount is the amount payable (= net), the VAT is self-assessed on top. Optional: `receiptPath` (a local file, checked like the UI: PDF/JPG/PNG/WebP, ≤ 20 MB, plus the file content) and `fixedCostId` + `fixedCostSlot` |
 | `queue_receipt_analysis` | Queues OCR on the running nesev server over HTTP (`NESEV_API_URL`). It first checks that the server uses the same data (each expense must match on number, supplier and receipt). Fails clearly when the server isn't running. |
+| `create_expense_from_inbox` | One expense draft per inbox item, the file attached as receipt (no supplier/lines yet). Never analyses; the folder scan stays in the nesev server. |
 | `create_fixed_cost` | Fixkosten: gross per payment in euros, the contained VAT rate, interval (`intervalCount` × month/year), first payment date. Refuses likely duplicates (an active entry with the same name, or the same supplier and amount) unless `allowDuplicate: true` |
 | `create_asset` | Anlage with straight-line AfA. With `expenseId`, name, dates and cost (net + non-deductible VAT, minus assets already linked) come from the expense's `anlagen` lines; useful life is always required. Returns the AfA plan |
 

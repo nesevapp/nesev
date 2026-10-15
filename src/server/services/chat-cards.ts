@@ -193,6 +193,37 @@ const expenseList: Builder = (d) => {
   return withTotal(card, { label: "Summe brutto", cents: cents(d.sumGross) });
 };
 
+/** list_receipt_inbox: files waiting in the Belege-Eingang */
+const receiptInbox: Builder = (d) => {
+  if (!Array.isArray(d.items)) return null;
+  return table(d.items, {
+    title: `Belege-Eingang (${d.total ?? d.items.length})`,
+    columns: [
+      { key: "file", label: "Datei" },
+      { key: "date", label: "Eingegangen" },
+      { key: "source", label: "Quelle" },
+    ],
+    row: (x) => ({ file: x.fileName ?? "", date: deDate(x.receivedAt), source: x.source === "folder" ? "Ordner" : "hochgeladen" }),
+    rowPath: () => "/expenses/inbox",
+    count: d.total,
+    link: { label: "Belege-Eingang öffnen", path: "/expenses/inbox" },
+  });
+};
+
+/** create_expense_from_inbox: the new drafts */
+const inboxExpenses: Builder = (d) => {
+  if (!Array.isArray(d.created) || !d.created.length) return null;
+  return table(d.created, {
+    title: d.created.length === 1 ? "Ausgabe aus Belege-Eingang angelegt" : `${d.created.length} Ausgaben aus Belege-Eingang angelegt`,
+    columns: [
+      { key: "number", label: "Nummer" },
+      { key: "file", label: "Beleg" },
+    ],
+    row: (x) => ({ number: x.number ?? "–", file: x.fileName ?? "" }),
+    rowPath: (x) => path(x.link),
+  });
+};
+
 const fixedCosts: Builder = (d) => {
   if (!Array.isArray(d.fixedCosts)) return null;
   const card = table(d.fixedCosts, {
@@ -600,6 +631,8 @@ const BUILDERS: Record<string, Builder> = {
   list_reminders_due: remindersDue,
   list_clients: clientList,
   list_expenses: expenseList,
+  list_receipt_inbox: receiptInbox,
+  create_expense_from_inbox: inboxExpenses,
   list_fixed_costs: fixedCosts,
   list_assets: assets,
   get_forecast: forecast,

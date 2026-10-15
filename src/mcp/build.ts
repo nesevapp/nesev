@@ -11,6 +11,7 @@ import { registerExpenseTools } from "./tools/expenses";
 import { registerFinanceTools } from "./tools/finance";
 import { registerOverviewTools } from "./tools/overview";
 import { registerReceiptTools } from "./tools/receipts";
+import { registerReceiptInboxTools } from "./tools/receipt-inbox";
 import { registerRecurringTools } from "./tools/recurring";
 import { registerDocumentWriteTools } from "./tools/write-documents";
 import { registerExpenseWriteTools } from "./tools/write-expenses";
@@ -38,6 +39,7 @@ const TOOL_MODULES: ((server: McpServer, ctx: ToolContext) => void)[] = [
   registerDocumentWriteTools,
   registerExpenseWriteTools,
   registerReceiptTools,
+  registerReceiptInboxTools,
   // bank (read + match) and recurring invoices, then updates of existing records, fixed costs, assets
   registerBankTools,
   registerRecurringTools,

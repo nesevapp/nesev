@@ -139,7 +139,7 @@ export const GROUP_ROUTES: Record<Exclude<ToolGroup, "core" | "ui">, { words: Re
   },
   expenses: {
     words:
-      /ausgabe|beleg|quittung|kassenbon|rechnungsfoto|einkauf|eingangsrechnung|lieferant|fixkost|miete|versicherung|\bsvs\b|abo\b|abonnement|kategori|erkennung|\bocr\b|\ber-?\s?\d/,
+      /ausgabe|beleg|quittung|kassenbon|rechnungsfoto|einkauf|eingangsrechnung|lieferant|fixkost|miete|versicherung|\bsvs\b|abo\b|abonnement|kategori|erkennung|\bocr\b|\ber-?\s?\d|\beingang\b/,
     weak: /kosten/,
     paths: /^\/(expenses|fixed-costs)\b/,
   },

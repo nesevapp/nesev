@@ -45,12 +45,14 @@ const WRITE_TOOLS = [
   "create_expense",
   "get_receipt_analysis",
   "queue_receipt_analysis",
+  "list_receipt_inbox",
+  "create_expense_from_inbox",
 ];
 /** appended after WRITE_TOOLS (tools/bank.ts, tools/recurring.ts, tools/write-records.ts), in this order */
 const BANK_TOOLS: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored"];
 const RECURRING_TOOLS: string[] = ["list_recurring_invoices", "set_recurring_invoice_active", "generate_recurring_invoice"];
 const RECORD_TOOLS: string[] = ["update_client", "update_expense", "mark_expense_paid", "apply_receipt_analysis", "create_fixed_cost", "link_expense_to_fixed_cost", "create_asset"];
-const MORE_READ_ONLY: string[] = ["get_bank_overview", "list_bank_transactions", "get_bank_transaction", "list_recurring_invoices"];
+const MORE_READ_ONLY: string[] = ["list_receipt_inbox", "get_bank_overview", "list_bank_transactions", "get_bank_transaction", "list_recurring_invoices"];
 const MORE_STATE_CHANGING: string[] = ["match_bank_transaction", "unmatch_bank_transaction", "set_bank_transaction_ignored", "set_recurring_invoice_active", "generate_recurring_invoice", "update_client", "update_expense", "mark_expense_paid", "apply_receipt_analysis", "link_expense_to_fixed_cost"];
 const ALL_TOOLS = [...TOOLS, ...WRITE_TOOLS, ...BANK_TOOLS, ...RECURRING_TOOLS, ...RECORD_TOOLS];
 const STATE_CHANGING = [...MORE_STATE_CHANGING, "finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
@@ -904,3 +906,15 @@ test("stdout carries only JSON-RPC (raw `bun run mcp`)", async () => {
   expect(messages.map((m) => m.id).filter((id) => id !== undefined).sort()).toEqual([1, 2, 3, 4, 5]);
   expect(messages.find((m) => m.id === 5).result.isError).toBe(true);
 }, 30_000);
+
+describe("Belege-Eingang", () => {
+  test("list_receipt_inbox lists nothing on demo data; create_expense_from_inbox reports unknown ids", async () => {
+    const list = await callTool("list_receipt_inbox");
+    expect(list.isError).toBeFalsy();
+    expect(list.data).toMatchObject({ total: 0, items: [] });
+    expect(list.text).toContain("Keine neuen Belege");
+    const bad = await callTool("create_expense_from_inbox", { ids: [999] });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toContain("nicht gefunden");
+  });
+});

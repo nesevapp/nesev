@@ -9,6 +9,7 @@ import type documentsApp from "../server/routes/documents";
 import type expensesApp from "../server/routes/expenses";
 import type forecastApp from "../server/routes/forecast";
 import type receiptsApp from "../server/routes/receipts";
+import type receiptInboxApp from "../server/routes/receipt-inbox";
 import type recurringApp from "../server/routes/recurring";
 import type recurringExpensesApp from "../server/routes/recurring-expenses";
 import type remindersApp from "../server/routes/reminders";
@@ -54,6 +55,8 @@ export function createApi(opts: { inServer?: boolean } = {}) {
     forecast: hc<typeof forecastApp>(`${BASE}/forecast`, { fetch }),
     /** GET only, unless inServer (see IN_PROCESS_BLOCKED) */
     receipts: hc<typeof receiptsApp>(`${BASE}/receipts`, { fetch }),
+    /** Belege-Eingang (list, convert); scanning the folder belongs to the nesev server */
+    receiptInbox: hc<typeof receiptInboxApp>(`${BASE}/receipt-inbox`, { fetch }),
     recurring: hc<typeof recurringApp>(`${BASE}/recurring`, { fetch }),
     recurringExpenses: hc<typeof recurringExpensesApp>(`${BASE}/recurring-expenses`, { fetch }),
     reminders: hc<typeof remindersApp>(`${BASE}/reminders`, { fetch }),
