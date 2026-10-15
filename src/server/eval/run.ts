@@ -127,7 +127,7 @@ function seedTemplate(): string {
   return dir;
 }
 
-async function startApi(template: string) {
+async function startApi(template: string, attempt = 1): Promise<{ base: string; model: string }> {
   await stopApi();
   const dir = mkdtempSync(join(tmpdir(), "nesev-eval-"));
   tempDirs.push(dir);
@@ -151,6 +151,8 @@ async function startApi(template: string) {
   logOffset = 0;
   const base = `http://127.0.0.1:${port}/api/chat`;
   for (let i = 0; ; i++) {
+    // the free port can be taken between freePort() and the API's bind: start again on another one
+    if (proc.exitCode !== null && attempt < 3) return startApi(template, attempt + 1);
     if (i > 100) throw new Error("API did not start");
     if (await fetch(`${base}/status`).then((r) => r.ok, () => false)) break;
     await Bun.sleep(100);
