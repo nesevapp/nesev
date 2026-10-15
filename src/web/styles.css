@@ -41,6 +41,11 @@
   --info: oklch(0.5 0.134 242.7);
   --info-muted: oklch(0.977 0.013 236.6);
   --info-border: oklch(0.901 0.058 230.9);
+  /* solid fills for dots, progress bars, severity levels (500/600 shades) */
+  --success-solid: #10b981;
+  --warning-solid: #f59e0b;
+  --caution-solid: #f97316;
+  --danger-solid: #dc2626;
   /* "ready for you" states (e.g. receipt analysis suggestions), violet */
   --highlight: oklch(0.491 0.27 292.6);
   --highlight-muted: oklch(0.969 0.016 293.8);
@@ -102,6 +107,10 @@
   --info-muted: oklch(0.32 0.07 240 / 0.45);
   --info-border: oklch(0.55 0.11 240 / 0.5);
   --highlight: oklch(0.81 0.11 293);
+  --success-solid: #34d399;
+  --warning-solid: oklch(0.8 0.16 75);
+  --caution-solid: #fb8a3c;
+  --danger-solid: oklch(0.68 0.19 25);
   --highlight-muted: oklch(0.32 0.09 293 / 0.45);
   --highlight-border: oklch(0.55 0.15 293 / 0.5);
   --chart-revenue: #4b93ea;
@@ -162,6 +171,10 @@
   --color-info-muted: var(--info-muted);
   --color-info-border: var(--info-border);
   --color-highlight: var(--highlight);
+  --color-success-solid: var(--success-solid);
+  --color-warning-solid: var(--warning-solid);
+  --color-caution-solid: var(--caution-solid);
+  --color-danger-solid: var(--danger-solid);
   --color-highlight-muted: var(--highlight-muted);
   --color-highlight-border: var(--highlight-border);
   --color-chart-revenue: var(--chart-revenue);

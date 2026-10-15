@@ -134,6 +134,6 @@ Web: `Client`, `clientQuery(id)`, `clientsQuery(filter)` and `clientPickerQuery(
 - Theme: `app/theme.ts` (light / dark / system per browser, class `dark` on `<html>`, set before paint in `index.html`); switch in the sidebar footer.
 - Never hard-code palette colors (`text-red-700`, `bg-amber-50`, `#2a78d6`, `bg-white`). Use the tokens from `styles.css`:
   - surfaces/text: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`, `border-border` …
-  - status: `text-success|warning|danger|info|highlight` (highlight = violet "ready" states), soft background `bg-*-muted`, border `border-*-border` (e.g. a notice: `border-warning-border bg-warning-muted text-warning`).
+  - status: `text-success|warning|danger|info|highlight` (highlight = violet "ready" states); solid fills for dots/bars: `bg-success-solid|warning-solid|caution-solid|danger-solid`, soft background `bg-*-muted`, border `border-*-border` (e.g. a notice: `border-warning-border bg-warning-muted text-warning`).
   - charts: `CHART_COLORS` (CSS variables) or `fill-chart-revenue`, `stroke-chart-grid`, `fill-chart-result` …
 - Exceptions: PDF content and the pdfme designer canvas (paper is white in both themes), image previews/crop overlays (`bg-black/50` scrims are fine).
