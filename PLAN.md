@@ -66,11 +66,12 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Anything inside the top 30 mm or the bottom ~28 mm repeats on every page (header/footer). The body flows, and the items table breaks across pages.
 - A letterhead PDF is drawn under the pages: its page 1 under the first page, its page 2 under all following pages.
 - Designer: canvas plus one panel ("Aufbau" with ↑/↓ section reordering that really moves content, "Variablen", "Eigenschaften"). Text elements support `{placeholders}`.
-- Invoices get an EPC/GiroCode QR (IBAN, amount, invoice number as reference).
+- **Zahlen mit Code:** invoices and reminders get an EPC QR code (GiroCode, EPC069-12 v002, UTF-8; `lib/pdf/epc-qr.ts`): payee = company name (else owner) + IBAN (+ BIC if valid), amount = gross at finalize (reminders: open amount + fees + interest), remittance text = invoice number. Name/text are cleaned of line breaks, cut to 70/140 characters and, if umlauts etc. push it over 331 bytes, shortened further (text first). No code without a valid IBAN, a name or an amount > 0, nor when Einstellungen → Unternehmen → Bankverbindung → „Zahlen mit Code“ (`settings.paymentQr`) is off; designer previews always show it. Caption „Zahlen mit Code“ under the code. In the designer `epcQr` / `epcQrLabel` are placeable variables (group Zahlung). Frozen PDFs are never re-rendered. Documents have no currency field: everything is EUR.
 
 ### Dashboard
 - Tiles for the selected year: Umsatz (net, vs. the same months of the previous year), Ausgaben (net, by document date), Ergebnis (Umsatz − Ausgaben, with margin), Bezahlt; second row: open invoices, overdue, open offers.
 - Monthly chart: revenue (blue) and expenses (orange) as columns, result as a line; switches for "Ausgaben" (on by default) and "Vorjahr"; table view with the same columns. Expenses count by document date like revenue (the EAR on `/tax` counts by payment date); incomplete drafts have no lines and add nothing. `anlagen` lines are replaced by the AfA (1/12 per month).
+- **Kleinunternehmergrenze** (only with `settings.smallBusiness`; `shared/small-business.ts`, `services/small-business.ts`): card below the KPIs with the gross turnover of the selected year (non-draft invoices − credit notes, by invoice date) against € 55.000, markers at € 55.000 and € 60.500. Rules since 2025 (§ 6 Abs. 1 Z 27 UStG, usp.gv.at): limit € 55.000 gross in the previous and the current year; up to 10 % over (≤ € 60.500) the current year stays exempt but the next one isn't; above € 60.500 the exemption ends with the invoice that crosses it (the card names its date). Amber from 80 %, orange in the tolerance band, red when exceeded or when the previous year was over € 55.000. Current year: projection with draft invoices and the remaining runs of active Serienrechnungen until 31.12. Hint text: not every turnover counts (Hilfsgeschäfte …), planning aid, not tax advice. Open: Ist-Versteuerer might want payment dates instead of invoice dates.
 
 ### Reminders (Mahnwesen)
 - Levels are configurable (default: Zahlungserinnerung €0, 1. Mahnung €10, 2./letzte Mahnung €20, each +7 days). The last level can repeat. Optional default interest (simple, actual days / 365).
@@ -214,6 +215,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
 - Accountant export: CSV (BOM, `;`, decimal comma) and a ZIP with all PDFs for a period.
 
+- **Background service (macOS launchd):** `bun run service:install [--port 3998] [--skip-build]` builds the SPA, writes `~/Library/LaunchAgents/at.nesev.plist` (label `at.nesev`: `bun src/server/index.ts` with NODE_ENV=production, PORT, PATH = bun dir + Homebrew + system, NESEV_DATA_DIR if set at install time; WorkingDirectory = repo; RunAtLoad, KeepAlive) and loads it with `launchctl bootstrap`. Logs: `~/Library/Logs/nesev/nesev.log` / `nesev.err.log`. `service:status` shows state/PID and pings the port, `service:uninstall` boots it out and removes the plist. `--dry-run` writes the plist to a temp dir and runs `plutil -lint` only. Stop the dev server on the same port first; after code updates rerun `service:install` (rebuilds and restarts).
 ---
 
 ## 3. Open decisions (for the user / Steuerberater)
@@ -232,7 +234,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 3. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
 4. **Down payment / final invoice** (Anzahlungs- & Schlussrechnung) from accepted offers.
 5. **Comfort:** dark mode. (Global search and keyboard shortcuts are done.)
-6. **Ops:** run as a background service on login (launchd, `bun start`), offsite copy of backups.
+6. **Ops:** offsite copy of backups. (The launchd background service is done: `bun run service:install`.)
 7. **Assistant follow-ups:** pre-warm the model when the chat panel opens (the first prompt of a fresh server costs ~9 s with 4B). The 4B still sometimes picks open_pdf for „herunterladen“ or answers „Öffne die Ausgabe von A1“ without opening it.
 8. **MCP follow-ups (if needed):** recurring invoices and Fixkosten write tools, applying receipt-analysis suggestions to an expense, email once SMTP exists.
 

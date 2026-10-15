@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "mcp": "bun src/mcp/server.ts",
-    "eval:chat": "bun src/server/eval/run.ts"
+    "eval:chat": "bun src/server/eval/run.ts",
+    "service:install": "bun scripts/service.ts install",
+    "service:uninstall": "bun scripts/service.ts uninstall",
+    "service:status": "bun scripts/service.ts status"
   },
   "dependencies": {
     "@hono/zod-validator": "0.9.1",
