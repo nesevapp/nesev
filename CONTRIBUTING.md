@@ -8,14 +8,14 @@ the approach before you write the code.
 
 ```bash
 bun install
-bun run demo                 # the app with demo data in its own data dir
+bun run demo                 # the app with demo data (demo-data/) on http://127.0.0.1:3999
 ```
 
 Use a separate data dir and port for experiments, never your real `data/`:
 
 ```bash
-NESEV_DATA_DIR=/tmp/nesev-dev PORT=3999 bun run dev:api
-PORT=3999 bunx vite --port 5199 --strictPort       # Vite proxies /api to the same PORT
+NESEV_DATA_DIR=/tmp/nesev-dev PORT=3990 bun run dev:api
+PORT=3990 bunx vite --port 5190 --strictPort       # Vite proxies /api to the same PORT
 ```
 
 ## Commands
