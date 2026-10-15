@@ -103,7 +103,7 @@ export function SettingsPage() {
               {errorTabs.includes(t) ? (
                 <TabDot className="bg-destructive" label="enthält Fehler" />
               ) : dirtyTabs.includes(t) ? (
-                <TabDot className="bg-amber-500" label="ungespeicherte Änderungen" />
+                <TabDot className="bg-warning-solid" label="ungespeicherte Änderungen" />
               ) : null}
             </TabsTrigger>
           ))}
@@ -358,7 +358,7 @@ function UnsavedBanner({
   onSave: () => void;
 }) {
   return (
-    <div className="flex max-w-4xl items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm">
+    <div className="flex max-w-4xl items-center gap-3 rounded-lg border border-warning-border bg-warning-muted px-4 py-2.5 text-sm">
       <span className="flex-1">
         Ungespeicherte Änderungen unter {tabs.map((t) => `„${SETTINGS_TAB_LABELS[t]}“`).join(" und ")}.
       </span>

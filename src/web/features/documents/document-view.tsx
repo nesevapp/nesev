@@ -120,7 +120,7 @@ export function DocumentView({ doc }: { doc: Document }) {
         <dl className="grid grid-cols-[max-content_1fr] content-start gap-x-6 gap-y-1.5 text-sm">
           <Meta label={`${config.singular}sdatum`} value={formatDate(doc.issueDate)} />
           {doc.type === "invoice" && (
-            <Meta label="Fällig am" value={formatDate(doc.dueDate)} className={doc.overdue ? "text-red-600" : undefined} />
+            <Meta label="Fällig am" value={formatDate(doc.dueDate)} className={doc.overdue ? "text-danger" : undefined} />
           )}
           {doc.type === "offer" && <Meta label="Gültig bis" value={formatDate(doc.validUntil)} />}
           {(doc.servicePeriodStart || doc.servicePeriodEnd) && (

@@ -333,7 +333,7 @@ export function DocumentEditor({
                     </Select>
                     {taxNote && <p className="text-xs text-muted-foreground">Hinweis auf dem Beleg: „{taxNote}“</p>}
                     {missingUid && (
-                      <p className="flex items-center gap-1.5 text-xs text-amber-700">
+                      <p className="flex items-center gap-1.5 text-xs text-warning">
                         <AlertTriangle className="size-3.5" />
                         Kunde hat keine UID-Nummer – Reverse Charge kann so nicht finalisiert werden.
                       </p>

@@ -41,7 +41,7 @@ const col = createColumnHelper<typeof features, DocumentListItem>();
 
 function dueCell(value: string | null, overdue: boolean) {
   return value ? (
-    <span className={cn("tabular", overdue && "text-red-600")}>{formatDate(value)}</span>
+    <span className={cn("tabular", overdue && "text-danger")}>{formatDate(value)}</span>
   ) : (
     <span className="text-muted-foreground/60">–</span>
   );

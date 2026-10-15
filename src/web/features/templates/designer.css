@@ -17,3 +17,13 @@
 .nesev-designer .pdfme-designer-detail-view .ant-col:has(> .ant-form-item :is(#type, #name, #editable, #required)) {
   display: none;
 }
+
+/* Dark theme: pdfme's sidebars (antd, partly with its own bundled theme that ignores options.theme) can't be themed
+   reliably, so they are inverted (white → about the sidebar color) with hues kept. Color swatches are inverted back
+   so they show roughly the real color. The canvas and the paper stay as they are. */
+.dark .nesev-designer :is(.pdfme-designer-left-sidebar, .pdfme-designer-right-sidebar) {
+  filter: invert(0.92) hue-rotate(180deg);
+}
+.dark .nesev-designer .pdfme-designer-right-sidebar .ant-color-picker-color-block {
+  filter: invert(1) hue-rotate(180deg);
+}

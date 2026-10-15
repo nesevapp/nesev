@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>nesev</title>
+    <!-- dark canvas before the stylesheet arrives (in dev Vite injects CSS from JS) -->
+    <style>
+      :root.dark { color-scheme: dark; background: Canvas; }
+    </style>
     <script>
       // theme before first paint (see app/theme.ts)
       try {

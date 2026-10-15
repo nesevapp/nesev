@@ -86,7 +86,7 @@ function ToolCard({
       </span>
     ),
     pending: (
-      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
+      <span className="flex items-center gap-1 text-warning">
         <Clock className="size-3" /> wartet auf Bestätigung
       </span>
     ),
@@ -309,10 +309,10 @@ export function ConfirmCard({
     <div
       role="group"
       aria-label="Bestätigung erforderlich"
-      className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700/60 dark:bg-amber-950/30"
+      className="space-y-3 rounded-lg border border-warning-border bg-warning-muted p-3 text-sm"
     >
       <div className="flex items-start gap-2">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning" />
         <div className="space-y-1">
           <p className="font-medium">{label} – bestätigen?</p>
           <p className="text-muted-foreground">{pending.summary}</p>

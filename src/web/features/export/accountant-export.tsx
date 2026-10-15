@@ -82,7 +82,7 @@ export function AccountantExport() {
                 </span>
               </div>
               {(s.missingReceipts.length > 0 || s.warnings.length > 0) && (
-                <ul className="space-y-1 text-xs text-amber-800">
+                <ul className="space-y-1 text-xs text-warning">
                   {s.missingReceipts.length > 0 && (
                     <li className="flex gap-1.5">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />

@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 const TONES: Record<DocumentStatus | "overdue", string> = {
   draft: "border-dashed border-border text-muted-foreground",
   final: "border-border bg-secondary text-secondary-foreground",
-  sent: "border-sky-200 bg-sky-50 text-sky-700",
-  accepted: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  paid: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  declined: "border-zinc-200 bg-zinc-100 text-zinc-500 line-through decoration-zinc-400/60",
-  overdue: "border-red-200 bg-red-50 text-red-700",
+  sent: "border-info-border bg-info-muted text-info",
+  accepted: "border-success-border bg-success-muted text-success",
+  paid: "border-success-border bg-success-muted text-success",
+  declined: "border-border bg-muted text-muted-foreground line-through decoration-muted-foreground/60",
+  overdue: "border-danger-border bg-danger-muted text-danger",
 };
 
 export function StatusBadge({
@@ -36,5 +36,5 @@ export function StatusBadge({
 
 /** Subtle hint next to the status badge: bank payments cover part of the invoice. */
 export function PartialLabel({ className }: { className?: string }) {
-  return <span className={cn("text-xs whitespace-nowrap text-amber-700", className)}>teilbezahlt</span>;
+  return <span className={cn("text-xs whitespace-nowrap text-warning", className)}>teilbezahlt</span>;
 }

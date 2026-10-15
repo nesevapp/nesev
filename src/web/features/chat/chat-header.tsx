@@ -43,14 +43,14 @@ function StatusDot({ status, busyText }: { status: ChatStatus | undefined; busyT
   const [color, text] = !status
     ? ["bg-muted-foreground/40", "Status wird geladen …"]
     : busyText
-      ? ["bg-amber-500 animate-pulse", busyText]
+      ? ["bg-warning-solid animate-pulse", busyText]
       : !status.enabled
         ? ["bg-muted-foreground/40", "Assistent ist in den Einstellungen deaktiviert"]
         : !status.ready
           ? ["bg-destructive", status.problem ?? "Nicht bereit"]
           : status.running
-            ? ["bg-emerald-500", `Modell geladen: ${status.model?.label ?? "?"}`]
-            : ["bg-emerald-500/50", `Bereit: ${status.model?.label ?? "?"} (lädt bei der ersten Frage)`];
+            ? ["bg-success-solid", `Modell geladen: ${status.model?.label ?? "?"}`]
+            : ["bg-success-solid/50", `Bereit: ${status.model?.label ?? "?"} (lädt bei der ersten Frage)`];
   return (
     <Tooltip>
       <TooltipTrigger asChild>

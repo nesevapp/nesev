@@ -44,7 +44,7 @@ export function VoiceInput({ onText, disabled }: { onText: (text: string) => voi
         >
           {recording ? (
             <>
-              <span className="size-2 animate-pulse rounded-full bg-red-500" aria-hidden />
+              <span className="size-2 animate-pulse rounded-full bg-danger-solid" aria-hidden />
               {clock(rec.elapsedMs)}
               <LevelBars level={rec.level} />
             </>

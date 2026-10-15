@@ -232,7 +232,7 @@ function VariablesTab({
                       <TooltipTrigger asChild>
                         <div className="min-w-0 flex-1 cursor-default">
                           <div className="flex items-center gap-1.5 truncate text-sm">
-                            {used && <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />}
+                            {used && <span className="size-1.5 shrink-0 rounded-full bg-success-solid" />}
                             <span className="truncate">{v.label}</span>
                           </div>
                           <div className="truncate font-mono text-[11px] text-muted-foreground">{`{${v.name}}`}</div>

@@ -72,7 +72,7 @@ export function RemindersPage({
           <TabsTrigger value="due">
             Fällig zum Mahnen
             {dueCount > 0 && (
-              <span className="ml-1 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-50 px-1 text-[11px] font-medium text-red-700 tabular">
+              <span className="ml-1 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-danger-muted px-1 text-[11px] font-medium text-danger tabular">
                 {dueCount}
               </span>
             )}
@@ -196,7 +196,7 @@ function DueTab({ rows }: { rows: DueInvoice[] | undefined }) {
                   </TableCell>
                   <TableCell className="py-2 font-medium tabular">{row.number}</TableCell>
                   <TableCell className="max-w-56 truncate py-2">{row.clientName}</TableCell>
-                  <TableCell className="py-2 tabular text-red-600">{formatDate(row.dueDate)}</TableCell>
+                  <TableCell className="py-2 tabular text-danger">{formatDate(row.dueDate)}</TableCell>
                   <TableCell className="py-2 text-right tabular">{row.daysOverdue}</TableCell>
                   <TableCell className="py-2 text-right tabular">{formatCents(row.openCents)}</TableCell>
                   <TableCell className="py-2 text-sm">{dunningState(row)}</TableCell>

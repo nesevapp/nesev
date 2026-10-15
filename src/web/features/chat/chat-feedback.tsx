@@ -46,7 +46,7 @@ export function FeedbackAction({ conversationId, messageId, feedback }: { conver
           className={cn(
             "flex items-center gap-1 rounded px-1 py-0.5 text-[11px] transition-colors",
             flagged
-              ? "text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+              ? "text-warning hover:bg-warning-muted"
               : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 data-[state=open]:opacity-100",
           )}
         >

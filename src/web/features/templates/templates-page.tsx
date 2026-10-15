@@ -201,28 +201,28 @@ function TemplateCard({
   );
 }
 
-/** Small stylised A4 page as card thumbnail. */
+/** Small stylised A4 page as card thumbnail (white paper with dark ink in both themes, like the PDF). */
 function PagePreview({ letterhead }: { letterhead: boolean }) {
   return (
-    <div className="relative h-28 w-20 rounded-[3px] border bg-white p-2 shadow-sm">
-      {letterhead && <div className="absolute inset-x-0 top-0 h-2 rounded-t-[3px] bg-primary/15" />}
-      <div className="ml-auto h-1.5 w-5 rounded-sm bg-foreground/15" />
+    <div className="relative h-28 w-20 rounded-[3px] border border-zinc-200 bg-white p-2 shadow-sm dark:border-transparent">
+      {letterhead && <div className="absolute inset-x-0 top-0 h-2 rounded-t-[3px] bg-zinc-900/15" />}
+      <div className="ml-auto h-1.5 w-5 rounded-sm bg-zinc-900/15" />
       <div className="mt-2 space-y-0.5">
-        <div className="h-0.5 w-7 bg-foreground/20" />
-        <div className="h-0.5 w-6 bg-foreground/20" />
-        <div className="h-0.5 w-5 bg-foreground/20" />
+        <div className="h-0.5 w-7 bg-zinc-900/20" />
+        <div className="h-0.5 w-6 bg-zinc-900/20" />
+        <div className="h-0.5 w-5 bg-zinc-900/20" />
       </div>
-      <div className="mt-2 h-1 w-9 bg-foreground/40" />
+      <div className="mt-2 h-1 w-9 bg-zinc-900/40" />
       <div className="mt-1.5 space-y-[3px]">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="flex gap-1">
-            <div className="h-0.5 flex-1 bg-foreground/15" />
-            <div className="h-0.5 w-2 bg-foreground/15" />
+            <div className="h-0.5 flex-1 bg-zinc-900/15" />
+            <div className="h-0.5 w-2 bg-zinc-900/15" />
           </div>
         ))}
       </div>
-      <div className="mt-1.5 ml-auto h-0.5 w-6 bg-foreground/30" />
-      <FileText className="absolute right-1.5 bottom-1.5 size-2.5 text-foreground/20" />
+      <div className="mt-1.5 ml-auto h-0.5 w-6 bg-zinc-900/30" />
+      <FileText className="absolute right-1.5 bottom-1.5 size-2.5 text-zinc-900/20" />
     </div>
   );
 }

@@ -113,7 +113,7 @@ function Description({ reminder }: { reminder: Reminder }) {
 function SettledNotice({ reminder }: { reminder: Reminder }) {
   if (!reminder.settled) return null;
   return (
-    <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+    <div className="mb-6 flex items-center gap-2 rounded-lg border border-success-border bg-success-muted px-4 py-3 text-sm text-success">
       <CheckCircle2 className="size-4" />
       Rechnung {reminder.invoice.number} wurde
       {reminder.invoice.paidAt ? ` am ${formatDate(reminder.invoice.paidAt)}` : ""} bezahlt – das Mahnverfahren ist erledigt.

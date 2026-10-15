@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 const TONES: Record<ReminderStatus | "settled", string> = {
   draft: "border-dashed border-border text-muted-foreground",
   final: "border-border bg-secondary text-secondary-foreground",
-  sent: "border-sky-200 bg-sky-50 text-sky-700",
-  settled: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  sent: "border-info-border bg-info-muted text-info",
+  settled: "border-success-border bg-success-muted text-success",
 };
 
 const pill = "inline-flex h-5 items-center rounded-full border px-2 text-xs font-medium whitespace-nowrap";
@@ -19,7 +19,7 @@ export function ReminderStatusBadge({ status, settled, className }: { status: Re
 /** "Stufe 2" with escalating tone. */
 export function LevelBadge({ level, title, className }: { level: number; title?: string; className?: string }) {
   const tone =
-    level >= 3 ? "border-red-200 bg-red-50 text-red-700" : level === 2 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-border";
+    level >= 3 ? "border-danger-border bg-danger-muted text-danger" : level === 2 ? "border-warning-border bg-warning-muted text-warning" : "border-border";
   return (
     <span className={cn(pill, tone, className)} title={title}>
       Stufe {level}

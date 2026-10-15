@@ -15,7 +15,7 @@ import { ChatChart, TONE_COLOR } from "./chat-chart";
 
 /** The tone shows as the swatch; the value itself is only red when negative (like in the charts). */
 function valueClass(cents: number, tone: ChatTone | undefined) {
-  if (cents < 0) return "text-red-700";
+  if (cents < 0) return "text-danger";
   if (tone === "muted") return "text-muted-foreground";
   return "text-foreground";
 }
@@ -139,7 +139,7 @@ function DocumentCard({ card }: { card: Extract<ChatCard, { kind: "document" }> 
         <div className="text-right">
           <div className="text-sm font-semibold tabular">{formatCents(card.grossCents)}</div>
           {card.openCents !== null && (
-            <div className={cn("tabular", card.openCents > 0 ? "text-amber-700" : "text-muted-foreground")}>
+            <div className={cn("tabular", card.openCents > 0 ? "text-warning" : "text-muted-foreground")}>
               {card.openCents > 0 ? `offen ${formatCents(card.openCents)}` : "nichts offen"}
             </div>
           )}
@@ -231,7 +231,7 @@ function TableCard({ card }: { card: Extract<ChatCard, { kind: "table" }> }) {
                               ? "whitespace-nowrap"
                               : "max-w-24 truncate",
                         k === 0 && "font-medium",
-                        c.money && typeof v === "number" && v < 0 && "text-red-700",
+                        c.money && typeof v === "number" && v < 0 && "text-danger",
                       )}
                       title={!right(c) && typeof v === "string" ? v : undefined}
                     >
