@@ -41,6 +41,10 @@
   --info: oklch(0.5 0.134 242.7);
   --info-muted: oklch(0.977 0.013 236.6);
   --info-border: oklch(0.901 0.058 230.9);
+  /* "ready for you" states (e.g. receipt analysis suggestions), violet */
+  --highlight: oklch(0.491 0.27 292.6);
+  --highlight-muted: oklch(0.969 0.016 293.8);
+  --highlight-border: oklch(0.894 0.057 293.3);
   /* charts: revenue/inflow blue, expenses/outflow orange (+ previous-year shades), result line, grid */
   --chart-revenue: #2a78d6;
   --chart-revenue-light: #93bdf0;
@@ -91,6 +95,9 @@
   --info: oklch(0.8 0.11 235);
   --info-muted: oklch(0.32 0.07 240 / 0.45);
   --info-border: oklch(0.55 0.11 240 / 0.5);
+  --highlight: oklch(0.81 0.11 293);
+  --highlight-muted: oklch(0.32 0.09 293 / 0.45);
+  --highlight-border: oklch(0.55 0.15 293 / 0.5);
   --chart-revenue: #4b93ea;
   --chart-revenue-light: #2c4f7c;
   --chart-expenses: #ef9450;
@@ -143,6 +150,9 @@
   --color-info: var(--info);
   --color-info-muted: var(--info-muted);
   --color-info-border: var(--info-border);
+  --color-highlight: var(--highlight);
+  --color-highlight-muted: var(--highlight-muted);
+  --color-highlight-border: var(--highlight-border);
   --color-chart-revenue: var(--chart-revenue);
   --color-chart-revenue-light: var(--chart-revenue-light);
   --color-chart-expenses: var(--chart-expenses);
