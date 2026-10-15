@@ -215,7 +215,7 @@ export function ForecastChart({
           </div>
           <svg width={width} height={LINE_HEIGHT} aria-hidden className="block">
             {lBottom < 0 && (
-              <rect x={PAD.left} y={yl(0)} width={plotW} height={yl(lBottom) - yl(0)} className="fill-danger-muted" />
+              <rect x={PAD.left} y={yl(0)} width={plotW} height={yl(lBottom) - yl(0)} className="fill-danger-muted dark:fill-danger-muted/50" />
             )}
             {[lTop, lBottom].filter((t) => t !== 0).map((t) => (
               <g key={t}>

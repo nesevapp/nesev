@@ -72,7 +72,7 @@ export function ChatChart({ card }: { card: ChartCardData }) {
         {width > 0 && (
           <svg width={width} height={HEIGHT} role="img" aria-label={card.title} className="block">
             {/* below zero, like the forecast's balance chart */}
-            {area && bottom < 0 && <rect x={PAD.left} y={y(0)} width={plotW} height={y(bottom) - y(0)} className="fill-danger-muted" />}
+            {area && bottom < 0 && <rect x={PAD.left} y={y(0)} width={plotW} height={y(bottom) - y(0)} className="fill-danger-muted dark:fill-danger-muted/50" />}
             {ticks.map((t) => (
               <g key={t}>
                 <line
