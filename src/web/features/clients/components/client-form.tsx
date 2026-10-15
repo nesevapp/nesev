@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { type Client, nextClientNumberQuery, settingsQuery } from "@/sdk";
+import { ClientEInvoiceSection } from "./client-einvoice-section";
 
 export const EMPTY_CLIENT: ClientFormValues = {
   type: "company",
@@ -34,6 +35,9 @@ export const EMPTY_CLIENT: ClientFormValues = {
   phone: "",
   paymentTermsDays: null,
   defaultTaxMode: null,
+  eInvoiceFormat: null,
+  eInvoiceBuyerReference: "",
+  eInvoiceSupplierId: "",
   notes: "",
 };
 
@@ -179,6 +183,8 @@ export function ClientForm({
           </div>
           <TaxModeField control={control} smallBusiness={settings.data?.smallBusiness ?? false} />
         </FormSection>
+
+        <ClientEInvoiceSection control={control} />
 
         <FormSection title="Notizen" description="Intern, erscheint nicht auf Belegen.">
           <TextareaField control={control} name="notes" label="Notizen" rows={4} />

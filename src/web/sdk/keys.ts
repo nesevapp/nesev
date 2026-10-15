@@ -31,6 +31,8 @@ export const keys = {
     detail: (id: number) => ["documents", "detail", id] as const,
     /** Defaults for a new recurring invoice: cached, refreshed whenever documents change. */
     defaults: (type: DocumentType, clientId: number | null) => ["documents", "defaults", type, clientId] as const,
+    /** e-invoice formats and missing data of a finalized invoice / credit note */
+    einvoice: (id: number) => ["documents", "einvoice", id] as const,
   },
   /** Defaults for the "new document" page: deliberately outside `documents.all`, so saving the new
    *  draft doesn't refetch them while the page is still mounted. */

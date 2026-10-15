@@ -33,6 +33,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 20 | Crop/straighten photographed receipts | ✅ done | `/expenses/:id` receipt pane, `nesev-ocr detect-document`/`crop` |
 | 21 | In-app assistant (local LLM + MCP tools): backend | ✅ done | `/api/chat`, `services/chat*.ts`, `lib/llama/lease.ts` |
 | 22 | Belege-Eingang (receipt inbox folder) | ✅ done | `/expenses/inbox`, Einstellungen → Belegerkennung, `services/receipt-inbox.ts` |
+| 23 | E-invoices: ebInterface 6.1, XRechnung 3.0 (UBL), ZUGFeRD/Factur-X | ✅ done | `lib/einvoice/`, `/api/einvoice`, Beleg → „E-Rechnung“ |
 
 ---
 
@@ -68,6 +69,15 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - A letterhead PDF is drawn under the pages: its page 1 under the first page, its page 2 under all following pages.
 - Designer: canvas plus one panel ("Aufbau" with ↑/↓ section reordering that really moves content, "Variablen", "Eigenschaften"). Text elements support `{placeholders}`.
 - **Zahlen mit Code:** invoices and reminders get an EPC QR code (GiroCode, EPC069-12 v002, UTF-8; `lib/pdf/epc-qr.ts`): payee = company name (else owner) + IBAN (+ BIC if valid), amount = gross at finalize (reminders: open amount + fees + interest), remittance text = invoice number. Name/text are cleaned of line breaks, cut to 70/140 characters and, if umlauts etc. push it over 331 bytes, shortened further (text first). No code without a valid IBAN, a name or an amount > 0, nor when Einstellungen → Unternehmen → Bankverbindung → „Zahlen mit Code“ (`settings.paymentQr`) is off; designer previews always show it. Caption „Zahlen mit Code“ under the code. In the designer `epcQr` / `epcQrLabel` are placeable variables (group Zahlung). Frozen PDFs are never re-rendered. Documents have no currency field: everything is EUR.
+
+### E-invoices (`lib/einvoice/`, `services/einvoice.ts`, `/api/einvoice`)
+- Finalized invoices and credit notes only, generated on demand from the frozen document (snapshots, items, cached totals checked against `calcTotals`). Pure generators: `buildEbInterface` (ebInterface 6.1, `http://www.ebinterface.at/schema/6p1/`), `buildXRechnung` (UBL 2.1 Invoice/CreditNote, CustomizationID `…xrechnung_3.0`), `buildFacturX` (CII D16B, guideline `urn:cen.eu:en16931:2017` = profile EN 16931). Credit notes: ebInterface `CreditMemo` + RelatedDocument, UBL `CreditNote` 381 + BillingReference, CII 381 + InvoiceReferencedDocument; amounts stay positive.
+- Client: `eInvoiceFormat` (preselected), `eInvoiceBuyerReference` (Leitweg-ID / Auftragsreferenz default), `eInvoiceSupplierId` (Lieferantennummer → ebInterface `Biller/InvoiceRecipientsBillerID`). Document: `buyerReference` overrides the client default (editor field „Leitweg-ID“/„Auftragsreferenz“ when the client has a format); copied on convert, credit note and duplicate. These routing fields are read live, the addresses come from the snapshots.
+- VAT categories: AT_DOMESTIC → S (0 % lines Z), reverse charge → AE (VATEX-EU-AE), small business → E, third country → G (VATEX-EU-G; O is not allowed with a seller VAT ID, BR-O-02). Exemption reason = the tax note from the settings. Units map to UN/ECE Rec 20 (`units.ts`, unknown → C62). Line discounts become line allowances / ReductionListLineItem.
+- Checks before download (`eInvoiceProblems`, German, 422 on download, listed in the dialog): seller name/address/UID or Steuernummer/IBAN, client PLZ/Ort, client UID for reverse charge; ebInterface: Auftragsreferenz + Lieferantennummer (Bund); XRechnung: Leitweg-ID, seller e-mail + phone (BR-DE-5..7), buyer e-mail when the reference isn't a Leitweg-ID (electronic address; a Leitweg-ID goes in as EndpointID scheme 0204). Seller data is frozen at finalize, so fixing settings only helps new documents.
+- ZUGFeRD: `embedFacturX` attaches `factur-x.xml` (AFRelationship Alternative, catalog /AF) to a copy of the frozen PDF plus XMP (PDF/A-3b id + Factur-X extension schema), an sRGB output intent (CC0 micro profile) and a document ID; `data/pdfs` stays untouched. Verified 2026-10-15: veraPDF 1.30 PDF/A-3b PASS, Mustang 2.26 (PDF/A + Factur-X EN 16931 schematron) valid, also with a transparent PNG logo; custom letterhead PDFs are not checked.
+- Validation: golden files + round trips through the receipt parser (`lib/einvoice/einvoice.test.ts`); all samples validate against the official ebInterface 6.1, UBL 2.1 and CII D16B XSDs (`NESEV_EINVOICE_XSD_DIR=… bun test src/server/lib/einvoice`) and the KoSIT validator 1.6.3 with the XRechnung 3.0.2 configuration (2026-08-31): XRechnung UBL invoice/credit note and EN 16931 CII all ACCEPTABLE.
+- Download names: `RE-2026-0001_ebinterface.xml`, `…_xrechnung.xml`, `…_zugferd.pdf`. Not done: sending via USP/Peppol, an assistant tool for downloads, ebInterface for B2B without Auftragsreferenz (currently required).
 
 ### Dashboard
 - Tiles for the selected year: Umsatz (net, vs. the same months of the previous year), Ausgaben (net, by document date), Ergebnis (Umsatz − Ausgaben, with margin), Bezahlt; second row: open invoices, overdue, open offers.
@@ -245,4 +255,4 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 7. **Assistant follow-ups:** pre-warm the model when the chat panel opens (the first prompt of a fresh server costs ~9 s with 4B). The 4B still sometimes picks open_pdf for „herunterladen“ or answers „Öffne die Ausgabe von A1“ without opening it.
 8. **MCP follow-ups (if needed):** recurring invoices and Fixkosten write tools, applying receipt-analysis suggestions to an expense, email once SMTP exists.
 
-Ideas parked: e-invoice output (ZUGFeRD/XRechnung), multi-currency, time tracking, live bank balance from the last import as the forecast start.
+Ideas parked: multi-currency, time tracking, live bank balance from the last import as the forecast start.

@@ -37,6 +37,7 @@ import {
 } from "@/sdk";
 import { ActionBar, useDeriveAndOpen } from "./components/action-bar";
 import { DocumentRelations } from "./components/document-relations";
+import { EInvoiceDownloadButton } from "./components/einvoice-download";
 import { StatusBadge } from "./components/status-badge";
 import { TotalsPanel } from "./components/totals-panel";
 import { cityLine, DOC_CONFIG } from "./config";
@@ -221,6 +222,7 @@ export function DocumentView({ doc }: { doc: Document }) {
             PDF herunterladen
           </a>
         </Button>
+        {doc.type !== "offer" && doc.number && <EInvoiceDownloadButton documentId={doc.id} number={doc.number} />}
         {moreActions.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

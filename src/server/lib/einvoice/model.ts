@@ -110,6 +110,7 @@ export function eInvoiceProblems(input: EInvoiceInput, format: EInvoiceFormat): 
       if (!input.buyerReference.trim()) {
         p.push("Auftragsreferenz fehlt (beim Bund Pflicht) – beim Kunden oder im Beleg eintragen");
       }
+      if (!input.supplierId.trim()) p.push("Kunde: Lieferantennummer fehlt (beim Bund Pflicht)");
       break;
     case "xrechnung":
       if (!input.buyerReference.trim()) p.push("Leitweg-ID fehlt – beim Kunden oder im Beleg eintragen");

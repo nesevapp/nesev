@@ -7,8 +7,10 @@ import { FACTURX_CONFORMANCE_LEVEL } from "./cii";
 // expects around it: XMP metadata with the PDF/A-3 identification and the Factur-X extension schema,
 // an sRGB output intent and a document ID. The stored, frozen PDF is never changed.
 //
-// PDF/A-3 conformance is NOT verified: pdfme's output (fonts, transparency, annotations) has not been
-// checked against a PDF/A validator, so the result is "ZUGFeRD XML embedded" without a PDF/A guarantee.
+// PDF/A-3b is not checked at runtime. Verified once with veraPDF 1.30 and Mustang 2.26 (PDF/A-3b +
+// Factur-X EN 16931 schematron: valid) for the default templates, with and without a transparent PNG
+// logo; pdfme embeds full TrueType fonts. A custom letterhead PDF (pdf_templates.basePdfPath) is copied
+// in as is and may break PDF/A, so the UI says "PDF/A-3 nicht garantiert" for those.
 
 export const FACTURX_FILE_NAME = "factur-x.xml";
 

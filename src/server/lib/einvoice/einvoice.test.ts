@@ -152,7 +152,10 @@ describe("checks before download", () => {
 
   test("missing Leitweg-ID / Auftragsreferenz / seller data", () => {
     expect(eInvoiceProblems(CH_THIRD_COUNTRY, "xrechnung")).toEqual(["Leitweg-ID fehlt – beim Kunden oder im Beleg eintragen"]);
-    expect(eInvoiceProblems({ ...AT_BUND, buyerReference: "" }, "ebinterface")[0]).toContain("Auftragsreferenz fehlt");
+    expect(eInvoiceProblems({ ...AT_BUND, buyerReference: "", supplierId: "" }, "ebinterface")).toEqual([
+      "Auftragsreferenz fehlt (beim Bund Pflicht) – beim Kunden oder im Beleg eintragen",
+      "Kunde: Lieferantennummer fehlt (beim Bund Pflicht)",
+    ]);
     const noSeller = { ...AT_BUND, seller: { ...AT_BUND.seller, uid: "", taxNumber: "", phone: "", iban: "" } };
     expect(eInvoiceProblems(noSeller, "xrechnung")).toEqual([
       "Einstellungen: UID-Nummer oder Steuernummer fehlt",

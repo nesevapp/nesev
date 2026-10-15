@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ClientPicker } from "@/features/clients/components/ClientPicker";
+import { BuyerReferenceField } from "./components/buyer-reference-field";
 import {
   apiErrorMessage,
   clientQuery,
@@ -288,6 +289,7 @@ export function DocumentEditor({
                   </FormItem>
                 )}
               />
+              {c && type !== "offer" && <BuyerReferenceField control={control} client={c} />}
             </div>
 
             <div className="grid content-start gap-4">

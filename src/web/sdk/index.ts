@@ -11,6 +11,7 @@ export * from "./units";
 export * from "./clients";
 export * from "./articles";
 export * from "./documents";
+export * from "./einvoice";
 export * from "./templates";
 export * from "./reminders";
 export * from "./recurring";
