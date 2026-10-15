@@ -153,7 +153,7 @@ export function SettingsPage() {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <TextField control={control} name="uid" label="UID-Nummer" placeholder="ATU12345678" />
-                  <TextField control={control} name="taxNumber" label="Steuernummer" />
+                  <TextField control={control} name="taxNumber" label="Steuernummer" placeholder="12 345/6789" />
                   <TextField control={control} name="companyRegister" label="Firmenbuch" placeholder="FN 123456a" />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">

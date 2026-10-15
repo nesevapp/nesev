@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { cn } from "@/lib/utils";
 import { taxCsvUrls, zmQuery } from "@/sdk";
 import { CopyButton, dueLabel, PeriodNav, SectionHeader, SourcesTable, th, Warnings } from "./components";
+import { FinanzOnlineButton } from "./finanzonline-button";
 
 export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (key: string) => void }) {
   const { data, isFetching } = useQuery(zmQuery(period));
@@ -34,6 +35,7 @@ export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (
               <Download /> CSV
             </a>
           </Button>
+          {!isYear && <FinanzOnlineButton kind="zm" period={data.period.key} />}
         </div>
       </div>
 

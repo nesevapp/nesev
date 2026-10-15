@@ -141,5 +141,6 @@ export const keys = {
     uva: (period: string | undefined, euIn021: boolean) => ["tax", "uva", period ?? "default", euIn021] as const,
     zm: (period: string | undefined) => ["tax", "zm", period ?? "default"] as const,
     ear: (year: number | undefined) => ["tax", "ear", year ?? "current"] as const,
+    finanzOnline: (kind: "uva" | "zm", period: string, euIn021: boolean) => ["tax", "finanzonline", kind, period, euIn021] as const,
   },
 };

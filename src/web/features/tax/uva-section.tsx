@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import { taxCsvUrls, type UvaLine, uvaQuery, type UvaReport } from "@/sdk";
 import { CopyButton, dueLabel, PeriodNav, SectionHeader, SourcesTable, th, Warnings } from "./components";
+import { FinanzOnlineButton } from "./finanzonline-button";
 
 export function UvaSection({
   period,
@@ -34,6 +35,7 @@ export function UvaSection({
           <Download /> CSV
         </a>
       </Button>
+      {data.period.kind !== "year" && <FinanzOnlineButton kind="uva" period={data.period.key} euIn021={euIn021} />}
     </div>
   );
 
