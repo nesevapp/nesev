@@ -32,6 +32,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 19 | MCP server, part 2: write tools + receipt analysis | ✅ done | `src/mcp/tools/write-*`, `receipts.ts` |
 | 20 | Crop/straighten photographed receipts | ✅ done | `/expenses/:id` receipt pane, `nesev-ocr detect-document`/`crop` |
 | 21 | In-app assistant (local LLM + MCP tools): backend | ✅ done | `/api/chat`, `services/chat*.ts`, `lib/llama/lease.ts` |
+| 22 | Belege-Eingang (receipt inbox folder) | ✅ done | `/expenses/inbox`, Einstellungen → Belegerkennung, `services/receipt-inbox.ts` |
 
 ---
 
@@ -106,6 +107,11 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - API: `GET /api/expenses/:id/receipt/detect`, `POST …/receipt/crop {quad, enhance}`, `POST …/receipt/restore` (422 for PDFs or without the helper). The pane shows „Zugeschnitten · Original anzeigen · Original wiederherstellen“.
   - Analysis uses `attachmentPath`, so it reads the crop; earlier analyses become stale („Beleg wurde ersetzt oder zugeschnitten – neu analysieren“). On rendered test photos (tilted/perspective receipts on wood), Vision OCR of the uncropped photo mixed up the columns and the model got the 20 % tax line wrong on 2 of 3; after cropping, all 3 were fully correct.
   - The backup ZIP now also contains `receipts/` (it had none before). The accountant export only covers outgoing documents, so receipts aren't part of it.
+- **Belege-Eingang** (`/expenses/inbox`, `services/receipt-inbox.ts`, `/api/receipt-inbox`). Folder in Einstellungen → Belegerkennung (`settings.receiptInboxPath`, saved only via `PUT /api/receipt-inbox/folder`: absolute, `~` expanded, must exist, be readable and lie outside the data dir; the main settings form doesn't carry the field).
+  - Scanner (started in `index.ts`, one per process on `globalThis`): scan on start, every 45 s, and 1.5 s after an `fs.watch` event (a hint only; iCloud folders don't report reliably). Top-level files only; hidden files and iCloud placeholders (`.x.pdf.icloud`) are ignored. A file is taken when size + mtime are unchanged across two scans (new/changing files trigger a re-check after 3 s). PDF/JPG/PNG/WebP/HEIC ≤ 20 MB; HEIC/HEIF is converted to JPEG with `sips`. Missing/unreadable folder → German status (`GET /status`), no crash.
+  - Import: copy to `data/receipts/inbox/<sha12>-<name>`, row in `receipt_inbox_items`, source moved to `<folder>/Importiert/` (name collisions → „x (2).pdf“; nothing is deleted). Dedupe by sha256: an item that is new/converted or an existing expense receipt (hashes cached per path) → not added, but still moved. A dismissed file dropped again comes back. If the move fails, the file is remembered by path/size/mtime so it isn't re-read.
+  - Page: list with preview, multi-select; „Als Ausgabe anlegen“ (one draft per item via `createExpense` + `setExpenseAttachment`, copy deleted, item `converted` with `expenseId`; single item opens the editor), „Anlegen + analysieren“ (then the web calls `POST /api/receipts/analyze` – explicit), „Verwerfen“ (copy deleted, item `dismissed`), drop zone / „Dateien hinzufügen“ (`POST /upload`, duplicates reported), „Jetzt prüfen“. Badge on „Ausgaben“ in the sidebar, „Eingang“ button on the expenses page.
+  - MCP: `list_receipt_inbox`, `create_expense_from_inbox` (no scanning, no analysis in the MCP process).
 
 ### Taxes (`/tax`) – a helper, not tax advice
 - **UVA:**
