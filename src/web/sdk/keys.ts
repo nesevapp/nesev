@@ -120,6 +120,7 @@ export const keys = {
     all: ["chat"] as const,
     conversations: ["chat", "conversations"] as const,
     conversation: (id: number) => ["chat", "conversation", id] as const,
+    feedback: (id: number) => ["chat", "feedback", id] as const,
     settings: ["chat", "settings"] as const,
     status: ["chat", "status"] as const,
   },

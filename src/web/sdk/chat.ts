@@ -2,6 +2,8 @@ import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query
 import type {
   ChatConfirmInput,
   ChatConversationDetail,
+  ChatFeedback,
+  ChatFeedbackInput,
   ChatConversationSummary,
   ChatSendInput,
   ChatSettings,
@@ -30,6 +32,10 @@ export const chatApi = {
   settings: (): Promise<ChatSettings> => parseResponse(chat.settings.$get()),
   updateSettings: (json: ChatSettings): Promise<ChatSettings> => parseResponse(chat.settings.$put({ json })),
   status: (): Promise<ChatStatus> => parseResponse(chat.status.$get()),
+  feedback: (id: number): Promise<ChatFeedback[]> => parseResponse(conversation().feedback.$get({ param: idParam(id) })),
+  saveFeedback: (id: number, json: ChatFeedbackInput): Promise<ChatFeedback> => parseResponse(conversation().feedback.$post({ param: idParam(id), json })),
+  removeFeedback: (id: number, messageId: number) =>
+    parseResponse(conversation().feedback[":messageId"].$delete({ param: { ...idParam(id), messageId: String(messageId) } })),
   /** starts the model and fills its prompt cache in the background (the panel opened) */
   warm: (): Promise<{ state: ChatWarmState }> => parseResponse(chat.warm.$post()),
 };
@@ -42,6 +48,7 @@ export type {
   ChatUiAction,
   ChatConversationDetail,
   ChatConversationSummary,
+  ChatFeedback,
   ChatMessageView,
   ChatSettings,
   ChatStatus,
@@ -58,6 +65,26 @@ export const chatConversationsQuery = queryOptions({
 
 export const chatConversationQuery = (id: number) =>
   queryOptions({ queryKey: keys.chat.conversation(id), queryFn: () => chatApi.get(id) });
+
+/** "Antwort war falsch" flags of a conversation */
+export const chatFeedbackQuery = (id: number) => queryOptions({ queryKey: keys.chat.feedback(id), queryFn: () => chatApi.feedback(id) });
+
+export function useSaveChatFeedback(conversationId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (json: ChatFeedbackInput) => chatApi.saveFeedback(conversationId, json),
+    onSuccess: (saved) =>
+      qc.setQueryData<ChatFeedback[]>(keys.chat.feedback(conversationId), (list = []) => [...list.filter((f) => f.messageId !== saved.messageId), saved]),
+  });
+}
+
+export function useDeleteChatFeedback(conversationId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: number) => chatApi.removeFeedback(conversationId, messageId),
+    onSuccess: (_, messageId) => qc.setQueryData<ChatFeedback[]>(keys.chat.feedback(conversationId), (list = []) => list.filter((f) => f.messageId !== messageId)),
+  });
+}
 
 export const chatSettingsQuery = queryOptions({ queryKey: keys.chat.settings, queryFn: chatApi.settings });
 

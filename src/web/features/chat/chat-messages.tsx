@@ -1,11 +1,13 @@
 import { type ReactNode, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronRight, CircleAlert, CircleSlash, Clock, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type ChatCard, type ChatConversationDetail, type ChatMessageView, type ChatToolCall, resultCards } from "@/sdk";
+import { type ChatCard, type ChatConversationDetail, type ChatMessageView, type ChatToolCall, chatFeedbackQuery, resultCards } from "@/sdk";
 import { ActionButton } from "./chat-actions";
 import { ChatCardView, cardPaths } from "./chat-cards";
+import { FeedbackAction } from "./chat-feedback";
 import { MarkdownView, type LinkRenderer } from "./markdown-view";
 import { appPath, isFilePath } from "./markdown";
 import { isIrreversibleTool, summarizeArgs, toolMeta } from "./tools";
@@ -236,6 +238,8 @@ export function MessageList({
   const pendingId = detail.pending?.toolCall.id ?? null;
   const last = detail.messages[detail.messages.length - 1];
   const expanded = lastCardPerTurn(detail.messages, results);
+  const feedback = useQuery({ ...chatFeedbackQuery(detail.id), enabled: detail.messages.length > 0 });
+  const flags = new Map((feedback.data ?? []).map((f) => [f.messageId, f]));
 
   return (
     <div className="space-y-3">
@@ -257,10 +261,17 @@ export function MessageList({
         }
         for (const c of m.toolCalls ?? []) shownCalls.add(c.id);
         const thinking = live.thinkingId === m.id && !m.content;
+        // an answer can be flagged once it's complete (not while this message still streams)
+        const flaggable = !!m.content && m.status !== "pending" && !(streaming && m === last);
         return (
-          <div key={m.id} className="space-y-2">
+          <div key={m.id} className="group space-y-2">
             {thinking && <Thinking text="denkt nach …" />}
             {m.content && <MarkdownView source={m.content} renderLink={renderLink} className="text-sm leading-relaxed" />}
+            {flaggable && (
+              <div className="-mt-1 flex">
+                <FeedbackAction conversationId={detail.id} messageId={m.id} feedback={flags.get(m.id)} />
+              </div>
+            )}
             {m.status === "error" && !m.content && <p className="text-sm text-destructive">Antwort fehlgeschlagen.</p>}
             {m.status === "cancelled" && <p className="text-xs text-muted-foreground italic">abgebrochen</p>}
             {(m.toolCalls ?? []).map((c) => (

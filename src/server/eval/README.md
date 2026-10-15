@@ -55,3 +55,22 @@ lookup. **pass** otherwise. The pass rate counts passes only; "weighted" counts 
 To add a case, describe the expected outcome against the seed (ids and facts are listed at the top of the cases
 file) and run it a few times (`--filter <id> --runs 3`) before relying on it. The pure parts (judging, parsing, the
 table) are unit-tested in `chat-eval.test.ts`.
+
+## Cases from feedback (`bun run eval:feedback`)
+Answers flagged in the app („Antwort war falsch“, the flag under an assistant answer, with an optional note) can be
+turned into draft cases:
+
+```bash
+bun run eval:feedback                   # draft cases to stdout
+bun run eval:feedback /tmp/drafts.ts    # … into a file
+NESEV_DATA_DIR=/tmp/nesev-x bun run eval:feedback   # another data dir (default: data/)
+```
+
+It opens `<data dir>/nesev.db` read-only and prints, per flag, a case in the format of `chat-eval.cases.ts`: the
+conversation's user messages up to the flagged answer as `turns` (with their `contextPath`), and as comments the tools
+that turn called, the flagged answer and the note. `expect` is left as a TODO. To make it a case:
+1. Adapt the turns to the demo seed (`src/mcp/test/seed.ts`, ids and facts at the top of the cases file): the flags
+   come from real data, so client names, numbers, amounts and page paths (`/invoices/12`) rarely exist there.
+2. Turn the note into checks (`tools`/`forbidden`, `callArgs`, `action`, `confirm`, `facts`, `notInAnswer`,
+   `knownNumbers`), give it a meaningful `id`, `description` and tags.
+3. Paste it into `CASES` and run it a few times (`--filter <id> --runs 3`) before relying on it.

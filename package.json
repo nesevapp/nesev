@@ -14,6 +14,7 @@
     "test": "bun test",
     "mcp": "bun src/mcp/server.ts",
     "eval:chat": "bun src/server/eval/run.ts",
+    "eval:feedback": "bun src/server/eval/feedback.ts",
     "service:install": "bun scripts/service.ts install",
     "service:uninstall": "bun scripts/service.ts uninstall",
     "service:status": "bun scripts/service.ts status"

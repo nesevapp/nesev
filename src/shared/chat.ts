@@ -17,6 +17,9 @@ import { z } from "./schemas/zod";
 //   GET    /settings / PUT /settings      ChatSettings
 //   GET    /status                        → ChatStatus
 //   POST   /warm                          → { state: ChatWarmState } (starts the model in the background)
+//   GET    /conversations/:id/feedback    → ChatFeedback[] ("Antwort war falsch" flags of the conversation)
+//   POST   /conversations/:id/feedback    ChatFeedbackInput → ChatFeedback (flag an answer; again = edit the note)
+//   DELETE /conversations/:id/feedback/:messageId → { ok: true }
 // Aborting the fetch (client disconnect) stops generation; the partial assistant text is kept.
 
 /** Tools whose execution needs an explicit click in the UI (the MCP's destructiveHint tools). */
@@ -256,6 +259,22 @@ export type ChatStreamEvent =
   | { type: "status"; text: string }
   | { type: "done"; conversation: ChatConversationSummary }
   | { type: "error"; message: string };
+
+/** An assistant answer the user flagged as wrong, with what should have happened (optional). */
+export interface ChatFeedback {
+  id: number;
+  conversationId: number;
+  messageId: number;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const chatFeedbackSchema = z.object({
+  messageId: z.number().int().positive(),
+  note: z.string().trim().max(2000).default(""),
+});
+export type ChatFeedbackInput = z.input<typeof chatFeedbackSchema>;
 
 /**
  * POST /warm (the panel opened): "warming" = the model server starts and/or its prompt cache is being filled in the

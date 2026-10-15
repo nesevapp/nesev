@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { type ChatStreamEvent, chatConfirmSchema, chatSendSchema, chatSettingsSchema } from "../../shared/chat";
+import { type ChatStreamEvent, chatConfirmSchema, chatFeedbackSchema, chatSendSchema, chatSettingsSchema } from "../../shared/chat";
 import { db } from "../db";
 import { validate } from "../lib/validate";
 import {
@@ -19,6 +19,7 @@ import {
   sendMessage,
   warmupPrompt,
 } from "../services/chat";
+import { deleteFeedback, listFeedback, saveFeedback } from "../services/chat-feedback";
 import { primeCache } from "../services/chat-llm";
 import { ChatWarmer } from "../services/chat-warm";
 import { chatLlamaConfig, chatStatus, getChatSettings, syncChatServer, updateChatSettings } from "../services/chat-settings";
@@ -161,6 +162,36 @@ const app = new Hono()
     }
     return sse(c, (emit, signal) => confirmToolCall(deps, id, messageId, approve, emit, signal));
   })
+  .get("/conversations/:id/feedback", idParam, (c) => {
+    try {
+      return c.json(listFeedback(db, c.req.valid("param").id));
+    } catch (err) {
+      const e = guardError(err);
+      return c.json({ error: e.error }, e.status);
+    }
+  })
+  .post("/conversations/:id/feedback", idParam, validate("json", chatFeedbackSchema), (c) => {
+    try {
+      return c.json(saveFeedback(db, c.req.valid("param").id, c.req.valid("json")), 201);
+    } catch (err) {
+      const e = guardError(err);
+      return c.json({ error: e.error }, e.status);
+    }
+  })
+  .delete(
+    "/conversations/:id/feedback/:messageId",
+    validate("param", z.object({ id: z.coerce.number().int().positive(), messageId: z.coerce.number().int().positive() })),
+    (c) => {
+      const { id, messageId } = c.req.valid("param");
+      try {
+        deleteFeedback(db, id, messageId);
+        return c.json({ ok: true as const });
+      } catch (err) {
+        const e = guardError(err);
+        return c.json({ error: e.error }, e.status);
+      }
+    },
+  )
   .get("/settings", (c) => c.json(getChatSettings(db)))
   .put("/settings", validate("json", chatSettingsSchema), async (c) => {
     const saved = updateChatSettings(db, c.req.valid("json"));
