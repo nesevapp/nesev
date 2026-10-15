@@ -173,13 +173,13 @@ export function SettingsPage() {
                   <TextField control={control} name="bic" label="BIC" />
                   <TextField control={control} name="bankName" label="Bank" />
                 </div>
-              </FormSection>
                 <SwitchField
                   control={control}
                   name="paymentQr"
                   label="Zahlen mit Code"
                   description="QR-Code (GiroCode) mit IBAN, Betrag und Rechnungsnummer auf Rechnungen und Mahnungen; Banking-Apps füllen damit die Überweisung aus. Bereits finalisierte PDFs bleiben unverändert."
                 />
+              </FormSection>
 
               {saveBar}
             </form>
