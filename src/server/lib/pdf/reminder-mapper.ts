@@ -5,7 +5,7 @@ import { formatClientNumber } from "../../../shared/schemas/client";
 import type { TaxNoteSettings } from "../../../shared/tax";
 import type { ClientSnapshot, SellerSnapshot } from "../../../shared/types";
 import type { Reminder } from "../../db/schema";
-import { epcQrPayload, formatDate, formatIban, mapDocumentToPdfInput } from "./mapper";
+import { EPC_QR_LABEL, epcQrPayload, formatDate, formatIban, mapDocumentToPdfInput } from "./mapper";
 
 export type PdfReminderFields = Pick<
   Reminder,
@@ -19,6 +19,8 @@ export interface ReminderMapperInput {
   seller: SellerSnapshot;
   taxNotes: TaxNoteSettings;
   logo?: { dataUri?: string; svg?: string } | null;
+  /** settings.paymentQr (default true) */
+  paymentQr?: boolean;
 }
 
 const lines = (...parts: (string | null | undefined | false)[]) =>
@@ -92,13 +94,11 @@ export function mapReminderToPdfInput(src: ReminderMapperInput): PdfInput {
       [`IBAN ${iban}`, seller.bic && `BIC ${seller.bic}`, seller.bankName].filter(Boolean).join(" · ") +
         (invoiceNumber ? `\nVerwendungszweck: ${invoiceNumber}` : ""),
   );
-  const epcQr = epcQrPayload({
-    name: sellerName,
-    iban: seller.iban,
-    bic: seller.bic,
-    amountCents: total,
-    reference: invoiceNumber,
-  });
+  // amount = open invoice amount + fees + interest (what the reminder asks for)
+  const epcQr =
+    src.paymentQr === false
+      ? ""
+      : epcQrPayload({ name: sellerName, iban: seller.iban, bic: seller.bic, amountCents: total, reference: invoiceNumber });
 
   return {
     ...base,
@@ -126,7 +126,7 @@ export function mapReminderToPdfInput(src: ReminderMapperInput): PdfInput {
 
     paymentInfo,
     epcQr,
-    epcQrLabel: epcQr ? "Mit Banking-App scannen" : "",
+    epcQrLabel: epcQr ? EPC_QR_LABEL : "",
 
     reminderLevel: title,
     reminderItems: JSON.stringify(reminderItems),

@@ -7,6 +7,9 @@ import { formatClientNumber } from "../../../shared/schemas/client";
 import { calcTotals } from "../../../shared/totals";
 import type { ClientSnapshot, SellerSnapshot } from "../../../shared/types";
 import type { Client, Document, DocumentItem } from "../../db/schema";
+import { epcQrPayload } from "./epc-qr";
+
+export { epcQrPayload } from "./epc-qr";
 
 export type PdfDocumentFields = Pick<
   Document,
@@ -38,7 +41,12 @@ export interface PdfMapperInput {
   parentNumber?: string | null;
   /** logo as data URI (PNG/JPG) or SVG markup; at most one is used */
   logo?: { dataUri?: string; svg?: string } | null;
+  /** settings.paymentQr: print the EPC payment QR code on invoices (default true) */
+  paymentQr?: boolean;
 }
+
+/** Caption under the payment QR code. */
+export const EPC_QR_LABEL = "Zahlen mit Code";
 
 /** Live client data in snapshot form, for drafts (finalized documents use documents.client_snapshot). */
 export function clientToSnapshot(c: Client): ClientSnapshot {
@@ -102,28 +110,6 @@ function servicePeriod(doc: PdfDocumentFields): { label: string; value: string }
   // Austrian invoices need a service date; without one it equals the invoice date.
   if (doc.type === "invoice") return { label: "Leistungsdatum", value: formatDate(doc.issueDate) };
   return null;
-}
-
-/**
- * EPC QR code payload (SEPA credit transfer, "GiroCode"), version 002 with unstructured remittance text.
- * Returns "" if the seller has no IBAN or the amount is not payable.
- */
-export function epcQrPayload(args: { name: string; iban: string; bic: string; amountCents: number; reference: string }): string {
-  const iban = args.iban.replace(/\s+/g, "").toUpperCase();
-  if (!iban || args.amountCents <= 0 || args.amountCents > 99_999_999_999) return "";
-  return [
-    "BCD",
-    "002",
-    "1",
-    "SCT",
-    args.bic.replace(/\s+/g, "").toUpperCase(),
-    args.name.slice(0, 70),
-    iban,
-    `EUR${(args.amountCents / 100).toFixed(2)}`,
-    "", // purpose code
-    "", // structured reference
-    args.reference.slice(0, 140),
-  ].join("\n");
 }
 
 /** Builds the flat pdfme input record (see PDF_VARIABLES) for a document. */
@@ -204,7 +190,7 @@ export function mapDocumentToPdfInput(src: PdfMapperInput): PdfInput {
             (isDraft ? "" : `\nVerwendungszweck: ${number}`),
       )
     : "";
-  const epcQr = isInvoice
+  const epcQr = isInvoice && src.paymentQr !== false
     ? epcQrPayload({
         name: sellerName,
         iban: seller.iban,
@@ -262,7 +248,7 @@ export function mapDocumentToPdfInput(src: PdfMapperInput): PdfInput {
 
     paymentInfo,
     epcQr,
-    epcQrLabel: epcQr ? "Mit Banking-App scannen" : "",
+    epcQrLabel: epcQr ? EPC_QR_LABEL : "",
 
     footerCompany: lines(
       sellerName,

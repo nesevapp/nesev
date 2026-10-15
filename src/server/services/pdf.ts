@@ -112,6 +112,7 @@ export async function buildDocumentPdfData(db: DbOrTx, documentId: number) {
     client,
     seller,
     taxNotes: settings,
+    paymentQr: settings.paymentQr,
     parentNumber,
     logo: await loadLogo(seller.logoPath),
   });
@@ -299,6 +300,7 @@ export async function buildReminderPdfData(db: DbOrTx, reminderId: number) {
     client,
     seller,
     taxNotes: settings,
+    paymentQr: settings.paymentQr,
     logo: await loadLogo(seller.logoPath),
   });
   const template = resolveTemplate(db, { type: "reminder", templateId: reminder.templateId });

@@ -254,11 +254,11 @@ export function defaultTemplate(type: TemplateDocType): Template {
             content: "{paymentInfo}",
           }),
           qrSchema("epcQr", { x: 166, y: 189 + dy, width: 24, height: 24 }),
-          textSchema("epcQrLabel", { x: 150, y: 213.5 + dy, width: 40, height: 3 }, {
-            fontSize: 6,
+          textSchema("epcQrLabel", { x: 166, y: 213.5 + dy, width: 24, height: 3 }, {
+            fontSize: 6.5,
             fontColor: MUTED,
-            alignment: "right",
-            content: "Mit Banking-App scannen",
+            alignment: "center",
+            content: "Zahlen mit Code",
           }),
         ]
       : []),

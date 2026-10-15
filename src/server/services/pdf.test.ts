@@ -126,6 +126,14 @@ describe("mapDocumentToPdfInput", () => {
     ]);
   });
 
+  test("no payment QR when settings.paymentQr is off", () => {
+    const input = mapDocumentToPdfInput({ document: base, items, client, seller, taxNotes, paymentQr: false });
+    expect(input.epcQr).toBe("");
+    expect(input.epcQrLabel).toBe("");
+    expect(input.paymentInfo).toContain("IBAN AT61");
+    expect(mapDocumentToPdfInput({ document: base, items, client, seller, taxNotes }).epcQrLabel).toBe("Zahlen mit Code");
+  });
+
   test("EPC payload is empty without IBAN or amount", () => {
     expect(epcQrPayload({ name: "X", iban: "", bic: "", amountCents: 100, reference: "" })).toBe("");
     expect(epcQrPayload({ name: "X", iban: "AT61", bic: "", amountCents: 0, reference: "" })).toBe("");
