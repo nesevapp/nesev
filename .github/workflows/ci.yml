@@ -32,6 +32,17 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # xmllint for the FinanzOnline XSD checks in tax-xml.test.ts (macOS has it); the XSDs are downloaded once
+      - name: Install xmllint
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+
+      - name: Cache FinanzOnline XSDs
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/nesev/finanzonline
+          key: finanzonline-xsd-${{ hashFiles('src/server/services/tax-xml.test.ts') }}
+
       - name: Typecheck
         run: bun run typecheck
 
