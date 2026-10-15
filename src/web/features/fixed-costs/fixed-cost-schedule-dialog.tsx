@@ -177,7 +177,7 @@ function CandidatePicker({ fixedCostId, date, onDone }: { fixedCostId: number; d
               }
               className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left text-sm hover:bg-background"
             >
-              <span className={cn("size-1.5 shrink-0 rounded-full", c.match ? "bg-success" : "bg-transparent")} aria-hidden />
+              <span className={cn("size-1.5 shrink-0 rounded-full", c.match ? "bg-success-solid" : "bg-transparent")} aria-hidden />
               <span className="w-28 shrink-0 tabular text-muted-foreground">{c.number}</span>
               <span className="min-w-0 flex-1 truncate">{c.supplierName}</span>
               <span className="tabular text-muted-foreground">{formatDate(c.issueDate)}</span>

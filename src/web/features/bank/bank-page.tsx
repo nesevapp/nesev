@@ -476,8 +476,8 @@ function MatchChip({ m }: { m: BankTransaction["matches"][number] }) {
 }
 
 const CONFIDENCE_DOT: Record<MatchSuggestion["confidence"], string> = {
-  high: "bg-success",
-  medium: "bg-warning",
+  high: "bg-success-solid",
+  medium: "bg-warning-solid",
   low: "bg-muted-foreground/40",
 };
 

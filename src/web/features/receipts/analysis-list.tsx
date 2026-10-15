@@ -97,7 +97,7 @@ const STYLES: Record<AnalysisListStatus, string> = {
   none: "border-transparent text-muted-foreground/70",
   queued: "border-border text-muted-foreground",
   running: "border-info-border bg-info-muted text-info",
-  ready: "border-success-border bg-success-muted text-success",
+  ready: "border-highlight-border bg-highlight-muted text-highlight",
   applied: "border-transparent text-muted-foreground",
   failed: "border-danger-border bg-danger-muted text-danger",
   cancelled: "border-transparent text-muted-foreground",

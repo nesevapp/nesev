@@ -127,7 +127,7 @@ function ConfidenceDot({ s }: { s: FieldSuggestion<unknown> }) {
     <span
       className={cn(
         "mt-1.5 inline-block size-2 shrink-0 rounded-full",
-        level === "high" ? "bg-success" : level === "medium" ? "bg-warning" : "bg-danger",
+        level === "high" ? "bg-success-solid" : level === "medium" ? "bg-warning-solid" : "bg-danger-solid",
       )}
       title={`Sicherheit ${Math.round(s.confidence * 100)} % · ${FIELD_SOURCE_LABELS[s.source]}${s.note ? ` · ${s.note}` : ""}`}
     />
