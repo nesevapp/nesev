@@ -278,7 +278,7 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub: 
   return (
     <div className={cn("bg-background p-4", tone === "danger" && "bg-danger-muted/60")}>
       <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-danger")}>
-        {tone === "danger" && <span className="size-1.5 rounded-full bg-danger" aria-hidden />}
+        {tone === "danger" && <span className="size-1.5 rounded-full bg-danger-solid" aria-hidden />}
         {label}
       </div>
       <div className={cn("mt-1.5 text-xl font-semibold tracking-tight", tone === "danger" && "text-danger")}>{value}</div>

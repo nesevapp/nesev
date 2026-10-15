@@ -14,13 +14,13 @@ export const OUT_SOURCES: ForecastSource[] = ["fixed_cost", "expense", "vat", "i
 
 export const SOURCE_META: Record<ForecastSource, { label: string; color: string; bg: string }> = {
   invoice: { label: "Offene Rechnungen", color: CHART_COLORS.revenue, bg: "bg-chart-revenue" },
-  recurring: { label: "Serienrechnungen", color: "#5b4fcf", bg: "bg-[#5b4fcf]" },
-  offer: { label: "Angebote (gewichtet)", color: "#1baf7a", bg: "bg-[#1baf7a]" },
+  recurring: { label: "Serienrechnungen", color: CHART_COLORS.recurring, bg: "bg-chart-recurring" },
+  offer: { label: "Angebote (gewichtet)", color: CHART_COLORS.offer, bg: "bg-chart-offer" },
   draft: { label: "Entwürfe", color: CHART_COLORS.revenueLight, bg: "bg-chart-revenue-light" },
   fixed_cost: { label: "Fixkosten", color: CHART_COLORS.expenses, bg: "bg-chart-expenses" },
-  expense: { label: "Offene Ausgaben", color: "#f5b583", bg: "bg-[#f5b583]" },
-  vat: { label: "Umsatzsteuer", color: "#c2410c", bg: "bg-[#c2410c]" },
-  income_tax: { label: "ESt-Vorauszahlung", color: "#7c2d12", bg: "bg-[#7c2d12]" },
+  expense: { label: "Offene Ausgaben", color: CHART_COLORS.expensesMid, bg: "bg-chart-expenses-mid" },
+  vat: { label: "Umsatzsteuer", color: CHART_COLORS.vat, bg: "bg-chart-vat" },
+  income_tax: { label: "ESt-Vorauszahlung", color: CHART_COLORS.incomeTax, bg: "bg-chart-income-tax" },
 };
 
 export interface ChartColumn {
@@ -241,14 +241,14 @@ export function ForecastChart({
                   cx={cx(i)}
                   cy={yl(c.lineCents)}
                   r={active === i ? 4 : 3}
-                  className={cn(low ? "fill-danger" : "fill-chart-result", "stroke-background")}
+                  className={cn(low ? "fill-danger-solid" : "fill-chart-result", "stroke-background")}
                   strokeWidth={2}
                 />
               );
             })}
             {last && active === null && (
               <>
-                <circle cx={cx(columns.length - 1)} cy={yl(last.lineCents)} r={4} className={cn(last.lineCents < 0 ? "fill-danger" : "fill-chart-result", "stroke-background")} strokeWidth={2} />
+                <circle cx={cx(columns.length - 1)} cy={yl(last.lineCents)} r={4} className={cn(last.lineCents < 0 ? "fill-danger-solid" : "fill-chart-result", "stroke-background")} strokeWidth={2} />
                 <text
                   x={cx(columns.length - 1) - 10}
                   y={yl(last.lineCents) + (yl(last.lineCents) > LINE_HEIGHT - 28 ? -14 : 14)}

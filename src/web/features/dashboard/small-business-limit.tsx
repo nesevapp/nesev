@@ -8,9 +8,9 @@ type Limit = NonNullable<Dashboard["smallBusiness"]>;
 
 const BAR: Record<SmallBusinessLevel, string> = {
   ok: "bg-primary",
-  warn: "bg-warning",
-  tolerance: "bg-chart-expenses",
-  exceeded: "bg-danger",
+  warn: "bg-warning-solid",
+  tolerance: "bg-caution-solid",
+  exceeded: "bg-danger-solid",
 };
 
 const FRAME: Record<SmallBusinessLevel, string> = {

@@ -16,6 +16,12 @@ export const CHART_COLORS = {
   result: "var(--chart-result)",
   neutral: "var(--chart-neutral)",
   muted: "var(--chart-muted)",
+  /** forecast sources without a revenue/expenses shade */
+  recurring: "var(--chart-recurring)",
+  offer: "var(--chart-offer)",
+  expensesMid: "var(--chart-expenses-mid)",
+  vat: "var(--chart-vat)",
+  incomeTax: "var(--chart-income-tax)",
 } as const;
 
 export const euroAxis = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
