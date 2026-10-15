@@ -1,10 +1,12 @@
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
+import type { SmallBusinessLimit } from "../../shared/small-business";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, expenseLines, expenses, settings } from "../db/schema";
 import { afaEntries, ASSET_CATEGORY, monthlyAfa } from "./assets";
 import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
+import { getSmallBusinessLimit } from "./small-business";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
 // - Revenue = net of non-draft invoices minus net of non-draft credit notes (credit notes store
@@ -70,6 +72,8 @@ export interface DashboardData {
   recent: DashboardDocRow[];
   openOffers: DashboardDocRow[];
   setup: { hasClients: boolean; hasDocuments: boolean; companyMissing: boolean };
+  /** Kleinunternehmer limit for `year`; only when settings.smallBusiness is on */
+  smallBusiness: SmallBusinessLimit | null;
 }
 
 const LIST_LIMIT = 8;
@@ -227,7 +231,10 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const years = [...new Set([thisYear, year, ...yearRows.map((r) => Number(r.y))])].sort((a, b) => b - a);
 
   const clientCount = db.select({ n: figure }).from(clients).get()!.n;
-  const company = db.select({ name: settings.companyName, street: settings.street, city: settings.city }).from(settings).get();
+  const company = db
+    .select({ name: settings.companyName, street: settings.street, city: settings.city, smallBusiness: settings.smallBusiness })
+    .from(settings)
+    .get();
 
   return {
     year,
@@ -256,5 +263,6 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
       hasDocuments: recent.length > 0,
       companyMissing: !company || !company.name || !company.street || !company.city,
     },
+    smallBusiness: company?.smallBusiness ? getSmallBusinessLimit(db, year, today) : null,
   };
 }

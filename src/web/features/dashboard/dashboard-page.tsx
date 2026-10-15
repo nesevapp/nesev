@@ -24,6 +24,7 @@ import {
   useChangeDocumentStatus,
 } from "@/sdk";
 import { ChartLegend, MONTHS, RevenueChart } from "./revenue-chart";
+import { SmallBusinessLimitCard } from "./small-business-limit";
 
 interface DashboardSearch {
   year?: number;
@@ -60,6 +61,7 @@ export function DashboardPage({
         <div className={cn("space-y-8 transition-opacity", isFetching && "opacity-70")}>
           {data.setup.companyMissing && <CompanyBanner />}
           <Kpis data={data} />
+          {data.smallBusiness && <SmallBusinessLimitCard limit={data.smallBusiness} isCurrentYear={data.year === thisYear} />}
           <RevenueSection
             data={data}
             compare={compare}
