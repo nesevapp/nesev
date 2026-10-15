@@ -4,7 +4,9 @@
 // - Tolerance: exceeding the limit by at most 10 % (≤ € 60.500) in the current year keeps the exemption until
 //   the end of that year; next year it no longer applies (the previous year is then over the limit).
 // - Above € 60.500 the exemption ends at once: the invoice that crosses the line already carries VAT.
-// Turnover here = gross of finalized invoices − finalized credit notes, by invoice date (see services/small-business.ts).
+// - The turnover counts by the time of supply (Leistungszeitpunkt), also for Istbesteuerung: the date the
+//   money comes in doesn't matter (VwGH; BFG RV/5100868/2012; see PLAN.md for sources).
+// Turnover here = gross of finalized invoices − finalized credit notes, by service date (see services/small-business.ts).
 // A planning aid only; certain turnover (e.g. Hilfsgeschäfte, some exempt sales) doesn't count towards the limit.
 
 export const SMALL_BUSINESS_LIMIT_CENTS = 5_500_000;
@@ -30,8 +32,10 @@ export interface SmallBusinessLimit {
   year: number;
   limitCents: number;
   toleranceCents: number;
-  /** gross turnover of `year` so far */
+  /** gross turnover of `year` so far, by service date */
   turnoverCents: number;
+  /** part of turnoverCents already paid (for comparison only; doesn't affect the limit) */
+  receivedCents: number;
   /** turnover + projected runs of active recurring invoices until 31.12. (current year only, else = turnover) */
   projectedCents: number;
   /** gross turnover of the previous year */
@@ -40,13 +44,14 @@ export interface SmallBusinessLimit {
   projectedLevel: SmallBusinessLevel;
   /** previous year over the limit: the exemption doesn't apply in `year` at all */
   previousYearExceeded: boolean;
-  /** issue date of the invoice that took the turnover over € 60.500, if any */
+  /** service date of the invoice that took the turnover over € 60.500, if any */
   exceededOn: string | null;
 }
 
 export function smallBusinessLimit(args: {
   year: number;
   turnoverCents: number;
+  receivedCents: number;
   projectedCents: number;
   previousYearCents: number;
   exceededOn: string | null;

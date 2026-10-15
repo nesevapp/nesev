@@ -60,12 +60,17 @@ export function SmallBusinessLimitCard({ limit, isCurrentYear }: { limit: Limit;
         </span>
       </div>
 
+      <p className="text-xs text-muted-foreground tabular">
+        davon bereits eingegangen: {formatCents(limit.receivedCents)}
+      </p>
+
       <Message limit={limit} level={level} showProjection={showProjection} />
 
       <p className="text-xs text-muted-foreground">
-        Bruttoumsatz nach Rechnungsdatum (Rechnungen abzgl. Gutschriften). Grenze € 55.000 pro Jahr, bis € 60.500
-        (10 % Toleranz) bleibt das laufende Jahr steuerfrei. Nicht jeder Umsatz zählt mit (z. B. Hilfsgeschäfte). Eine
-        Hilfe zur Planung, keine Steuerberatung.
+        Bruttoumsatz nach Leistungszeitpunkt (Ende des Leistungszeitraums, sonst Rechnungsdatum; abzgl. Gutschriften) –
+        auch bei Istbesteuerung zählt nicht der Zahlungseingang. Grenze € 55.000 pro Jahr, bis € 60.500 (10 % Toleranz)
+        bleibt das laufende Jahr steuerfrei. Nicht jeder Umsatz zählt mit (z. B. Hilfsgeschäfte). Eine Hilfe zur
+        Planung, keine Steuerberatung.
       </p>
     </section>
   );
@@ -90,7 +95,7 @@ function Message({ limit, level, showProjection }: { limit: Limit; level: SmallB
     );
   } else if (level === "exceeded") {
     lines.push(
-      `Grenze samt Toleranz (€ 60.500)${limit.exceededOn ? ` am ${formatDate(limit.exceededOn)}` : ""} überschritten: Die Befreiung endete mit dieser Rechnung – sie und alle weiteren sind umsatzsteuerpflichtig. Bitte mit der Steuerberatung klären.`,
+      `Grenze samt Toleranz (€ 60.500)${limit.exceededOn ? ` am ${formatDate(limit.exceededOn)}` : ""} überschritten (Leistungsdatum): Die Befreiung endete mit dieser Rechnung – sie und alle weiteren sind umsatzsteuerpflichtig. Bitte mit der Steuerberatung klären.`,
     );
   } else if (level === "tolerance") {
     lines.push(

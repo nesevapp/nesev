@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { smallBusinessLevel } from "../../shared/small-business";
 import { createTestDb } from "../db/client";
-import { clients, documents, type NewDocument, recurringInvoices } from "../db/schema";
+import { bankAccounts, bankMatches, bankTransactions, clients, documents, type NewDocument, recurringInvoices } from "../db/schema";
 import { getDashboard } from "./dashboard";
 import { getSmallBusinessLimit } from "./small-business";
 import { updateSettings } from "./settings";
@@ -90,6 +90,53 @@ describe("getSmallBusinessLimit", () => {
     expect(l.level).toBe("exceeded");
     expect(l.exceededOn).toBe("2026-05-02");
     expect(getSmallBusinessLimit(db, 2027, "2027-01-10").previousYearExceeded).toBe(true);
+  });
+
+  test("counts by service date (period end → start → invoice date), whatever the VAT basis", () => {
+    const { db, add } = setup();
+    updateSettings(db, { vatBasis: "cash" });
+    // December 2025 service, invoiced in January 2026 → 2025
+    add({ type: "invoice", grossCents: 1_000_000, issueDate: "2026-01-05", servicePeriodStart: "2025-12-01", servicePeriodEnd: "2025-12-31" });
+    // only a start date → that date
+    add({ type: "invoice", grossCents: 200_000, issueDate: "2027-01-03", servicePeriodStart: "2026-12-20" });
+    // no service date → invoice date
+    add({ type: "invoice", grossCents: 300_000, issueDate: "2026-04-01" });
+    // a credit note counts by its own date, even if its invoice belongs to 2025
+    add({ type: "credit_note", grossCents: 100_000, issueDate: "2026-02-01", servicePeriodEnd: "2025-12-31" });
+
+    const l = getSmallBusinessLimit(db, 2026, TODAY);
+    expect(l.turnoverCents).toBe(200_000 + 300_000 - 100_000);
+    expect(l.previousYearCents).toBe(1_000_000);
+  });
+
+  test("received: invoices marked paid in full, others by their bank allocations", () => {
+    const { db, add } = setup();
+    const paid = add({ type: "invoice", status: "paid", grossCents: 500_000, issueDate: "2026-02-01" });
+    add({ type: "credit_note", parentId: paid.id, grossCents: 50_000, issueDate: "2026-02-10" });
+    const partly = add({ type: "invoice", grossCents: 400_000, issueDate: "2026-03-01" });
+    add({ type: "invoice", grossCents: 300_000, issueDate: "2026-04-01" }); // unpaid
+    const account = db.insert(bankAccounts).values({ name: "Giro" }).returning().get();
+    const tx = db
+      .insert(bankTransactions)
+      .values({ accountId: account.id, bookingDate: "2026-03-20", amountCents: 150_000, importHash: "h1" })
+      .returning()
+      .get();
+    db.insert(bankMatches).values({ transactionId: tx.id, documentId: partly.id, amountCents: 150_000 }).run();
+
+    const l = getSmallBusinessLimit(db, 2026, TODAY);
+    expect(l.turnoverCents).toBe(500_000 - 50_000 + 400_000 + 300_000);
+    expect(l.receivedCents).toBe(450_000 + 150_000);
+  });
+
+  test("a recurring run counts by the end of the period it covers", () => {
+    const { db, client } = setup();
+    db.insert(recurringInvoices)
+      .values({ clientId: client.id, name: "Jahreslizenz", intervalUnit: "year", startDate: "2026-12-01", nextRunDate: "2026-12-01", taxMode: "SMALL_BUSINESS", netCents: 100_000, grossCents: 100_000 })
+      .run();
+    db.insert(recurringInvoices)
+      .values({ clientId: client.id, name: "Ohne Zeitraum", intervalUnit: "year", startDate: "2026-12-01", nextRunDate: "2026-12-01", setServicePeriod: false, taxMode: "SMALL_BUSINESS", netCents: 70_000, grossCents: 70_000 })
+      .run();
+    expect(getSmallBusinessLimit(db, 2026, TODAY).projectedCents).toBe(70_000); // the licence covers 2027
   });
 
   test("dashboard includes it only for Kleinunternehmer", () => {
