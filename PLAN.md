@@ -34,6 +34,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | 21 | In-app assistant (local LLM + MCP tools): backend | ✅ done | `/api/chat`, `services/chat*.ts`, `lib/llama/lease.ts` |
 | 22 | Belege-Eingang (receipt inbox folder) | ✅ done | `/expenses/inbox`, Einstellungen → Belegerkennung, `services/receipt-inbox.ts` |
 | 23 | E-invoices: ebInterface 6.1, XRechnung 3.0 (UBL), ZUGFeRD/Factur-X | ✅ done | `lib/einvoice/`, `/api/einvoice`, Beleg → „E-Rechnung“ |
+| 24 | FinanzOnline upload files (UVA U30, ZM U13) | ✅ done | `/tax` → „XML für FinanzOnline“, `services/tax-xml.ts` |
+| 25 | Accountant export: BMD booking import, generic CSV, receipts ZIP | ✅ done (untested against BMD) | `/export` → Steuerberatung, `services/export-accounting.ts` |
 
 ---
 
@@ -131,6 +133,7 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - **ZM:** per EU client UID, the sum of reverse-charge services.
 - **EAR:** by payment date. Expenses grouped by category with an E1a suggestion, warning for Bewirtung. Expense lines with category `anlagen` are capitalized (not expensed); instead the AfA of the year and the remaining book value of assets disposed in the year come from the Anlagenverzeichnis under KZ 9130 ("Anlagen" group, expandable to the assets; also listed in the CSV). Warning when an expense of the year has `anlagen` lines but no linked asset. The UVA is unchanged: input VAT on assets is deductible at once.
 - CSV export for each report.
+- **FinanzOnline upload files** (`services/tax-xml.ts`, `GET /api/tax/{uva,zm}.xml`, pre-check `GET /api/tax/{uva,zm}/finanzonline`): XML for „Eingaben → Übermittlungen → Datei-Upload“ per the BMF XML documentation for software vendors: U30 schema 07/2026 (Stand 24.04.2026; output never uses the new 4,9 % KZ 124/125, so it also validates against the 01/2022 schema) and ZM schema from 6.3.2025 (DREIECK/SOLEI = „J“, SUM_BGL in whole euros, may be negative). The XSDs are in `services/fixtures/finanzonline/`; tests validate with `xmllint` when installed. FASTNR = 9 digits (FA-Nr + StNr) parsed from settings.taxNumber („12 345/6789“, check digit not verified). Zero KZ are omitted (except KZ 000), only 063/067/090 may be negative; 095 and the tax columns are computed by FinanzOnline. Blocking checks (German, shown in the popover): missing/invalid Steuernummer, own UID for the ZM, year or unfinished period, > 5 years back, negative KZ, BMF plausibility sums (022+029+006+037 = 000−021−steuerfrei, 070/071/072…, 066 ≤ 057), ZM without lines, missing/AT/invalid client UIDs. The user uploads the file and checks the values; nothing is transmitted by nesev.
 
 ### Anlagen / AfA (`/assets`) – a helper, not tax advice
 - `fixed_assets`, numbered `AV-0001` (max + 1). Math in `src/shared/assets.ts` (pure, cents), shared by server and the live preview in the form.
@@ -231,6 +234,11 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Everything lives in `data/` (gitignored).
 - Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
 - Accountant export: CSV (BOM, `;`, decimal comma) and a ZIP with all PDFs for a period.
+- **Steuerberatung export** (`services/export-accounting.ts`, `/api/export/accounting/{summary,bmd.csv,belege.csv}`, `/api/export/accounting.zip`, mapping `GET/PUT /api/export/accounting-settings` → `settings.accountingExport`, shape and EKR defaults in `src/shared/accounting-export.ts`). Best effort after public BMD interface descriptions (BMD 5.5 pr08 guide by simplesoft, dvo „BuErf-Import“ manual 2021), not tested against BMD:
+  - BMD CSV (`satzart;konto;gkonto;belegnr;belegdatum;buchsymbol;buchcode;prozent;steuercode;betrag;steuer;text;extbelegnr;uidnr;gegenbuchkz;verbuchkz;dokument`): konto = Erlös/Aufwand/Anlage, gkonto = Debitor (Sammelkonto or base + Kundennr.) / Kreditor (Sammelkonto); betrag net, signed (Erlöse Haben −, Gutschriften and Ausgaben Soll +), steuer separate with the same sign, self-assessed tax opposite. One line per document tax rate and per expense line; partly deductible Vorsteuer is split into a line with code 2 and a gross line without tax. Steuercodes: 1 USt, 2 VSt, 77 EU-Leistung, 16 Kleinunternehmer, 79/78 RC EU, 19/18 RC Drittland, 9/8 ig. Erwerb, 34 EUSt, empty = ohne USt / Drittland-Erlös. belegnr = digits of the number (RE-2026-0042 → 20260042; credit notes sharing the invoice symbol get a leading 9); the full number is `extbelegnr` (OP-Nummer) and names the file in `dokument`. Optional bank payments (BK, matched bank transactions, gkonto = Debitor/Kreditor, extbelegnr clears the OP). Windows-1252 (default) or UTF-8, CRLF, TT.MM.JJJJ, decimal comma; text sanitized (no `;`/quotes), ≤ 60 chars.
+  - Generic CSV without accounts (RZL/Excel): a row per document rate / expense line / payment.
+  - ZIP streamed with fflate (`Zip`), one file at a time: LIESMICH.txt, both CSVs, `belege/<Belegnr>.<ext>` (frozen PDFs, missing ones rendered; expense receipts by attachment).
+  - Ausgaben by Belegdatum; `anlagen` lines go to the asset account (AfA is the accountant's).
 - **Background service (macOS launchd):** `bun run service:install [--port 3998] [--skip-build]` builds the SPA, writes `~/Library/LaunchAgents/at.nesev.plist` (label `at.nesev`: `bun src/server/index.ts` with NODE_ENV=production, PORT, PATH = bun dir + Homebrew + system, NESEV_DATA_DIR if set at install time; WorkingDirectory = repo; RunAtLoad, KeepAlive) and loads it with `launchctl bootstrap`. Logs: `~/Library/Logs/nesev/nesev.log` / `nesev.err.log`. `service:status` shows state/PID and pings the port, `service:uninstall` boots it out and removes the plist. `--dry-run` writes the plist to a temp dir and runs `plutil -lint` only. Stop the dev server on the same port first; after code updates rerun `service:install` (rebuilds and restarts).
 
 ---
@@ -242,6 +250,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 4. **Ist- vs. Sollbesteuerung** and monthly vs. quarterly UVA: set in Einstellungen → Umsatzsteuer.
 5. **AfA details for the Steuerberater:** Halbjahresregel also in the disposal year (currently: full AfA + Restbuchwert, same total); whether the Restbuchwert belongs in KZ 9130; useful-life defaults; PKW Angemessenheitsgrenze (40.000 €) and private use; Investitionsfreibetrag / degressive AfA (not modelled); GWG ≤ 1.000 € may also be capitalized (allowed, form only warns).
 6. **Optional DB constraint patch** for the two FK columns without `ON DELETE SET NULL` (handled in code today).
+7. **For the Steuerberater (BMD export):** Kontenplan (defaults: EKR 4000/4010/4013/4111/4210/4062, expenses 5000/5700/7xxx, Anlagen 0620, Debitoren 20000, Kreditoren 33000, Bank 2800), Personenkonten-Stelligkeit, Buchungssymbole (credit notes own symbol?), Steuercodes (esp. 77 vs 21 for EU services, Drittland, EUSt 34), sign of `steuer` for self-assessed tax, Istbesteuerung (BMD codes 903/904 not used), whether bank payments should be booked, encoding. Do one test import.
+8. **4,9 % rate (KZ 124/125, from 07/2026)** isn't supported in nesev (no rate, no KZ); the U30 XML would need it if the rate is ever used.
 
 ---
 
