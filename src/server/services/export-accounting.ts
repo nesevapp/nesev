@@ -34,7 +34,9 @@ import { getSettings } from "./settings";
 //   buchcode 1). `steuer` has the sign of `betrag`, except self-assessed tax (reverse charge, ig. Erwerb): opposite.
 // - Steuercodes (BMD standard): 1 USt, 2 Vorsteuer, 8/9 ig. Erwerb ohne/mit VSt-Abzug, 18/19 Reverse Charge
 //   Drittland ohne/mit VSt, 78/79 sonstige Leistungen EU ohne/mit VSt, 77 EU-Leistungen (ZM), 16 Kleinunternehmer,
-//   34 Einfuhrumsatzsteuer; empty = no tax (also the non-deductible part of input VAT, booked as expense).
+//   81 Umsatz nicht steuerbar (Drittland), 34 Einfuhrumsatzsteuer; empty = no tax (also the non-deductible part of
+//   input VAT, booked as expense). Confirmed by the dvo BuErf table, domonda and the GLP Steuerberater samples
+//   (which also use GU for credit notes); offices can remap codes in BMD, so check the first import.
 // - belegnr numeric (max. 9 digits): "RE-2026-0042" → 20260042 (credit notes add a leading 9 when they share the
 //   invoice Buchungssymbol); the full number goes to `extbelegnr` (= OP-Nummer) and names the file in `dokument`.
 // - Decimal comma, dates TT.MM.JJJJ, ";" separated, Windows-1252 by default (UTF-8 optional), CRLF.
@@ -283,7 +285,7 @@ function debtorAccount(s: AccountingExportSettings, clientNumber: number | null)
 const REVENUE_STEUERCODE: Record<TaxMode, string> = {
   AT_DOMESTIC: "1",
   EU_REVERSE_CHARGE: "77",
-  THIRD_COUNTRY: "",
+  THIRD_COUNTRY: "81",
   SMALL_BUSINESS: "16",
 };
 

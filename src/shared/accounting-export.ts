@@ -58,7 +58,7 @@ const DEFAULT_EXPENSE_ACCOUNTS: Record<ExpenseCategoryKey, string> = {
   versicherung: "7700", // Versicherungen
   beratung: "7750", // Rechts- und Beratungsaufwand
   bankgebuehren: "7790", // Spesen des Geldverkehrs
-  svs: "7780", // gesetzliche Pflichtbeiträge
+  svs: "6580", // Eigene Pflichtversicherungsbeiträge
   sonstiges: "7840", // Verschiedene betriebliche Aufwendungen
 };
 
@@ -91,7 +91,7 @@ export const DEFAULT_ACCOUNTING_EXPORT_SETTINGS: AccountingExportSettings = {
   debtorPerClient: false,
   creditorAccount: "33000",
   bankAccount: "2800",
-  symbols: { invoice: "AR", creditNote: "AR", expense: "ER", bank: "BK" },
+  symbols: { invoice: "AR", creditNote: "GU", expense: "ER", bank: "BK" },
   encoding: "windows-1252",
 };
 

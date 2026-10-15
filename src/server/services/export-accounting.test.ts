@@ -143,7 +143,10 @@ describe("BMD bookings", () => {
     const inv = doc([{ net: 10000 }], { issueDate: "2026-08-01" });
     doc([{ net: 2500 }], { type: "credit_note", number: "GS-2026-0001", parentId: inv.id });
     const [row] = bmdRows(db);
-    expect(row).toMatchObject({ konto: "4000", buchcode: "1", betrag: "25,00", steuer: "5,00", belegnr: "920260001", extbelegnr: "GS-2026-0001" });
+    expect(row).toMatchObject({ konto: "4000", buchsymbol: "GU", buchcode: "1", betrag: "25,00", steuer: "5,00", belegnr: "20260001", extbelegnr: "GS-2026-0001" });
+    // sharing the invoice symbol: leading 9 keeps the number unique in the Belegkreis
+    updateAccountingExportSettings(db, { ...getAccountingExportSettings(db), symbols: { ...DEFAULT_ACCOUNTING_EXPORT_SETTINGS.symbols, creditNote: "AR" } });
+    expect(bmdRows(db)[0]).toMatchObject({ buchsymbol: "AR", belegnr: "920260001" });
     expect(row!.text).toBe("Gutschrift zu RE-2026-0001 Wien GmbH");
   });
 
@@ -155,7 +158,7 @@ describe("BMD bookings", () => {
     doc([{ net: 2000 }], { taxMode: "SMALL_BUSINESS" });
     const rows = bmdRows(db);
     expect(rows[0]).toMatchObject({ konto: "4111", gkonto: "20008", steuercode: "77", prozent: "0", betrag: "-500,00", steuer: "0,00", uidnr: "DE123456789" });
-    expect(rows[1]).toMatchObject({ konto: "4210", gkonto: "20007", steuercode: "", betrag: "-10,00" });
+    expect(rows[1]).toMatchObject({ konto: "4210", gkonto: "20007", steuercode: "81", betrag: "-10,00" });
     expect(rows[2]).toMatchObject({ konto: "4062", steuercode: "16", betrag: "-20,00" });
   });
 
