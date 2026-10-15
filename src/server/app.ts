@@ -14,10 +14,12 @@ import reminders from "./routes/reminders";
 import settings from "./routes/settings";
 import pdf from "./routes/pdf";
 import receipts from "./routes/receipts";
+import receiptInbox from "./routes/receipt-inbox";
 import recurringExpenses from "./routes/recurring-expenses";
 import assets from "./routes/assets";
 import search from "./routes/search";
 import chat from "./routes/chat";
+import transcribe from "./routes/transcribe";
 import tax from "./routes/tax";
 import templates from "./routes/templates";
 import units from "./routes/units";
@@ -49,10 +51,12 @@ export const app = base
   .route("/api/tax", tax)
   .route("/api/units", units)
   .route("/api/receipts", receipts)
+  .route("/api/receipt-inbox", receiptInbox)
   .route("/api/recurring-expenses", recurringExpenses)
   .route("/api/assets", assets)
   .route("/api/search", search)
-  .route("/api/chat", chat);
+  .route("/api/chat", chat)
+  .route("/api/transcribe", transcribe);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 

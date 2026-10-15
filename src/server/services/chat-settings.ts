@@ -27,8 +27,10 @@ export function getChatSettings(db: DbOrTx): ChatSettings {
 }
 
 export function updateChatSettings(db: DbOrTx, data: ChatSettings): ChatSettings {
-  getSettings(db); // creates the singleton row if missing
-  db.update(settings).set({ chatSettings: data }).run();
+  const raw = getSettings(db).chatSettings; // creates the singleton row if missing
+  // keep keys owned by others (voice input's `voice`, services/voice.ts)
+  const rest = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  db.update(settings).set({ chatSettings: { ...rest, ...data } }).run();
   return getChatSettings(db);
 }
 
