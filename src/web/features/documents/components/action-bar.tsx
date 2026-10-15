@@ -7,7 +7,7 @@ import { docLink } from "../config";
 /** Sticky bottom bar (same look as the settings page save bar). */
 export function ActionBar({ left, children }: { left?: ReactNode; children: ReactNode }) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-8 mt-8 flex flex-wrap items-center gap-2 border-t bg-background/90 px-8 py-3 backdrop-blur">
+    <div className="sticky bottom-0 z-10 -mx-8 mt-8 flex flex-wrap items-center gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
       <div className="flex flex-wrap items-center gap-2">{left}</div>
       <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>
     </div>

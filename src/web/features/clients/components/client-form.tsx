@@ -190,7 +190,7 @@ export function ClientForm({
           <TextareaField control={control} name="notes" label="Notizen" rows={4} />
         </FormSection>
 
-        <div className="sticky bottom-0 -mx-8 flex justify-end gap-2 border-t bg-background/90 px-8 py-3 backdrop-blur">
+        <div className="sticky bottom-0 -mx-8 flex justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
           <Button type="button" variant="ghost" onClick={onCancel}>
             Abbrechen
           </Button>

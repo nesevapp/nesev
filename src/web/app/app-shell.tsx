@@ -3,7 +3,6 @@ import { ChatFab } from "@/features/chat/chat-fab";
 import { ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
 import { SettingsNavLink, SidebarNav } from "./sidebar-nav";
-import { ThemeToggle } from "./theme-toggle";
 
 export function AppShell() {
   return (
@@ -20,9 +19,8 @@ export function AppShell() {
         </div>
         <SidebarNav />
         {/* outside the scrolling nav: always at the bottom, also in short windows */}
-        <div className="shrink-0 space-y-2 border-t border-sidebar-border px-3 py-3">
+        <div className="shrink-0 border-t border-sidebar-border px-3 py-3">
           <SettingsNavLink />
-          <ThemeToggle />
         </div>
       </aside>
       {/* `relative`: absolutely positioned descendants (Radix Select/Switch/Checkbox render hidden native inputs with

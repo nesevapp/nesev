@@ -8,12 +8,13 @@ import { cn } from "@/lib/utils";
 import { chatStatusQuery } from "@/sdk";
 import { chatUi, useChatActivity, useChatUi } from "./chat-store";
 
-// Round button at the bottom right that opens the assistant panel. It sits above the height of the sticky
-// save/action bars (BAR), so it never covers "Speichern"; the toaster stacks its toasts above it (app-toaster.tsx).
+// Round button in the bottom right corner that opens the assistant panel. While it shows, it publishes its width as
+// the CSS variable --fab-space on <html>; the sticky save/action bars add it to their right padding, so their buttons
+// never sit under it. The toaster stacks its toasts above it (app-toaster.tsx).
 // Hidden while the panel is open, when the assistant is disabled in the settings and on the full-screen template
 // designer, whose side panel reaches the bottom edge (⌘J still works everywhere).
 
-export const FAB_BOTTOM = 64 + 16;
+export const FAB_BOTTOM = 16;
 export const FAB_SIZE = 44;
 export const FAB_RIGHT = 16;
 
@@ -44,6 +45,7 @@ export function ChatFab() {
   useEffect(() => {
     shown = visible;
     for (const l of shownListeners) l();
+    document.documentElement.style.setProperty("--fab-space", visible ? `${FAB_SIZE + FAB_RIGHT}px` : "0px");
   }, [visible]);
   const { busy, pending } = useChatActivity();
   const hint = pending ? "wartet auf Bestätigung" : busy ? "antwortet …" : null;

@@ -3,8 +3,8 @@ import { FAB_BOTTOM, FAB_SIZE, useChatFabShown } from "@/features/chat/chat-fab"
 import { useChatUi } from "@/features/chat/chat-store";
 import { useTheme } from "./theme";
 
-// Toasts sit bottom-right, but above the sticky save/action bars (~64px), so they never cover "Speichern", above the
-// floating assistant button while it shows, and left of the assistant panel (420px) while it is open, so they don't
+// Toasts sit bottom-right, but above the sticky save/action bars (~64px), so they never cover "Speichern", and above
+// the floating assistant button in the corner while it shows, and left of the assistant panel (420px) while it is open, so they don't
 // cover its composer or a confirm card.
 
 const GAP = 16;

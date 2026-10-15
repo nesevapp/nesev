@@ -131,7 +131,7 @@ Server: `getClient(db, id)`, `requireClient(db, id)` (404) and `clientSnapshot(c
 Web: `Client`, `clientQuery(id)`, `clientsQuery(filter)` and `clientPickerQuery(q)` in `sdk/clients.ts` (import from `@/sdk`). Use `<ClientPicker value={clientId} onChange={(client) => ...} />` from `features/clients/components/ClientPicker.tsx` (`client` is a `Client` or `null`). It also takes `placeholder`, `disabled`, `className`, `id` and `aria-invalid`. The "Dokumente" section on the client detail page renders `features/clients/components/client-documents.tsx`. The documents feature owns that component's body.
 
 ## Colors & dark mode
-- Theme: `app/theme.ts` (light / dark / system per browser, class `dark` on `<html>`, set before paint in `index.html`); switch in the sidebar footer.
+- Theme: `app/theme.ts` (light / dark / system per browser, class `dark` on `<html>`, set before paint in `index.html`); chosen under Einstellungen → Darstellung (`features/settings/appearance-settings.tsx`).
 - Never hard-code palette colors (`text-red-700`, `bg-amber-50`, `#2a78d6`, `bg-white`). Use the tokens from `styles.css`:
   - surfaces/text: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`, `border-border` …
   - status: `text-success|warning|danger|info|highlight` (highlight = violet "ready" states); solid fills for dots/bars: `bg-success-solid|warning-solid|caution-solid|danger-solid`, soft background `bg-*-muted`, border `border-*-border` (e.g. a notice: `border-warning-border bg-warning-muted text-warning`).

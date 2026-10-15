@@ -4,7 +4,7 @@ import { z } from "@shared/schemas/zod";
 // Tabs of the settings page (`/settings?tab=…`). The main settings form spans "unternehmen" and "belege";
 // the other tabs hold their own sections with their own save buttons.
 
-export const SETTINGS_TABS = ["unternehmen", "belege", "mahnwesen", "finanzen", "belegerkennung", "assistent"] as const;
+export const SETTINGS_TABS = ["unternehmen", "belege", "mahnwesen", "finanzen", "belegerkennung", "assistent", "darstellung"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
@@ -14,6 +14,7 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   finanzen: "Finanzen",
   belegerkennung: "Belegerkennung",
   assistent: "Assistent",
+  darstellung: "Darstellung",
 };
 
 /** Tabs of the settings area that are pages of their own (they keep their URLs: search, shortcuts and the assistant link there). */

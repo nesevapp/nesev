@@ -22,7 +22,7 @@ export function SettingsAreaPage({ children }: { children: ReactNode }) {
   return (
     <Page
       title="Einstellungen"
-      description="Unternehmensdaten, Belege, Mahnwesen, Prognose, Belegerkennung, Assistent, PDF-Vorlagen sowie Export & Backup."
+      description="Unternehmensdaten, Belege, Mahnwesen, Prognose, Belegerkennung, Assistent, Darstellung, PDF-Vorlagen sowie Export & Backup."
     >
       {children}
     </Page>

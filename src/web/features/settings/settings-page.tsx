@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { FORM_TABS, HASH_TABS, SETTINGS_TAB_LABELS, type SettingsTab, tabsOfFields } from "./settings-tabs";
 import { SettingsAreaPage, SettingsTabs } from "./settings-area";
 import { UnitSettingsSection } from "./unit-settings";
+import { AppearanceSettingsSection } from "./appearance-settings";
 
 function toFormValues(s: Settings): SettingsFormValues {
   // receiptInboxPath is saved by its own block (ReceiptInboxSettings), not by this form
@@ -302,6 +303,9 @@ export function SettingsPage() {
           <ChatSettingsSection />
           <VoiceSettingsSection />
         </TabsContent>
+        <TabsContent value="darstellung" forceMount className={PANEL}>
+          <AppearanceSettingsSection />
+        </TabsContent>
       </SettingsTabs>
     </SettingsAreaPage>
   );
@@ -332,7 +336,7 @@ function SaveBar({
   onDiscard: () => void;
 }) {
   return (
-    <div className="sticky bottom-0 -mx-8 flex items-center justify-end gap-2 border-t bg-background/90 px-8 py-3 backdrop-blur">
+    <div className="sticky bottom-0 -mx-8 flex items-center justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
       {dirty && (
         <span className="mr-auto text-xs text-muted-foreground">
           Ungespeicherte Änderungen
