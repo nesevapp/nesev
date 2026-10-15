@@ -118,7 +118,7 @@ describe("analyzeReceipt", () => {
   const db = createTestDb();
   const file = join(dir, "beleg.png");
   writeFileSync(file, "x");
-  const TEXT = "Elektro Gruber GmbH\nUID: ATU00000000\nRechnungsdatum: 12.09.2026\nSumme netto 400,00\nzzgl. 20% USt 80,00\nGesamtbetrag EUR 480,00";
+  const TEXT = "Elektro Gruber GmbH\nUID: ATU24681351\nRechnungsdatum: 12.09.2026\nSumme netto 400,00\nzzgl. 20% USt 80,00\nGesamtbetrag EUR 480,00";
   const tools: ReceiptTools = {
     pdfText: async () => null,
     ocr: async () => ({ text: TEXT, source: "vision", pageCount: 1, warnings: [] }),
@@ -157,7 +157,7 @@ describe("analyzeReceipt", () => {
     expect(out.error).toBe("llama-server konnte das Modell nicht laden: bad magic");
     expect(out.model).toBe("Qwen3.5-4B-Q4_K_M");
     expect(out.result.llmSkipped).toBe(true);
-    expect(out.result.fields.supplierUid?.value).toBe("ATU00000000");
+    expect(out.result.fields.supplierUid?.value).toBe("ATU24681351");
 
     const missing = await analyzeReceipt({ ...base, settings: { ...LLAMA, llamaModelPath: join(dir, "gone.gguf") }, llama: lease(llama) });
     expect(missing.error).toContain("Modelldatei nicht gefunden");
@@ -191,7 +191,7 @@ describe("analyzeReceipt", () => {
   test("known supplier: name, category and treatment from history", async () => {
     createExpense(db, {
       supplierName: "Elektro Gruber",
-      supplierUid: "ATU 37675002",
+      supplierUid: "ATU 24681351",
       supplierCountry: "AT",
       vatTreatment: "domestic",
       issueDate: "2026-05-01",

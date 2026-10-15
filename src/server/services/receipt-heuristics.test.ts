@@ -45,7 +45,7 @@ Reverse charge: VAT to be accounted for by the recipient (Art. 196 Directive 200
 
 const SERVICE_AT = `Elektro Gruber GmbH
 Hauptstraße 12, 4020 Linz
-UID: ATU00000000
+UID: ATU24681351
 Tel. 0732 123456 office@elektro-gruber.at
 RECHNUNG
 Rechnungsnr.: R-2026/0815
@@ -62,7 +62,7 @@ Bankverbindung: Raiffeisenbank Linz IBAN: AT48 3200 0000 1234 5864 BIC: RLNWATWW
 
 const RESTAURANT = `Gasthaus Zum Goldenen Hirschen
 Hirschengasse 5, 1060 Wien
-ATU00000000
+ATU55512341
 Rechnung Nr. 2026-3381
 Tisch 7   11.10.2026   20:14
 2 Wiener Schnitzel   31,80
@@ -107,10 +107,10 @@ describe("parsing helpers", () => {
 
   test("UID check digits and formats", () => {
     expect(checkUid("ATU12345675")).toBe("valid");
-    expect(checkUid("ATU 3767 5002")).toBe("valid");
+    expect(checkUid("ATU 2468 1351")).toBe("valid");
     expect(checkUid("ATU12345678")).toBe("invalid");
-    expect(checkUid("DE000000000")).toBe("valid");
-    expect(checkUid("DE136695977")).toBe("invalid");
+    expect(checkUid("DE246813573")).toBe("valid");
+    expect(checkUid("DE246813574")).toBe("invalid");
     expect(checkUid("IE6388047V")).toBe("format_ok");
     expect(checkUid("IE63880")).toBe("invalid");
     expect(uidCountry("EL123456789")).toBe("GR");
@@ -160,7 +160,7 @@ describe("extractWithRules", () => {
   test("Austrian service invoice with 20 %", () => {
     const { fields } = extractWithRules(SERVICE_AT, OWN);
     expect(fields.supplierName?.value).toBe("Elektro Gruber GmbH");
-    expect(fields.supplierUid?.value).toBe("ATU00000000");
+    expect(fields.supplierUid?.value).toBe("ATU24681351");
     expect(fields.supplierInvoiceNumber?.value).toBe("R-2026/0815");
     // not the service period
     expect(fields.issueDate?.value).toBe("2026-09-12");
@@ -175,7 +175,7 @@ describe("extractWithRules", () => {
   test("restaurant bill with mixed 10 / 20 %", () => {
     const { fields } = extractWithRules(RESTAURANT, OWN);
     expect(fields.supplierName?.value).toBe("Gasthaus Zum Goldenen Hirschen");
-    expect(fields.supplierUid?.value).toBe("ATU00000000");
+    expect(fields.supplierUid?.value).toBe("ATU55512341");
     expect(fields.supplierInvoiceNumber?.value).toBe("2026-3381");
     expect(fields.issueDate?.value).toBe("2026-10-11");
     expect(fields.grossCents?.value).toBe(6980);

@@ -4,7 +4,7 @@
     "booking": "2026-03-12T00:00:00.000+0100",
     "valuation": "2026-03-12T00:00:00.000+0100",
     "partnerName": "Kunde Beta OG",
-    "partnerAccount": { "iban": "AT000000000000000000", "bic": "SPADATW1XXX", "number": "", "bankCode": "", "countryCode": "AT" },
+    "partnerAccount": { "iban": "AT621490000087654321", "bic": "SPADATW1XXX", "number": "", "bankCode": "", "countryCode": "AT" },
     "amount": { "value": 48000, "precision": 2, "currency": "EUR" },
     "reference": "RE-2026-0005",
     "receiverReference": "",

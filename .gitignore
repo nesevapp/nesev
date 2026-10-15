@@ -5,3 +5,8 @@ data/
 .DS_Store
 .env
 .playwright-mcp/
+.env.*
+!.env.example
+demo-data/
+CLAUDE.local.md
+*.local.*

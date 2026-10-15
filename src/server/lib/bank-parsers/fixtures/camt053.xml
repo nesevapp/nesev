@@ -63,7 +63,7 @@
             <Refs><EndToEndId>E2E-A1-77</EndToEndId></Refs>
             <RltdPties>
               <Cdtr><Pty><Nm>A1 Telekom Austria AG</Nm></Pty></Cdtr>
-              <CdtrAcct><Id><IBAN>AT000000000000000000</IBAN></Id></CdtrAcct>
+              <CdtrAcct><Id><IBAN>AT571200000512345678</IBAN></Id></CdtrAcct>
             </RltdPties>
             <RmtInf>
               <Strd><CdtrRefInf><Ref>RF18539007547034</Ref></CdtrRefInf></Strd>

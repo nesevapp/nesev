@@ -159,7 +159,7 @@ export function registerReceiptTools(server: McpServer, ctx: ToolContext) {
       description:
         "Queue the local receipt analysis (OCR + field extraction, fully on this machine) for expenses that have a " +
         "receipt attached. The analysis runs in the nesev server process, so the nesev server must be running " +
-        "(bun run dev or bun start; URL from NESEV_API_URL, default http://localhost:3998) – otherwise this returns an " +
+        "(bun run dev or bun start; URL from NESEV_API_URL, default http://127.0.0.1:3998) – otherwise this returns an " +
         "error and nothing is queued. Results never overwrite the expense; read them later with get_receipt_analysis. " +
         "Expenses without receipt or already queued/running are skipped.",
       input: z.object({ expenseIds: z.array(z.number().int().positive()).min(1).max(500) }),

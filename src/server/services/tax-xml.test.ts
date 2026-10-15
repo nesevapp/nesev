@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parsePeriod } from "../../shared/tax-report";
@@ -10,7 +10,37 @@ import { updateSettings } from "./settings";
 import { computeUva, computeZm } from "./tax";
 import { parseSteuernummer, uvaXml, uvaXmlErrors, wholeEuros, xmlAmount, zmXml, zmXmlErrors } from "./tax-xml";
 
-const XSD_DIR = join(import.meta.dir, "fixtures", "finanzonline");
+/**
+ * The BMF XSDs aren't in the repo (bmf.gv.at content: all rights reserved, reprint only non-commercially). They are
+ * downloaded on first use from bmf.gv.at → FinanzOnline → Informationen für Softwarehersteller → Erklärungen und
+ * Anträge into a cache dir, or read from NESEV_FINANZONLINE_XSD_DIR. Offline or without xmllint, the schema checks
+ * are skipped (the other assertions still run).
+ */
+const XSD_URLS: Record<string, string> = {
+  "U30_07_2026.xsd": "https://www.bmf.gv.at/dam/jcr:2e90eb5d-ef76-48a8-922b-dbf62cc2f230/BMF_ERKLAERUNGS_UEBERMITTLUNG_U30_07_2026.xsd",
+  "U30_01_2022.xsd": "https://www.bmf.gv.at/dam/jcr:5deafd50-12d6-4ac3-a9f7-0e234c690db2/BMF_ERKLAERUNGS_UEBERMITTLUNG_U30_01_2022.xsd",
+  "U13_ZM_2025.xsd": "https://www.bmf.gv.at/dam/jcr:7ff03520-deca-4ef8-aa60-b8ff206bb581/BMF_XSD_Schema_Zusammenfassende_Meldung.xsd",
+};
+const XSD_DIR = process.env.NESEV_FINANZONLINE_XSD_DIR ?? join(import.meta.dir, "..", "..", "..", "node_modules", ".cache", "nesev", "finanzonline");
+const XSD_READY = Bun.which("xmllint") ? await fetchXsds() : false;
+
+async function fetchXsds(): Promise<boolean> {
+  try {
+    mkdirSync(XSD_DIR, { recursive: true });
+    for (const [name, url] of Object.entries(XSD_URLS)) {
+      const file = join(XSD_DIR, name);
+      if (existsSync(file)) continue;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (!res.ok || !new TextDecoder().decode(bytes.subarray(0, 200)).includes("<xs:schema")) throw new Error(`${url}: HTTP ${res.status}`);
+      writeFileSync(file, bytes);
+    }
+    return true;
+  } catch (e) {
+    console.warn(`[tax-xml.test] FinanzOnline XSDs not available, skipping schema validation (${e instanceof Error ? e.message : e})`);
+    return false;
+  }
+}
 const NOW = new Date(2026, 9, 15, 9, 5, 7);
 const TODAY = "2026-10-15";
 const FASTNR = { ok: true, fastnr: "123456789" } as const;
@@ -41,9 +71,9 @@ function setup() {
   return { db, at, de, fr, doc, expense };
 }
 
-/** xmllint --schema; null when xmllint isn't installed. */
+/** xmllint --schema; null when xmllint or the XSDs aren't available. */
 function validate(xml: string, xsd: string): string | null {
-  if (!Bun.which("xmllint")) return null;
+  if (!XSD_READY) return null;
   const dir = mkdtempSync(join(tmpdir(), "nesev-xsd-"));
   try {
     const file = join(dir, "out.xml");

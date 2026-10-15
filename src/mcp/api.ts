@@ -73,7 +73,7 @@ export const api = createApi();
 export type Api = typeof api;
 
 /**
- * Clients for the running nesev server over HTTP (default http://localhost:3998, env NESEV_API_URL). Only for work
+ * Clients for the running nesev server over HTTP (default http://127.0.0.1:3998, env NESEV_API_URL). Only for work
  * that must happen in the server process (receipt analysis). Requests time out after `timeoutMs`.
  */
 export function remoteApi(baseUrl: string, timeoutMs = 5000) {

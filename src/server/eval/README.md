@@ -34,7 +34,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
   (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply, "offer-nudge", "number-guard" → number retry / number replaced) and from tool results (context guard,
   repeated failing call).
 - Stops its API and llama-server by PID, also on Ctrl-C and errors, and deletes its temp dirs. It never uses
-  `data/` or ports 3998/5174.
+  `data/`, the default ports 3001/5173 or the example ports 3998/5174 (`RESERVED_PORTS`).
 
 ## Cases (`chat-eval.cases.ts`)
 Each case has an id, one or more German turns (optionally with `contextPath`/`contextTitle`), tags, and an

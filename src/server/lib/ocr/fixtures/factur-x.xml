@@ -6,7 +6,7 @@
 <ram:ApplicableHeaderTradeAgreement>
 <ram:SellerTradeParty><ram:Name>Steuerberatung Huber &amp; Partner OG</ram:Name>
 <ram:PostalTradeAddress><ram:CountryID>AT</ram:CountryID></ram:PostalTradeAddress>
-<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">ATU00000000</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>
+<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">ATU76543215</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>
 </ram:ApplicableHeaderTradeAgreement>
 <ram:ApplicableHeaderTradeSettlement><ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
 <ram:SpecifiedTradeSettlementPaymentMeans><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>AT611904300234573201</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>

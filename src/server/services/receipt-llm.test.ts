@@ -27,7 +27,7 @@ const completion = (content: string, finish_reason = "stop") => json({ choices: 
 
 const LLM_ANSWER = {
   supplierName: "Elektro Gruber GmbH",
-  supplierUid: "ATU 37675002",
+  supplierUid: "ATU 24681351",
   supplierCountry: "AT",
   supplierInvoiceNumber: "R-2026/0815",
   issueDate: "2026-09-12",
@@ -43,7 +43,7 @@ const LLM_ANSWER = {
 };
 
 const TEXT = `Elektro Gruber GmbH
-UID: ATU00000000
+UID: ATU24681351
 Rechnungsnr.: R-2026/0815
 Rechnungsdatum: 12.09.2026
 Summe netto 400,00
@@ -74,7 +74,7 @@ describe("llama-server client", () => {
     expect(typeof messages[1]!.content).toBe("string");
 
     const f = res.fields;
-    expect(f.supplierUid?.value).toBe("ATU00000000");
+    expect(f.supplierUid?.value).toBe("ATU24681351");
     expect(f.iban?.value).toBe("AT483200000012345864");
     expect(f.grossCents?.value).toBe(48000);
     expect(f.taxLines?.value).toEqual([{ taxRateBp: 2000, netCents: 40000, taxCents: 8000, grossCents: 48000 }]);

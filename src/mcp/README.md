@@ -17,24 +17,24 @@ NESEV_DATA_DIR=/tmp/nesev-mcp bun run mcp     # against another data dir
 | Env | Default | Purpose |
 |---|---|---|
 | `NESEV_DATA_DIR` | `<repo>/data` | same data dir as the app (`src/server/lib/paths.ts`) |
-| `NESEV_WEB_URL` | `http://localhost:5174` | base for the web links in tool results |
-| `NESEV_API_URL` | `http://localhost:3998` | the running nesev server, used only by `queue_receipt_analysis` |
+| `NESEV_WEB_URL` | `http://localhost:5174` | base for the web links in tool results (set it to your web UI's URL) |
+| `NESEV_API_URL` | `http://127.0.0.1:3998` | the running nesev server, used only by `queue_receipt_analysis` |
 
 **Claude Code**, registered only for a dedicated folder (local scope), so other sessions don't see the tools.
-The user's setup uses `/path/to/nesev-ai`:
+Replace `/path/to/nesev` with your checkout:
 ```bash
-cd /path/to/nesev-ai
-claude mcp add --scope local nesev -- /opt/homebrew/bin/bun /path/to/nesev/src/mcp/server.ts
+mkdir -p ~/nesev-ai && cd ~/nesev-ai                # any folder you open Claude Code in for bookkeeping
+claude mcp add --scope local nesev -- "$(which bun)" /path/to/nesev/src/mcp/server.ts
 ```
 (`--scope user` would make it available in every project.)
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`). Desktop doesn't use your
-shell's PATH, so give the absolute path to bun:
+shell's PATH, so give the absolute path to bun (`which bun`, e.g. `~/.bun/bin/bun` or `/opt/homebrew/bin/bun`):
 ```json
 {
   "mcpServers": {
     "nesev": {
-      "command": "/opt/homebrew/bin/bun",
+      "command": "/absolute/path/to/bun",
       "args": ["/path/to/nesev/src/mcp/server.ts"]
     }
   }
@@ -199,14 +199,14 @@ mcp.test.ts       end-to-end: the real entry as a subprocess in both eras; every
 
 ## Safety model
 
-- Local only: a stdio child process of the user's client. Single user, no network listener, no auth.
+- Local only: a stdio child process of your MCP client. Single user, no network listener, no auth.
 - Same data and rules as the web UI. Every call goes through nesev's Hono routes, which handle validation, the
   immutability of finalized documents, gapless numbering, credit notes as the only correction and the German error
   messages. There's no raw SQL in the MCP layer.
 - The MCP process and the dev server can run at the same time on the same DB. SQLite runs in WAL mode with
   `busy_timeout`, so writes wait for the lock. Migrations run on import, as they do for the server.
-- No deletes, no settings, no bank import, no email. Receipt OCR is only *queued*, on the user's own running
-  server, and its suggestions are never applied automatically.
+- No deletes, no settings, no bank import, no email. Receipt OCR is only *queued*, on your own running
+  nesev server, and its suggestions are never applied automatically.
 - **What to allow permanently vs. confirm** (Claude Code: `/permissions`, or `permissions.allow` in
   `~/.claude/settings.json`):
   - **Allow:** all read tools. Rules name tools exactly (`mcp__nesev__search`); the snippet below allows the read

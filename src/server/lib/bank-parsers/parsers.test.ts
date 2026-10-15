@@ -37,7 +37,7 @@ describe("camt.053", () => {
       bookingDate: "2026-03-10",
       valueDate: "2026-03-11",
       counterpartyName: "A1 Telekom Austria AG",
-      counterpartyIban: "AT000000000000000000",
+      counterpartyIban: "AT571200000512345678",
       purpose: "RF18539007547034",
       reference: "2026031000007",
     });
@@ -93,7 +93,7 @@ describe("CSV presets", () => {
       ["2026-03-09", -30000, "Vermieter GmbH"],
     ]);
     expect(r.transactions[0]!.purpose).toBe("RE-2026-0004 Received money from Kunde AG with reference RE-2026-0004");
-    expect(r.transactions[2]!.counterpartyIban).toBe("AT000000000000000000");
+    expect(r.transactions[2]!.counterpartyIban).toBe("AT126000000098765432");
   });
 
   test("Raiffeisen ELBA: header-less, Windows-1252, decimal comma, IBAN from text", () => {
@@ -118,7 +118,7 @@ describe("CSV presets", () => {
         amountCents: 48000,
         currency: "EUR",
         counterpartyName: "Kunde Beta OG",
-        counterpartyIban: "AT000000000000000000",
+        counterpartyIban: "AT621490000087654321",
         purpose: "RE-2026-0005",
         reference: "209912345678AT1",
       },
@@ -150,7 +150,7 @@ describe("generic CSV mapping", () => {
         amountCents: 149999,
         currency: "EUR",
         counterpartyName: "Gärtner & Co KG",
-        counterpartyIban: "AT000000000000000000",
+        counterpartyIban: "AT126000000098765432",
         purpose: "Zahlung RE-2026-0007 – danke",
         reference: "",
       },

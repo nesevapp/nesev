@@ -19,7 +19,7 @@ describe("e-invoice XML", () => {
     expect(r.format).toBe("cii");
     const f = r.fields;
     expect(f.supplierName?.value).toBe("Steuerberatung Huber & Partner OG");
-    expect(f.supplierUid?.value).toBe("ATU00000000");
+    expect(f.supplierUid?.value).toBe("ATU76543215");
     expect(f.supplierCountry?.value).toBe("AT");
     expect(f.supplierInvoiceNumber?.value).toBe("2026-118");
     expect(f.issueDate?.value).toBe("2026-09-21");
@@ -34,7 +34,7 @@ describe("e-invoice XML", () => {
   test("XRechnung UBL with reverse charge (AE)", async () => {
     const f = parseEInvoiceXml(await fixture("xrechnung-ubl.xml"))!.fields;
     expect(f.supplierName?.value).toBe("Muster Hosting GmbH");
-    expect(f.supplierUid?.value).toBe("DE000000000");
+    expect(f.supplierUid?.value).toBe("DE246813573");
     expect(f.supplierCountry?.value).toBe("DE");
     expect(f.supplierInvoiceNumber?.value).toBe("DE-4711");
     expect(f.issueDate?.value).toBe("2026-08-14");

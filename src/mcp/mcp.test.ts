@@ -57,7 +57,7 @@ const MORE_STATE_CHANGING: string[] = ["match_bank_transaction", "unmatch_bank_t
 const ALL_TOOLS = [...TOOLS, ...WRITE_TOOLS, ...BANK_TOOLS, ...RECURRING_TOOLS, ...RECORD_TOOLS];
 const STATE_CHANGING = [...MORE_STATE_CHANGING, "finalize_document", "mark_document_sent", "mark_invoice_paid", "convert_offer_to_invoice", "create_credit_note", "create_reminder"];
 const WEB_URL = "http://nesev.test:4321";
-/** never the user's server (the default NESEV_API_URL is http://localhost:3998): nothing listens on port 9 */
+/** never a real server (the default NESEV_API_URL is http://127.0.0.1:3998): nothing listens on port 9 */
 const DEAD_API_URL = "http://127.0.0.1:9";
 
 let dataDir: string;
@@ -700,7 +700,7 @@ describe("record tools (updates, fixed costs, assets)", () => {
     const rc = await callTool("update_expense", {
       id,
       supplierCountry: "de",
-      supplierUid: "DE000000000",
+      supplierUid: "DE975312464",
       vatTreatment: "reverse_charge",
       lines: [{ category: "software_abos", gross: 50 }],
     });

@@ -118,7 +118,7 @@ const UID_FORMATS: Record<string, RegExp> = {
   GB: /^(\d{9}|\d{12})$/,
 };
 
-/** Candidate UIDs in free text, e.g. "ATU 3767 5002", "IE6388047V", "DE 123456789". */
+/** Candidate UIDs in free text, e.g. "ATU 2468 1351", "IE6388047V", "DE 123456789". */
 export const UID_PATTERN =
   /\b(ATU\s?\d{4}\s?\d{4}|DE\s?\d{9}|CHE[-\s]?\d{3}\.?\d{3}\.?\d{3}(?:\s?(?:MWST|TVA|IVA))?|(?:BE|BG|CY|CZ|DK|EE|EL|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK|GB|XI)\s?[0-9A-Z+*]{8,12})\b/g;
 
