@@ -151,7 +151,7 @@ export function AssetFormDialog({
                     </FormControl>
                     <p className="text-xs text-muted-foreground">Netto zuzüglich nicht abziehbarer Vorsteuer.</p>
                     {costCents > 0 && costCents <= GWG_LIMIT_CENTS && (
-                      <p className="text-xs text-amber-700">
+                      <p className="text-xs text-warning">
                         Bis {formatCents(GWG_LIMIT_CENTS)} als geringwertiges Wirtschaftsgut sofort absetzbar (Kategorie „Hardware / GWG“) — AfA optional.
                       </p>
                     )}

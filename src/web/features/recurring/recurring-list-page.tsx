@@ -129,7 +129,7 @@ export function RecurringListPage() {
                     ) : (
                       <span className="tabular">{formatDate(r.nextRunDate)}</span>
                     )}
-                    {state === "due" && <div className="text-xs text-amber-700">fällig – wird erstellt</div>}
+                    {state === "due" && <div className="text-xs text-warning">fällig – wird erstellt</div>}
                     {state === "paused" && <div className="text-xs text-muted-foreground">pausiert</div>}
                   </TableCell>
                   <TableCell className="text-right tabular">{formatCents(r.grossCents)}</TableCell>

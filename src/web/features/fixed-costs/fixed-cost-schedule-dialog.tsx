@@ -71,7 +71,7 @@ function StatusBadge({ slot }: { slot: RecurringExpenseSlot }) {
       <Badge variant="outline" className="font-normal">verknüpft · offen</Badge>
     );
   }
-  if (slot.status === "missing") return <Badge variant="outline" className="border-amber-300 font-normal text-amber-800">überfällig – ohne Beleg</Badge>;
+  if (slot.status === "missing") return <Badge variant="outline" className="border-warning-border font-normal text-warning">überfällig – ohne Beleg</Badge>;
   return <span className="text-xs text-muted-foreground">geplant</span>;
 }
 
@@ -177,12 +177,12 @@ function CandidatePicker({ fixedCostId, date, onDone }: { fixedCostId: number; d
               }
               className="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left text-sm hover:bg-background"
             >
-              <span className={cn("size-1.5 shrink-0 rounded-full", c.match ? "bg-emerald-600" : "bg-transparent")} aria-hidden />
+              <span className={cn("size-1.5 shrink-0 rounded-full", c.match ? "bg-success" : "bg-transparent")} aria-hidden />
               <span className="w-28 shrink-0 tabular text-muted-foreground">{c.number}</span>
               <span className="min-w-0 flex-1 truncate">{c.supplierName}</span>
               <span className="tabular text-muted-foreground">{formatDate(c.issueDate)}</span>
               <span className="w-24 text-right tabular">{formatCents(c.grossCents)}</span>
-              {c.match && <span className="text-xs text-emerald-700">passt</span>}
+              {c.match && <span className="text-xs text-success">passt</span>}
             </button>
           </li>
         ))}

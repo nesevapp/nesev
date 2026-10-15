@@ -99,7 +99,7 @@ export function LlamaFields({
           <span>Startet den Server mit diesen Werten, liest einen Beispielbeleg und beendet ihn wieder.</span>
         </div>
         {test.data && !test.isPending && (
-          <p className="text-emerald-700 dark:text-emerald-400">
+          <p className="text-success">
             Funktioniert: geladen in {seconds(test.data.startMs)}, Beispielbeleg in {seconds(test.data.extractMs)} gelesen (
             {test.data.supplierName ?? "kein Lieferant"}
             {test.data.grossCents != null ? `, ${formatCents(test.data.grossCents)}` : ""}).

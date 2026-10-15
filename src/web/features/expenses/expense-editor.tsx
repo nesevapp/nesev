@@ -628,7 +628,7 @@ export function ExpenseEditor({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete} className="bg-destructive text-white hover:bg-destructive/90">
+            <AlertDialogAction onClick={onDelete} variant="destructive">
               Löschen
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -711,7 +711,7 @@ function PaidField({ form }: { form: Form }) {
                 {...field}
                 value={field.value ?? ""}
                 onChange={(e) => field.onChange(e.target.value || null)}
-                className={cn("tabular", field.value && "border-emerald-300")}
+                className={cn("tabular", field.value && "border-success-border")}
               />
             </FormControl>
             {!field.value && (

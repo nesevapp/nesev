@@ -25,7 +25,7 @@ export function InvoicePayments({ documentId }: { documentId: number }) {
     <section className="border-t pt-6">
       <h2 className="mb-3 flex items-baseline gap-3 text-sm font-medium">
         Zahlungen
-        {state && <span className="text-xs font-normal text-amber-700">{state}</span>}
+        {state && <span className="text-xs font-normal text-warning">{state}</span>}
         {data.openCents > 0 && (
           <span className="text-xs font-normal text-muted-foreground tabular">offen {formatCents(data.openCents)}</span>
         )}

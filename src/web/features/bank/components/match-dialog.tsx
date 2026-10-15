@@ -162,7 +162,7 @@ function MatchForm({ tx, onClose }: { tx: BankTransaction; onClose: () => void }
                   )}
                 </div>
                 {over > 0 && (
-                  <div className="pl-7 text-xs text-amber-700">Überzahlung um {formatCents(over)}</div>
+                  <div className="pl-7 text-xs text-warning">Überzahlung um {formatCents(over)}</div>
                 )}
               </li>
             );
@@ -176,7 +176,7 @@ function MatchForm({ tx, onClose }: { tx: BankTransaction; onClose: () => void }
       </div>
 
       <DialogFooter className="items-center">
-        <span className={cn("mr-auto text-sm tabular", rest < 0 ? "text-red-600" : "text-muted-foreground")}>
+        <span className={cn("mr-auto text-sm tabular", rest < 0 ? "text-danger" : "text-muted-foreground")}>
           {selected.size === 0
             ? "Beleg(e) auswählen – Betrag lässt sich aufteilen."
             : rest < 0

@@ -16,7 +16,7 @@ export function StatusRow({
       <Icon
         className={cn(
           "mt-0.5 size-4 shrink-0",
-          state === "ok" ? "text-emerald-600" : state === "warn" ? "text-amber-600" : "text-muted-foreground",
+          state === "ok" ? "text-success" : state === "warn" ? "text-warning" : "text-muted-foreground",
         )}
       />
       <div className="min-w-0">

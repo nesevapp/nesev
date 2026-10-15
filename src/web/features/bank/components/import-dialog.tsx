@@ -49,9 +49,9 @@ const ENCODING_LABELS: Record<(typeof CSV_ENCODINGS)[number], string> = {
 };
 
 const STATUS: Record<BankImportPreview["rows"][number]["status"], { label: string; className: string }> = {
-  new: { label: "Neu", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  new: { label: "Neu", className: "border-success-border bg-success-muted text-success" },
   duplicate: { label: "Bereits importiert", className: "border-border text-muted-foreground" },
-  foreign_currency: { label: "Fremdwährung", className: "border-amber-200 bg-amber-50 text-amber-700" },
+  foreign_currency: { label: "Fremdwährung", className: "border-warning-border bg-warning-muted text-warning" },
   zero: { label: "Betrag 0", className: "border-border text-muted-foreground" },
 };
 
@@ -190,7 +190,7 @@ export function ImportDialog({
               <Counts preview={p} />
 
               {p.warnings.length > 0 && (
-                <ul className="grid gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <ul className="grid gap-1 rounded-md border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning">
                   {p.warnings.map((w) => (
                     <li key={w} className="flex gap-2">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
@@ -212,7 +212,7 @@ export function ImportDialog({
               )}
 
               {p.errors.length > 0 && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div className="rounded-md border border-danger-border bg-danger-muted px-3 py-2 text-sm text-danger">
                   <div className="font-medium">
                     {p.errors.length} {p.errors.length === 1 ? "Zeile" : "Zeilen"} nicht lesbar
                   </div>

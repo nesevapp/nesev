@@ -152,7 +152,7 @@ function PaidToggle({ expense }: { expense: ExpenseListItem }) {
       title={expense.paidAt ? "Als offen markieren" : "Heute als bezahlt markieren"}
       className={cn(
         "inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-xs whitespace-nowrap hover:bg-muted",
-        expense.paidAt ? "text-emerald-700" : overdue ? "text-red-600" : "text-muted-foreground",
+        expense.paidAt ? "text-success" : overdue ? "text-danger" : "text-muted-foreground",
       )}
     >
       {setPaid.isPending ? (
@@ -276,14 +276,14 @@ export function ExpensesPage({
       />
 
       {drafts.length > 0 && search.status !== "incomplete" && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-sm">
-          <span className="text-amber-800">
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-warning-border bg-warning-muted px-4 py-2.5 text-sm">
+          <span className="text-warning">
             {drafts.length === 1 ? "1 Beleg ist" : `${drafts.length} Belege sind`} noch unvollständig.
           </span>
           <Button
             variant="link"
             size="sm"
-            className="h-auto p-0 text-amber-900"
+            className="h-auto p-0 text-warning"
             onClick={() => firstDraft && void open(firstDraft.id)}
           >
             Jetzt erfassen
@@ -291,7 +291,7 @@ export function ExpensesPage({
           <Button
             variant="link"
             size="sm"
-            className="ml-auto h-auto p-0 text-amber-900/80"
+            className="ml-auto h-auto p-0 text-warning/80"
             onClick={() => setSearch((s) => ({ ...s, status: "incomplete" }))}
           >
             Anzeigen

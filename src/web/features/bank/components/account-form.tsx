@@ -91,7 +91,7 @@ export function AccountForm({
           className="tabular"
           aria-invalid={ibanInvalid || undefined}
         />
-        {ibanInvalid && <p className="text-xs text-red-600">Die IBAN-Prüfziffer stimmt nicht.</p>}
+        {ibanInvalid && <p className="text-xs text-danger">Die IBAN-Prüfziffer stimmt nicht.</p>}
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="acc-auto">Automatisch zuordnen</Label>

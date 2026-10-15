@@ -87,7 +87,7 @@ export function AssetPage({ asset }: { asset: Asset }) {
           </Item>
           <Item label="Anschaffungskosten">
             <span className="tabular">{formatCents(asset.costCents)}</span>
-            {asset.gwg && <span className="ml-2 text-xs text-amber-700">≤ {formatCents(GWG_LIMIT_CENTS)}: als GWG sofort absetzbar</span>}
+            {asset.gwg && <span className="ml-2 text-xs text-warning">≤ {formatCents(GWG_LIMIT_CENTS)}: als GWG sofort absetzbar</span>}
           </Item>
           <Item label="Nutzungsdauer">
             {asset.usefulLifeYears} {asset.usefulLifeYears === 1 ? "Jahr" : "Jahre"} · <span className="tabular">{formatCents(asset.annualAfaCents)}</span> / Jahr
@@ -139,7 +139,7 @@ export function AssetPage({ asset }: { asset: Asset }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete} className="bg-destructive text-white hover:bg-destructive/90">
+            <AlertDialogAction onClick={onDelete} variant="destructive">
               Löschen
             </AlertDialogAction>
           </AlertDialogFooter>

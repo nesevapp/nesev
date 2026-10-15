@@ -272,7 +272,7 @@ export function RecurringEditor({ recurring, initialValues }: { recurring?: Recu
                     </Select>
                     {taxNote && <p className="text-xs text-muted-foreground">Hinweis auf dem Beleg: „{taxNote}“</p>}
                     {missingUid && (
-                      <p className="flex items-center gap-1.5 text-xs text-amber-700">
+                      <p className="flex items-center gap-1.5 text-xs text-warning">
                         <AlertTriangle className="size-3.5" />
                         Kunde hat keine UID-Nummer – Reverse Charge kann so nicht finalisiert werden.
                       </p>
@@ -508,7 +508,7 @@ function SchedulePreview({ values, today }: { values: RecurringFormValues; today
   return (
     <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
       {due.length > 0 && (
-        <p className="mb-1.5 flex items-start gap-1.5 text-amber-700">
+        <p className="mb-1.5 flex items-start gap-1.5 text-warning">
           <AlertTriangle className="mt-px size-3.5 shrink-0" />
           {due.length === 1 ? "1 Rechnung ist" : `${due.length} Rechnungen sind`} bereits fällig (ab {formatDate(due[0])}) und
           {due.length === 1 ? " wird" : " werden"} bei der nächsten Ausführung erstellt – stündlich oder über „Jetzt
@@ -574,7 +574,7 @@ function GeneratedInvoices({ recurring }: { recurring: Recurring }) {
                 <TableCell className="tabular text-muted-foreground">
                   {d.servicePeriodStart ? `${formatDate(d.servicePeriodStart)}–${formatDate(d.servicePeriodEnd)}` : "–"}
                 </TableCell>
-                <TableCell className={d.overdue ? "tabular text-red-600" : "tabular"}>{formatDate(d.dueDate)}</TableCell>
+                <TableCell className={d.overdue ? "tabular text-danger" : "tabular"}>{formatDate(d.dueDate)}</TableCell>
                 <TableCell className="text-right tabular">{formatCents(d.grossCents)}</TableCell>
                 <TableCell>
                   <StatusBadge status={d.status} overdue={d.overdue} />

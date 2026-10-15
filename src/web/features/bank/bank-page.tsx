@@ -200,7 +200,7 @@ function Summary({ search, setSearch }: { search: BankSearch; setSearch: (patch:
       {stat("Ausgänge", <Amount cents={s?.outCents ?? 0} />, () => setSearch({ dir: "out", status: "all" }))}
       {stat(
         "Kontostand-Differenz",
-        <span className={cn("tabular", (s?.netCents ?? 0) < 0 && "text-red-600")}>{formatCents(s?.netCents ?? 0)}</span>,
+        <span className={cn("tabular", (s?.netCents ?? 0) < 0 && "text-danger")}>{formatCents(s?.netCents ?? 0)}</span>,
       )}
       {stat(
         "Offen",
@@ -476,9 +476,9 @@ function MatchChip({ m }: { m: BankTransaction["matches"][number] }) {
 }
 
 const CONFIDENCE_DOT: Record<MatchSuggestion["confidence"], string> = {
-  high: "bg-emerald-500",
-  medium: "bg-amber-400",
-  low: "bg-zinc-300",
+  high: "bg-success",
+  medium: "bg-warning",
+  low: "bg-muted-foreground/40",
 };
 
 function Assignment({
@@ -507,7 +507,7 @@ function Assignment({
         </div>
       )}
       {tx.status === "open" && tx.allocatedCents > 0 && (
-        <span className="text-xs text-amber-700 tabular">Rest {formatCents(tx.remainingCents)} nicht zugeordnet</span>
+        <span className="text-xs text-warning tabular">Rest {formatCents(tx.remainingCents)} nicht zugeordnet</span>
       )}
       {tx.status === "open" &&
         (tx.suggestions.length > 0 ? (
@@ -573,7 +573,7 @@ function Suggestion({
         </div>
         {(note || more > 0) && (
           <div className="text-muted-foreground">
-            {note && <span className="text-amber-700">{note}</span>}
+            {note && <span className="text-warning">{note}</span>}
             {note && more > 0 && " · "}
             {more > 0 && (
               <button type="button" className="hover:text-foreground hover:underline" onClick={onMore}>

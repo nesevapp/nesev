@@ -60,7 +60,7 @@ export interface ApplyTarget {
 }
 
 /** Highlight for fields filled from suggestions but not saved yet. */
-export const APPLIED_CLASS = "bg-sky-50 ring-2 ring-sky-200";
+export const APPLIED_CLASS = "bg-info-muted dark:bg-info-muted ring-2 ring-info-border";
 
 const LABELS: Record<ApplyKey, string> = {
   supplierName: "Lieferant",
@@ -127,7 +127,7 @@ function ConfidenceDot({ s }: { s: FieldSuggestion<unknown> }) {
     <span
       className={cn(
         "mt-1.5 inline-block size-2 shrink-0 rounded-full",
-        level === "high" ? "bg-emerald-500" : level === "medium" ? "bg-amber-400" : "bg-red-400",
+        level === "high" ? "bg-success" : level === "medium" ? "bg-warning" : "bg-danger",
       )}
       title={`Sicherheit ${Math.round(s.confidence * 100)} % · ${FIELD_SOURCE_LABELS[s.source]}${s.note ? ` · ${s.note}` : ""}`}
     />
@@ -202,7 +202,7 @@ export function AnalysisPanel({
       </header>
       <div className="min-h-0 flex-1 overflow-auto">
         {analysis?.status === "failed" && !analysis.stale && analysis.error && (
-          <p className="border-b bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
+          <p className="border-b bg-warning-muted px-3 py-2 text-xs text-warning">
             <CodeText text={analysis.error} />
             {analysis.result && " – Vorschläge unten stammen nur aus der Regel-Erkennung."}
           </p>
@@ -374,11 +374,11 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
                             : display(key, cur, fields, treatment)}
                       </div>
                     )}
-                    {s.note && <div className="text-xs text-amber-700">{s.note}</div>}
+                    {s.note && <div className="text-xs text-warning">{s.note}</div>}
                   </div>
                 </div>
                 {same ? (
-                  <Check className="mt-1 mr-2 size-4 text-emerald-600" aria-label="stimmt überein" />
+                  <Check className="mt-1 mr-2 size-4 text-success" aria-label="stimmt überein" />
                 ) : (
                   <Button
                     type="button"
@@ -401,7 +401,7 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
       <InfoRows fields={fields} formTotal={formTotal} />
 
       {result.warnings.length > 0 && (
-        <ul className="list-disc space-y-0.5 pl-4 text-xs text-amber-800">
+        <ul className="list-disc space-y-0.5 pl-4 text-xs text-warning">
           {result.warnings.map((w) => (
             <li key={w}>
               <CodeText text={w} />
@@ -445,7 +445,7 @@ function InfoRows({ fields, formTotal }: { fields: ReceiptFields; formTotal: num
         <>
           {formatCents(gross.value)}
           {formTotal !== 0 && (
-            <span className={cn("ml-2 text-xs", matches ? "text-emerald-700" : "text-amber-700")}>
+            <span className={cn("ml-2 text-xs", matches ? "text-success" : "text-warning")}>
               {matches ? "= Summe der Positionen" : `Positionen: ${formatCents(formTotal)}`}
             </span>
           )}

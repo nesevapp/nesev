@@ -143,7 +143,7 @@ export function FixedCostsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className={cn("-ml-2 h-7 px-2 text-xs", r.missingCount > 0 ? "text-amber-800" : "text-muted-foreground")}
+                        className={cn("-ml-2 h-7 px-2 text-xs", r.missingCount > 0 ? "text-warning" : "text-muted-foreground")}
                         onClick={() => setDialog({ kind: "schedule", item: r })}
                       >
                         <ListChecks />

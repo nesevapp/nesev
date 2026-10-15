@@ -165,7 +165,7 @@ function QuadEditor({ src, quad, onChange }: { src: string; quad: Quad; onChange
             <polygon
               points={points}
               fill="none"
-              stroke="var(--color-primary, #2563eb)"
+              className="stroke-primary dark:stroke-info"
               strokeWidth={1}
               strokeDasharray="6 4"
               vectorEffect="non-scaling-stroke"
@@ -187,7 +187,7 @@ function QuadEditor({ src, quad, onChange }: { src: string; quad: Quad; onChange
               onPointerMove={onPointerMove(i)}
               onKeyDown={onKeyDown(i)}
             >
-              <span className="size-4 rounded-full border-2 border-white bg-primary shadow-md ring-primary/40 transition-transform group-focus-visible:scale-125 group-focus-visible:ring-4 group-active:scale-125" />
+              <span className="size-4 rounded-full border-2 border-white bg-primary shadow-md ring-primary/40 dark:bg-info dark:ring-info/40 transition-transform group-focus-visible:scale-125 group-focus-visible:ring-4 group-active:scale-125" />
             </button>
           ))}
         </>

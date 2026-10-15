@@ -94,7 +94,7 @@ export function ReceiptInboxSettings() {
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600" />
+                <CheckCircle2 className="size-4 text-success" />
                 {status.lastScanAt ? `Zuletzt geprüft ${formatTimestamp(status.lastScanAt)}` : "Noch nicht geprüft"}
                 {status.newCount > 0 && ` · ${status.newCount} im Eingang`}
               </span>

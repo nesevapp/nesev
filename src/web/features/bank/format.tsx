@@ -44,7 +44,7 @@ export function periodRange(period: Period, today = todayIso()): { from?: string
 /** Signed amount: incoming green with "+", outgoing plain with "−". */
 export function Amount({ cents, className }: { cents: number; className?: string }) {
   return (
-    <span className={cn("tabular whitespace-nowrap", cents > 0 && "text-emerald-700", className)}>
+    <span className={cn("tabular whitespace-nowrap", cents > 0 && "text-success", className)}>
       {cents > 0 ? "+" : cents < 0 ? "−" : ""}
       {formatCents(Math.abs(cents)).replace("-", "")}
     </span>

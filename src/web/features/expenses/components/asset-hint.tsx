@@ -36,9 +36,9 @@ export function AssetHint({ expenseId, number, dirty }: { expenseId: number | nu
   };
 
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2.5 text-sm">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-info-border bg-info-muted px-3 py-2.5 text-sm">
       <div className="flex items-start gap-2">
-        <HardDrive className="mt-0.5 size-4 shrink-0 text-sky-700" />
+        <HardDrive className="mt-0.5 size-4 shrink-0 text-info" />
         <div>
           <p>Anlagegüter werden nicht als Ausgabe erfasst, sondern über die Nutzungsdauer abgeschrieben (AfA).</p>
           {linked.length === 0 ? (
@@ -48,7 +48,7 @@ export function AssetHint({ expenseId, number, dirty }: { expenseId: number | nu
           ) : (
             <p className="flex flex-wrap gap-x-3 text-xs">
               {linked.map((a) => (
-                <Link key={a.id} to="/assets/$id" params={{ id: a.id }} className="font-medium text-sky-800 hover:underline">
+                <Link key={a.id} to="/assets/$id" params={{ id: a.id }} className="font-medium text-info hover:underline">
                   Anlage {formatAssetNumber(a.number)} öffnen ({a.name}, {formatCents(a.costCents)})
                 </Link>
               ))}

@@ -279,7 +279,7 @@ function FolderStatus() {
         </div>
       )}
       {status.skipped.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
+        <div className="rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning">
           Nicht übernommen:{" "}
           {status.skipped.map((s, i) => (
             <span key={s.name}>

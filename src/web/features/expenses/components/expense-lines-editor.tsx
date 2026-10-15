@@ -178,7 +178,7 @@ export function ExpenseLinesEditor({
                 disabled={noVat}
                 aria-label={`Position ${i + 1}: USt.-Betrag`}
                 title={taxOverridden ? `Manuell angepasst (berechnet: ${CODECS.money.display(expected)})` : undefined}
-                className={cn(taxOverridden && "border-amber-300 bg-amber-50/50")}
+                className={cn(taxOverridden && "border-warning-border bg-warning-muted dark:bg-warning-muted")}
               />
               <NumericInput
                 value={linePayable(l, treatment)}

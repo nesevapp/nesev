@@ -96,10 +96,10 @@ export function SelectCell({ expense }: { expense: Row }) {
 const STYLES: Record<AnalysisListStatus, string> = {
   none: "border-transparent text-muted-foreground/70",
   queued: "border-border text-muted-foreground",
-  running: "border-sky-200 bg-sky-50 text-sky-700",
-  ready: "border-violet-200 bg-violet-50 text-violet-700",
+  running: "border-info-border bg-info-muted text-info",
+  ready: "border-success-border bg-success-muted text-success",
   applied: "border-transparent text-muted-foreground",
-  failed: "border-red-200 bg-red-50 text-red-700",
+  failed: "border-danger-border bg-danger-muted text-danger",
   cancelled: "border-transparent text-muted-foreground",
 };
 
@@ -189,7 +189,7 @@ export function AnalysisToolbar({ state, rows }: { state: ReceiptListState; rows
 
       {active.length > 0 && (
         <div className="ml-auto flex min-w-64 items-center gap-3 rounded-md border px-3 py-1">
-          <Loader2 className="size-4 shrink-0 animate-spin text-sky-600" />
+          <Loader2 className="size-4 shrink-0 animate-spin text-info" />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2 text-xs">
               <span className="truncate">
@@ -201,7 +201,7 @@ export function AnalysisToolbar({ state, rows }: { state: ReceiptListState; rows
             </div>
             <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-sky-500 transition-[width]"
+                className="h-full rounded-full bg-info transition-[width]"
                 style={{ width: `${batch.length ? Math.round((finished / batch.length) * 100) : 0}%` }}
               />
             </div>
