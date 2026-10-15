@@ -30,7 +30,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
   the API restarts on a fresh copy of the seed.
 - Drives `/api/chat` like the UI: one conversation per case, all turns of a case in it, every confirmation
   rejected. Per-step stats (prompt tokens, first token, total) and guard hits come from the API's log
-  (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply) and from tool results (context guard,
+  (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply, "offer-nudge") and from tool results (context guard,
   repeated failing call).
 - Stops its API and llama-server by PID, also on Ctrl-C and errors, and deletes its temp dirs. It never uses
   `data/` or ports 3998/5174.

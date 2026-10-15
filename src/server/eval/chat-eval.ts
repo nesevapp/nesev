@@ -100,6 +100,7 @@ const LOG_GUARDS: [RegExp, string][] = [
   [/nudged (\S+) → (\S+)/, "nudge"],
   [/claim-guard .*retrying once/, "claim retry"],
   [/claim-guard .*fixed reply/, "claim reply"],
+  [/offer-nudge /, "offer nudge"],
 ];
 /** guard interventions visible as tool results */
 const RESULT_GUARDS: [RegExp, string][] = [

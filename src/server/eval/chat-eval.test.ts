@@ -43,9 +43,10 @@ describe("eval: parsing", () => {
       "[chat] conv 1: match_bank_transaction with ids not looked up – rejected",
       "[chat] conv 1: claim-guard „zugeordnet“ without a matching tool call – retrying once",
       "[chat] conv 1: claim-guard „zugeordnet“ again – fixed reply",
+      "[chat] conv 1: offer-nudge create_reminder offered instead of called – retrying once",
     ];
     const t = turn({ results: [result("download_pdf", { ok: false, status: "error", summary: "Anderer Datensatz als auf der Seite gemeint" })] });
-    expect(guardHits(lines, t)).toEqual(["forced retry", "nudge", "provenance", "claim retry", "claim reply", "context"]);
+    expect(guardHits(lines, t)).toEqual(["forced retry", "nudge", "provenance", "claim retry", "claim reply", "offer nudge", "context"]);
   });
 });
 

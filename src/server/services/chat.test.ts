@@ -520,6 +520,64 @@ describe("claim guard (claimed but not done)", () => {
   });
 });
 
+describe("offer nudge (offered instead of acting)", () => {
+  const deltas = (events: ChatStreamEvent[]) => events.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text);
+  const ONE = "1 überfällige Rechnungen:\n- RE-2026-0001 (invoice id 1) · Alpen Software GmbH · fällig 14.09.2026 (31 Tage) · offen € 1.140,00 · noch nicht gemahnt";
+  const TWO = `${ONE}\n- RE-2026-0003 (invoice id 7) · Berlin GmbH · fällig 01.10.2026 · offen € 300,00 · noch nicht gemahnt`;
+  const OFFER = "Es gibt eine überfällige Rechnung: RE-2026-0001. Möchten Sie jetzt eine Zahlungserinnerung (1. Mahnung) erstellen?";
+  const ASK = "Schick eine Mahnung für die überfällige Rechnung";
+  let logs: string[];
+  const withReminders = (due: string) => {
+    deps.host = async () => ({
+      tools: [...host.tools, tool("list_reminders_due", true), tool("create_reminder", false, true)],
+      call: async (name, args) => (name === "list_reminders_due" ? { isError: false, text: due, structured: null } : host.call(name, args)),
+    });
+  };
+  beforeEach(() => {
+    logs = [];
+    deps.log = (line) => void logs.push(line);
+  });
+
+  test("an offer with exactly one candidate is discarded and retried once; the tool call then gets its confirm", async () => {
+    withReminders(ONE);
+    const c = createConversation(db);
+    scripts.push(toolCall("list_reminders_due", "{}"), text(OFFER), toolCall("create_reminder", '{"invoiceId":1}'));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: ASK }, emit));
+    expect(types(events).at(-1)).toBe("confirm");
+    expect(deltas(events)).toEqual([]);
+    expect(requests[2].messages.slice(-2)).toEqual([
+      { role: "assistant", content: OFFER },
+      { role: "user", content: expect.stringContaining("Der Nutzer hat diese Aktion bereits verlangt") },
+    ]);
+    expect(conversationDetail(db, c.id).pending?.toolCall.name).toBe("create_reminder");
+    expect(logs.filter((l) => l.includes("offer-nudge"))).toEqual([`[chat] conv ${c.id}: offer-nudge create_reminder offered instead of called – retrying once`]);
+  });
+
+  test("a second offer goes through", async () => {
+    withReminders(ONE);
+    const c = createConversation(db);
+    scripts.push(toolCall("list_reminders_due", "{}"), text(OFFER), text(OFFER));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: ASK }, emit));
+    expect(deltas(events)).toEqual([OFFER]);
+    expect(requests).toHaveLength(3);
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe(OFFER);
+  });
+
+  test("not with several candidates, nor for a question about the app", async () => {
+    withReminders(TWO);
+    const c = createConversation(db);
+    scripts.push(toolCall("list_reminders_due", "{}"), text(OFFER));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: ASK }, emit));
+    expect(deltas(events)).toEqual([OFFER]);
+    withReminders(ONE);
+    scripts.push(toolCall("list_reminders_due", "{}", "id_l2"), text(OFFER));
+    const question = await collect((emit) => sendMessage(deps, c.id, { text: "Kann man für die überfällige Rechnung eine Mahnung schicken?" }, emit));
+    expect(deltas(question)).toEqual([OFFER]);
+    expect(requests).toHaveLength(4);
+    expect(logs.some((l) => l.includes("offer-nudge"))).toBe(false);
+  });
+});
+
 describe("history", () => {
   const row = (id: number, r: Partial<typeof chatMessages.$inferSelect>) =>
     ({ id, conversationId: 1, content: "", toolCalls: null, toolCallId: null, toolName: null, toolResult: null, status: "done", contextPath: null, createdAt: "", updatedAt: "", ...r }) as typeof chatMessages.$inferSelect;

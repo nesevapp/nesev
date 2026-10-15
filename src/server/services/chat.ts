@@ -16,6 +16,7 @@ import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
 import { claimRetryMessage, detectClaims, honestReply, isWriteRequest, unbackedClaims } from "./chat-claims";
 import { checkContextUse } from "./chat-context";
+import { OFFER_NUDGE, offerInsteadOfAction } from "./chat-offers";
 import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
@@ -473,9 +474,12 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
   let emptyRetried = false;
   /** a forced first call answered with text instead of a tool call (Qwen3.5-4B ignores "required" now and then) is retried once */
   let forcedRetried = false;
-  /** a final answer claiming a change no tool made (chat-claims.ts) is retried once with this correction, the next one replaced */
-  let claimRetry: LlmMessage[] | null = null;
+  /** the discarded answer plus a correction for the next call (claim guard, offer nudge) */
+  let correction: LlmMessage[] | null = null;
+  /** a final answer claiming a change no tool made (chat-claims.ts) is retried once, the next one replaced */
   let claimRetried = false;
+  /** a final answer offering the requested action instead of calling the tool (chat-offers.ts) is retried once */
+  let offerNudged = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal?.aborted) return;
     const rows = messages(db, state.conversationId);
@@ -498,8 +502,8 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
     const previousAnswer = lastUser ? rows.slice(0, rows.indexOf(lastUser)).findLast((r) => r.role === "assistant" && r.content.trim())?.content : null;
     const writeTurn = !!lastUser && isWriteRequest(lastUser.content, previousAnswer);
     const holdText = forcedHold || writeTurn;
-    const extra: LlmMessage[] = claimRetry ?? [];
-    claimRetry = null;
+    const extra: LlmMessage[] = correction ?? [];
+    correction = null;
     let assistant: ChatMessage | null = null;
     let thinkingSent = false;
     const result = await deps.withModel(
@@ -573,7 +577,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           claimRetried = true;
           deps.log?.(`[chat] conv ${state.conversationId}: claim-guard „${words}“ without a matching tool call – retrying once`);
           db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
-          claimRetry = [
+          correction = [
             { role: "assistant", content },
             { role: "user", content: claimRetryMessage(unbacked) },
           ];
@@ -581,6 +585,18 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
         }
         deps.log?.(`[chat] conv ${state.conversationId}: claim-guard „${words}“ again – fixed reply`);
         content = honestReply(unbacked);
+      } else if (!offerNudged) {
+        const rule = offerInsteadOfAction(content, lastUser!.content, turnRows);
+        if (rule) {
+          offerNudged = true;
+          deps.log?.(`[chat] conv ${state.conversationId}: offer-nudge ${rule.tool} offered instead of called – retrying once`);
+          db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
+          correction = [
+            { role: "assistant", content },
+            { role: "user", content: OFFER_NUDGE },
+          ];
+          continue;
+        }
       }
     }
     if (holdText && content) await emit({ type: "delta", messageId, text: content });
