@@ -12,9 +12,6 @@ const BAR_MAX = 18;
 const GAP = 2;
 const RADIUS = 4;
 
-const INCOME = "#2a78d6";
-const EXPENSES = "#eb6834";
-
 const euro = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
 function niceStep(span: number): number {
@@ -82,7 +79,7 @@ export function EarChart({ data, year }: { data: EarMonth[]; year: number }) {
         <svg width={width} height={HEIGHT} role="img" aria-label={`Einnahmen, Ausgaben und Ergebnis pro Monat ${year}`} className="block">
           {ticks.map((t) => (
             <g key={t}>
-              <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} className={t === 0 ? "stroke-zinc-300" : "stroke-zinc-100"} strokeWidth={1} shapeRendering="crispEdges" />
+              <line x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} className={t === 0 ? "stroke-chart-muted" : "stroke-chart-grid"} strokeWidth={1} shapeRendering="crispEdges" />
               <text x={PAD.left - 12} y={y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[11px] tabular">
                 {euro.format(t / 100)}
               </text>
@@ -92,18 +89,18 @@ export function EarChart({ data, year }: { data: EarMonth[]; year: number }) {
             const x0 = cx(i) - barW - GAP / 2;
             return (
               <g key={d.month} className={cn(active !== null && active !== i && "opacity-60")}>
-                {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-zinc-100/70" />}
-                <path d={columnPath(x0, barW, y(0), y(d.incomeCents))} fill={INCOME} />
-                <path d={columnPath(x0 + barW + GAP, barW, y(0), y(d.expensesCents))} fill={EXPENSES} />
+                {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-muted/70" />}
+                <path d={columnPath(x0, barW, y(0), y(d.incomeCents))} className="fill-chart-revenue" />
+                <path d={columnPath(x0 + barW + GAP, barW, y(0), y(d.expensesCents))} className="fill-chart-expenses" />
                 <text x={cx(i)} y={HEIGHT - 8} textAnchor="middle" className="fill-muted-foreground text-[11px]">
                   {MONTHS[i]}
                 </text>
               </g>
             );
           })}
-          <path d={line} fill="none" className="stroke-zinc-800" strokeWidth={2} strokeLinejoin="round" />
+          <path d={line} fill="none" className="stroke-chart-result" strokeWidth={2} strokeLinejoin="round" />
           {data.map((d, i) => (
-            <circle key={d.month} cx={cx(i)} cy={y(d.profitCents)} r={4} className="fill-zinc-800 stroke-background" strokeWidth={2} />
+            <circle key={d.month} cx={cx(i)} cy={y(d.profitCents)} r={4} className="fill-chart-result stroke-background" strokeWidth={2} />
           ))}
           {data.map((d, i) => (
             <rect
@@ -131,9 +128,9 @@ export function EarChart({ data, year }: { data: EarMonth[]; year: number }) {
           <div className="mb-1 text-muted-foreground">
             {MONTHS[active]} {year}
           </div>
-          <TooltipRow swatch={<span className="size-2 rounded-[2px]" style={{ background: INCOME }} />} label="Einnahmen" value={a.incomeCents} />
-          <TooltipRow swatch={<span className="size-2 rounded-[2px]" style={{ background: EXPENSES }} />} label="Ausgaben" value={a.expensesCents} />
-          <TooltipRow swatch={<span className="h-0.5 w-2.5 rounded-full bg-zinc-800" />} label="Ergebnis" value={a.profitCents} />
+          <TooltipRow swatch={<span className="size-2 rounded-[2px] bg-chart-revenue" />} label="Einnahmen" value={a.incomeCents} />
+          <TooltipRow swatch={<span className="size-2 rounded-[2px] bg-chart-expenses" />} label="Ausgaben" value={a.expensesCents} />
+          <TooltipRow swatch={<span className="h-0.5 w-2.5 rounded-full bg-chart-result" />} label="Ergebnis" value={a.profitCents} />
         </div>
       )}
     </div>
@@ -154,15 +151,15 @@ export function EarLegend() {
   return (
     <div className="flex items-center gap-4 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
-        <span className="size-2.5 rounded-[3px]" style={{ background: INCOME }} />
+        <span className="size-2.5 rounded-[3px] bg-chart-revenue" />
         Einnahmen
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-2.5 rounded-[3px]" style={{ background: EXPENSES }} />
+        <span className="size-2.5 rounded-[3px] bg-chart-expenses" />
         Ausgaben
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-0.5 w-3 rounded-full bg-zinc-800" />
+        <span className="h-0.5 w-3 rounded-full bg-chart-result" />
         Ergebnis
       </span>
     </div>

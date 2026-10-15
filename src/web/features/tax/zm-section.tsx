@@ -21,7 +21,7 @@ export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (
     <div className={cn("space-y-6 transition-opacity", isFetching && "opacity-70")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         {!isYear && data.rows.length > 0 ? (
-          <p className={cn("flex items-center gap-1.5 text-sm", due.tone === "overdue" ? "text-red-700" : due.tone === "soon" ? "text-amber-800" : "text-muted-foreground")}>
+          <p className={cn("flex items-center gap-1.5 text-sm", due.tone === "overdue" ? "text-danger" : due.tone === "soon" ? "text-warning" : "text-muted-foreground")}>
             <CalendarClock className="size-4" />
             ZM fällig am <span className="font-medium tabular">{formatDate(data.dueDate)}</span> ({due.text})
           </p>
@@ -73,7 +73,7 @@ export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (
                       <TableCell className="py-1.5 font-medium tabular">
                         <span className="flex items-center gap-1">
                           <ChevronRight className={cn("size-3.5 text-muted-foreground transition-transform", open === key && "rotate-90")} />
-                          {r.uid || <span className="text-red-600">UID fehlt</span>}
+                          {r.uid || <span className="text-danger">UID fehlt</span>}
                         </span>
                       </TableCell>
                       <TableCell className="max-w-64 truncate py-1.5">{r.clientNames.join(", ")}</TableCell>

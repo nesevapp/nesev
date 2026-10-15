@@ -131,7 +131,7 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
       <div className={cn("space-y-8 transition-opacity", isFetching && "opacity-70")}>
         <Kpis data={data} onSetBalance={() => setSettingsOpen(true)} />
         {data.kpis.lowestBalance && data.kpis.lowestBalance.cents < 0 && (
-          <div className="-mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 px-4 py-3 text-sm text-red-800">
+          <div className="-mt-4 flex items-start gap-2 rounded-lg border border-danger-border bg-danger-muted/60 px-4 py-3 text-sm text-danger">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
               Der Kontostand fällt voraussichtlich am {formatDate(data.kpis.lowestBalance.date)} auf{" "}
@@ -220,7 +220,7 @@ function Kpis({ data, onSetBalance }: { data: Forecast; onSetBalance: () => void
           <>
             nächste 30 Tage <span className="tabular">{formatCents(kpis.next30)}</span>
             {kpis.overdue > 0 && (
-              <span className="text-red-700">
+              <span className="text-danger">
                 {" "}
                 · überfällig <span className="tabular">{formatCents(kpis.overdue)}</span>
               </span>
@@ -250,7 +250,7 @@ function Kpis({ data, onSetBalance }: { data: Forecast; onSetBalance: () => void
           value={formatCents(kpis.endBalance)}
           sub={
             low && low.cents < 0 ? (
-              <span className="text-red-700">
+              <span className="text-danger">
                 Tiefster Stand <span className="tabular">{formatCents(low.cents)}</span> am {formatDate(low.date)}
               </span>
             ) : low ? (
@@ -276,12 +276,12 @@ function Kpis({ data, onSetBalance }: { data: Forecast; onSetBalance: () => void
 
 function Tile({ label, value, sub, tone }: { label: string; value: string; sub: ReactNode; tone?: "danger" }) {
   return (
-    <div className={cn("bg-background p-4", tone === "danger" && "bg-red-50/60")}>
-      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-red-700")}>
-        {tone === "danger" && <span className="size-1.5 rounded-full bg-red-600" aria-hidden />}
+    <div className={cn("bg-background p-4", tone === "danger" && "bg-danger-muted/60")}>
+      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-danger")}>
+        {tone === "danger" && <span className="size-1.5 rounded-full bg-danger" aria-hidden />}
         {label}
       </div>
-      <div className={cn("mt-1.5 text-xl font-semibold tracking-tight", tone === "danger" && "text-red-700")}>{value}</div>
+      <div className={cn("mt-1.5 text-xl font-semibold tracking-tight", tone === "danger" && "text-danger")}>{value}</div>
       <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
     </div>
   );
@@ -299,7 +299,7 @@ function delayHint(delay: NonNullable<ForecastEntry["delay"]>): string {
 
 function EntryHint({ e }: { e: ForecastEntry }) {
   const lines: ReactNode[] = [];
-  if (e.overdue) lines.push(<span className="text-red-700">Seit {e.daysOverdue} {e.daysOverdue === 1 ? "Tag" : "Tagen"} überfällig</span>);
+  if (e.overdue) lines.push(<span className="text-danger">Seit {e.daysOverdue} {e.daysOverdue === 1 ? "Tag" : "Tagen"} überfällig</span>);
   switch (e.source) {
     case "fixed_cost":
       lines.push("Geplante Zahlung laut Fixkosten");
@@ -409,7 +409,7 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
         {rows.map((e) => (
           <TableRow key={e.key} className="align-top">
             <TableCell className="tabular">
-              {e.overdue ? <span className="text-red-700">sofort</span> : formatDate(e.expectedDate)}
+              {e.overdue ? <span className="text-danger">sofort</span> : formatDate(e.expectedDate)}
               {!e.overdue && e.expectedDate === today && <div className="text-xs text-muted-foreground">heute</div>}
             </TableCell>
             <TableCell>
@@ -429,7 +429,7 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
               {e.direction === "out" ? (
                 <span>−{formatCents(e.grossCents)}</span>
               ) : (
-                <span className="text-emerald-700">+{formatCents(e.grossCents)}</span>
+                <span className="text-success">+{formatCents(e.grossCents)}</span>
               )}
               {e.taxCents > 0 && (
                 <div className="text-xs text-muted-foreground">
@@ -447,9 +447,9 @@ function EntriesTable({ rows, today }: { rows: ForecastEntry[]; today: string })
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={3}>Summe</TableCell>
           <TableCell className="text-right tabular whitespace-nowrap">
-            <div className="text-emerald-700">+{formatCents(totalIn)}</div>
+            <div className="text-success">+{formatCents(totalIn)}</div>
             {totalOut > 0 && <div>−{formatCents(totalOut)}</div>}
-            <div className={cn("border-t pt-0.5", totalIn - totalOut < 0 && "text-red-700")}>{formatCents(totalIn - totalOut)}</div>
+            <div className={cn("border-t pt-0.5", totalIn - totalOut < 0 && "text-danger")}>{formatCents(totalIn - totalOut)}</div>
           </TableCell>
           <TableCell className="text-xs font-normal text-muted-foreground">
             In den Eingängen enthaltene USt.: <span className="tabular">{formatCents(tax)}</span>

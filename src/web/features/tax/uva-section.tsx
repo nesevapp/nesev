@@ -99,18 +99,18 @@ function Summary({ data }: { data: UvaReport }) {
       <div
         className={cn(
           "bg-background p-4",
-          due.tone === "soon" && "bg-amber-50/70",
-          due.tone === "overdue" && "bg-red-50/60",
+          due.tone === "soon" && "bg-warning-muted/70",
+          due.tone === "overdue" && "bg-danger-muted/60",
         )}
       >
-        <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", due.tone === "overdue" && "text-red-700", due.tone === "soon" && "text-amber-800")}>
+        <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", due.tone === "overdue" && "text-danger", due.tone === "soon" && "text-warning")}>
           <CalendarClock className="size-3.5" />
           Fällig (Abgabe & Zahlung)
         </div>
-        <div className={cn("mt-1.5 text-xl font-semibold tracking-tight tabular", due.tone === "overdue" && "text-red-700")}>
+        <div className={cn("mt-1.5 text-xl font-semibold tracking-tight tabular", due.tone === "overdue" && "text-danger")}>
           {formatDate(data.dueDate)}
         </div>
-        <div className={cn("mt-1 text-xs text-muted-foreground", due.tone === "overdue" && "text-red-700")}>{due.text}</div>
+        <div className={cn("mt-1 text-xs text-muted-foreground", due.tone === "overdue" && "text-danger")}>{due.text}</div>
       </div>
       <div className="bg-background p-4">
         <div className="text-xs text-muted-foreground">Zeitraum</div>

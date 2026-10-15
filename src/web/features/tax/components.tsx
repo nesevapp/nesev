@@ -43,7 +43,7 @@ export function CopyButton({ cents, label, className }: { cents: number; label: 
         );
       }}
     >
-      {done ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+      {done ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
     </Button>
   );
 }
@@ -181,7 +181,7 @@ export function SourcesTable({ sources, showTax = true }: { sources: UvaSource[]
 export function Warnings({ items }: { items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    <div className="rounded-lg border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning">
       <ul className="list-disc space-y-0.5 pl-4">
         {items.map((w) => (
           <li key={w}>{w}</li>

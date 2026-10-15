@@ -8,16 +8,16 @@ type Limit = NonNullable<Dashboard["smallBusiness"]>;
 
 const BAR: Record<SmallBusinessLevel, string> = {
   ok: "bg-primary",
-  warn: "bg-amber-500",
-  tolerance: "bg-orange-500",
-  exceeded: "bg-red-600",
+  warn: "bg-warning",
+  tolerance: "bg-chart-expenses",
+  exceeded: "bg-danger",
 };
 
 const FRAME: Record<SmallBusinessLevel, string> = {
   ok: "",
-  warn: "border-amber-200 bg-amber-50/60",
-  tolerance: "border-orange-200 bg-orange-50/60",
-  exceeded: "border-red-200 bg-red-50/60",
+  warn: "border-warning-border bg-warning-muted/60",
+  tolerance: "border-warning-border bg-warning-muted/60",
+  exceeded: "border-danger-border bg-danger-muted/60",
 };
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 100);
@@ -117,7 +117,7 @@ function Message({ limit, level, showProjection }: { limit: Limit; level: SmallB
 
   if (lines.length === 0) return null;
   return (
-    <div className={cn("space-y-1 text-sm", level === "exceeded" && "font-medium text-red-800", level === "tolerance" && "text-orange-900", level === "warn" && "text-amber-900")}>
+    <div className={cn("space-y-1 text-sm", level === "exceeded" && "font-medium text-danger", (level === "tolerance" || level === "warn") && "text-warning")}>
       {lines.map((l) => (
         <p key={l}>{l}</p>
       ))}

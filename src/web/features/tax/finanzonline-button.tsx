@@ -34,7 +34,7 @@ export function FinanzOnlineButton({ kind, period, euIn021 = false }: { kind: "u
             <p className="text-muted-foreground">Die Datei kann so nicht erstellt werden:</p>
             <ul className="space-y-1.5">
               {data.errors.map((e) => (
-                <li key={e} className="flex gap-2 text-red-700">
+                <li key={e} className="flex gap-2 text-danger">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>{e}</span>
                 </li>
@@ -57,7 +57,7 @@ export function FinanzOnlineButton({ kind, period, euIn021 = false }: { kind: "u
                 {kind === "zm" && " Beträge in ganzen Euro (kaufmännisch gerundet)."}
               </p>
               {data.warnings.length > 0 && (
-                <ul className="space-y-1 text-xs text-amber-800">
+                <ul className="space-y-1 text-xs text-warning">
                   {data.warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}

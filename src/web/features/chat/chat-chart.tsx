@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { ChatCard, ChatTone } from "@/sdk";
 
 // Small chart for assistant cards, in the visual language of the dashboard / forecast charts (rounded columns,
-// zinc grid, € axis, hover/focus tooltip per label) but compact for the side panel: compact € axis, no x-label
+// light grid, € axis, hover/focus tooltip per label) but compact for the side panel: compact € axis, no x-label
 // collisions, legend below when there is more than one series.
 
 type ChartCardData = Extract<ChatCard, { kind: "chart" }>;
@@ -72,7 +72,7 @@ export function ChatChart({ card }: { card: ChartCardData }) {
         {width > 0 && (
           <svg width={width} height={HEIGHT} role="img" aria-label={card.title} className="block">
             {/* below zero, like the forecast's balance chart */}
-            {area && bottom < 0 && <rect x={PAD.left} y={y(0)} width={plotW} height={y(bottom) - y(0)} className="fill-red-50" />}
+            {area && bottom < 0 && <rect x={PAD.left} y={y(0)} width={plotW} height={y(bottom) - y(0)} className="fill-danger-muted" />}
             {ticks.map((t) => (
               <g key={t}>
                 <line
@@ -80,7 +80,7 @@ export function ChatChart({ card }: { card: ChartCardData }) {
                   x2={width - PAD.right}
                   y1={y(t)}
                   y2={y(t)}
-                  className={t === 0 ? "stroke-zinc-300" : "stroke-zinc-100"}
+                  className={t === 0 ? "stroke-chart-muted" : "stroke-chart-grid"}
                   strokeWidth={1}
                   shapeRendering="crispEdges"
                 />
@@ -93,14 +93,14 @@ export function ChatChart({ card }: { card: ChartCardData }) {
               const x0 = cx(i) - groupW / 2;
               return (
                 <g key={i}>
-                  {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-zinc-100/70" />}
+                  {active === i && <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-muted/70" />}
                   {bars.map((s, k) => {
                     const v = s.values[i];
                     return v == null ? null : (
                       <path
                         key={k}
                         d={columnPath(x0 + k * (barW + GAP), barW, y(0), y(v))}
-                        fill={TONE_COLOR[s.tone]}
+                        style={{ fill: TONE_COLOR[s.tone] }}
                         className={cn(active !== null && active !== i && "opacity-60")}
                       />
                     );
@@ -132,15 +132,15 @@ export function ChatChart({ card }: { card: ChartCardData }) {
                 <g key={k} className="pointer-events-none">
                   {area &&
                     runs.map((r, j) => (
-                      <path key={j} d={`${pathOf(r)}L${r.at(-1)!.x},${y(0)}L${r[0]!.x},${y(0)}Z`} fill={color} fillOpacity={0.07} />
+                      <path key={j} d={`${pathOf(r)}L${r.at(-1)!.x},${y(0)}L${r[0]!.x},${y(0)}Z`} style={{ fill: color }} fillOpacity={0.07} />
                     ))}
                   {runs.map((r, j) => (
-                    <path key={j} d={pathOf(r)} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+                    <path key={j} d={pathOf(r)} fill="none" style={{ stroke: color }} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
                   ))}
                   {runs.flat().map((p) =>
                     // a lone value has no line through it: always draw its dot
                     dots || active === p.i || runs.some((r) => r.length === 1 && r[0] === p) ? (
-                      <circle key={p.i} cx={p.x} cy={p.y} r={active === p.i ? 3.5 : 2.25} className="fill-background" stroke={color} strokeWidth={1.5} />
+                      <circle key={p.i} cx={p.x} cy={p.y} r={active === p.i ? 3.5 : 2.25} className="fill-background" style={{ stroke: color }} strokeWidth={1.5} />
                     ) : null,
                   )}
                 </g>
@@ -177,7 +177,7 @@ export function ChatChart({ card }: { card: ChartCardData }) {
               return (
                 <div key={k} className="flex items-center gap-2">
                   <Swatch series={s} chart={chart} />
-                  <span className={cn("font-medium tabular", v == null ? "text-muted-foreground" : v < 0 ? "text-red-600" : "text-foreground")}>
+                  <span className={cn("font-medium tabular", v == null ? "text-muted-foreground" : v < 0 ? "text-danger" : "text-foreground")}>
                     {show(v)}
                   </span>
                   <span className="ml-auto pl-3 text-muted-foreground">{s.label}</span>

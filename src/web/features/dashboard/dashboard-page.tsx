@@ -184,7 +184,7 @@ function Delta({
   const good = lowerIsBetter ? delta <= 0 : delta >= 0;
   return (
     <>
-      <span className={cn("font-medium", good ? "text-emerald-700" : "text-red-600")}>
+      <span className={cn("font-medium", good ? "text-success" : "text-danger")}>
         {delta >= 0 ? "+" : "−"}
         {Math.abs(delta * 100).toLocaleString("de-AT", { maximumFractionDigits: 0 })} %
       </span>{" "}
@@ -214,15 +214,15 @@ function Tile({
     <div
       className={cn(
         "relative bg-background p-4",
-        tone === "danger" && "bg-red-50/60",
-        link && (tone === "danger" ? "hover:bg-red-50" : "hover:bg-muted/50"),
+        tone === "danger" && "bg-danger-muted/60",
+        link && (tone === "danger" ? "hover:bg-danger-muted" : "hover:bg-muted/50"),
       )}
     >
-      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-red-700")}>
-        {tone === "danger" && <span className="size-1.5 rounded-full bg-red-600" aria-hidden />}
+      <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", tone === "danger" && "text-danger")}>
+        {tone === "danger" && <span className="size-1.5 rounded-full bg-danger" aria-hidden />}
         {label}
       </div>
-      <div className={cn("mt-1.5 text-xl font-semibold tracking-tight", tone === "danger" && "text-red-700")}>{value}</div>
+      <div className={cn("mt-1.5 text-xl font-semibold tracking-tight", tone === "danger" && "text-danger")}>{value}</div>
       <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
       {link}
     </div>
@@ -251,7 +251,7 @@ function RevenueSection({
   const head = "h-8 text-right text-xs text-muted-foreground";
   const cell = "py-1.5 text-right tabular";
   const prevCell = cn(cell, "text-muted-foreground");
-  const resultCell = (v: number) => cn(cell, "font-medium", v < 0 && "text-red-600");
+  const resultCell = (v: number) => cn(cell, "font-medium", v < 0 && "text-danger");
   return (
     <section>
       <SectionHeader
@@ -404,7 +404,7 @@ function OverdueSection({ rows, total }: { rows: OverdueDocument[]; total: numbe
           <span className="flex items-center gap-2">
             Überfällig
             {total > 0 && (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-50 px-1.5 text-xs font-medium text-red-700 tabular">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-muted px-1.5 text-xs font-medium text-danger tabular">
                 {total}
               </span>
             )}
@@ -439,7 +439,7 @@ function OverdueSection({ rows, total }: { rows: OverdueDocument[]; total: numbe
                   </span>
                 </TableCell>
                 <TableCell className="max-w-64 truncate py-2">{row.clientName}</TableCell>
-                <TableCell className="py-2 tabular text-red-600">{formatDate(row.dueDate)}</TableCell>
+                <TableCell className="py-2 tabular text-danger">{formatDate(row.dueDate)}</TableCell>
                 <TableCell className="py-2 text-right tabular">{row.daysOverdue}</TableCell>
                 <TableCell className="py-2 text-right tabular">
                   {formatCents(row.grossCents)}
@@ -561,7 +561,7 @@ function OpenOffersSection({ rows, total, today }: { rows: DashboardDocument[]; 
 
 function CompanyBanner() {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning">
       <span>Firmendaten sind unvollständig. Sie erscheinen auf jedem Beleg.</span>
       <Button asChild size="sm" variant="outline" className="h-7 bg-background text-xs">
         <Link to="/settings">Einstellungen öffnen</Link>
@@ -619,7 +619,7 @@ function Onboarding({ setup }: { setup: Dashboard["setup"] }) {
             <div
               className={cn(
                 "grid size-8 shrink-0 place-items-center rounded-full border text-xs font-medium",
-                s.done ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "text-muted-foreground",
+                s.done ? "border-success-border bg-success-muted text-success" : "text-muted-foreground",
               )}
             >
               {s.done ? <Check className="size-4" /> : i + 1}

@@ -30,17 +30,17 @@ interface Series {
   label: string;
 }
 
-export const REVENUE_FILL = "fill-[#2a78d6]";
-const RESULT_STROKE = "stroke-zinc-800";
+export const REVENUE_FILL = "fill-chart-revenue";
+const RESULT_STROKE = "stroke-chart-result";
 
 /** Columns per month, left to right: previous-year revenue, revenue, previous-year expenses, expenses. */
 export function chartSeries(year: number, compare: boolean, expenses: boolean): Series[] {
   const out: Series[] = [];
-  if (compare) out.push({ key: "previousCents", fill: "fill-zinc-300", swatch: "bg-zinc-300", label: `Umsatz ${year - 1}` });
-  out.push({ key: "cents", fill: REVENUE_FILL, swatch: "bg-[#2a78d6]", label: `Umsatz ${year}` });
+  if (compare) out.push({ key: "previousCents", fill: "fill-chart-muted", swatch: "bg-chart-muted", label: `Umsatz ${year - 1}` });
+  out.push({ key: "cents", fill: REVENUE_FILL, swatch: "bg-chart-revenue", label: `Umsatz ${year}` });
   if (expenses && compare)
-    out.push({ key: "previousExpenseCents", fill: "fill-[#f3cfae]", swatch: "bg-[#f3cfae]", label: `Ausgaben ${year - 1}` });
-  if (expenses) out.push({ key: "expenseCents", fill: "fill-[#e5813e]", swatch: "bg-[#e5813e]", label: `Ausgaben ${year}` });
+    out.push({ key: "previousExpenseCents", fill: "fill-chart-expenses-light", swatch: "bg-chart-expenses-light", label: `Ausgaben ${year - 1}` });
+  if (expenses) out.push({ key: "expenseCents", fill: "fill-chart-expenses", swatch: "bg-chart-expenses", label: `Ausgaben ${year}` });
   return out;
 }
 
@@ -100,7 +100,7 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
                 x2={width - PAD.right}
                 y1={y(t)}
                 y2={y(t)}
-                className={t === 0 ? "stroke-zinc-300" : "stroke-zinc-100"}
+                className={t === 0 ? "stroke-chart-muted" : "stroke-chart-grid"}
                 strokeWidth={1}
                 shapeRendering="crispEdges"
               />
@@ -115,7 +115,7 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
             return (
               <g key={d.month}>
                 {active === i && (
-                  <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-zinc-100/70" />
+                  <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-muted/70" />
                 )}
                 {series.map((s, k) => (
                   <path
@@ -184,7 +184,7 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
           ))}
           {expenses && (
             <div className="mt-1 border-t pt-1">
-              <TooltipRow color="bg-zinc-800" label={`Ergebnis ${year}`} value={result(activeDatum)} />
+              <TooltipRow color="bg-chart-result" label={`Ergebnis ${year}`} value={result(activeDatum)} />
             </div>
           )}
         </div>
@@ -197,7 +197,7 @@ function TooltipRow({ color, label, value }: { color: string; label: string; val
   return (
     <div className="flex items-center gap-2">
       <span className={cn("h-0.5 w-3 rounded-full", color)} />
-      <span className={cn("font-medium tabular", value < 0 ? "text-red-600" : "text-foreground")}>{formatCents(value)}</span>
+      <span className={cn("font-medium tabular", value < 0 ? "text-danger" : "text-foreground")}>{formatCents(value)}</span>
       <span className="ml-auto pl-3 text-muted-foreground">{label}</span>
     </div>
   );
@@ -215,7 +215,7 @@ export function ChartLegend({ year, compare, expenses }: { year: number; compare
       ))}
       {expenses && (
         <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-3 rounded-full bg-zinc-800" />
+          <span className="h-0.5 w-3 rounded-full bg-chart-result" />
           Ergebnis {year}
         </span>
       )}
