@@ -56,7 +56,7 @@ const DEFAULT_EXPENSE_ACCOUNTS: Record<ExpenseCategoryKey, string> = {
   werbung: "7650", // Werbung
   fortbildung: "7770", // Aus- und Weiterbildung
   versicherung: "7700", // Versicherungen
-  beratung: "7750", // Rechts- und Beratungsaufwand
+  beratung: "7740", // Steuerberatungsaufwand (7750 = Rechts- und Beratungsaufwand)
   bankgebuehren: "7790", // Spesen des Geldverkehrs
   svs: "6580", // Eigene Pflichtversicherungsbeiträge
   sonstiges: "7840", // Verschiedene betriebliche Aufwendungen
