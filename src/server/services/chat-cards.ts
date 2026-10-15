@@ -3,9 +3,10 @@ import { DOCUMENT_STATUSES, type DocumentStatus } from "../../shared/documents";
 import { formatCents } from "../../shared/money";
 import { appPath } from "./chat-tools";
 
-// Generative UI: one card per tool result, built only from the tool's structured content (the MCP outputSchema
-// shapes in src/mcp/tools), never from model text. Table-driven per tool name; a tool without a builder (or a
-// result that doesn't have the expected shape) gets no card. Amounts stay integer cents; dates are formatted here
+// Generative UI: cards per tool result, built only from the tool's structured content (the MCP outputSchema
+// shapes in src/mcp/tools), never from model text. Table-driven per tool name: the main card (BUILDERS), plus for
+// a few tools a lead card shown above it (LEAD_BUILDERS, e.g. the dashboard's KPIs above its chart). A tool without
+// a builder (or a result that doesn't have the expected shape) gets no card. Amounts stay integer cents; dates are formatted here
 // because the UI can't tell a date column from text.
 
 /** rows a table card shows; the rest is `more` */
@@ -236,6 +237,29 @@ const dashboard: Builder = (d) => {
       { label: "Ergebnis", values: values((m) => m.result), tone: "result", type: "line" },
     ],
     link: link("Dashboard", d.link),
+  };
+};
+
+/** the dashboard's key figures (above its monthly chart) */
+const dashboardKpis: Builder = (d) => {
+  const k: Data | undefined = d.kpis;
+  if (!k || typeof k !== "object" || !k.revenue) return null;
+  const previous = (m: unknown) => `Vorjahr ${formatCents(cents(m))}`;
+  const overdue = k.overdue?.count ? `, ${k.overdue.count} überfällig` : "";
+  return {
+    kind: "kpis",
+    title: `Kennzahlen ${d.year}`,
+    items: [
+      { label: "Umsatz netto", cents: cents(k.revenue), hint: previous(k.revenuePreviousYear), tone: "revenue" },
+      { label: "Ausgaben netto", cents: cents(k.expenses), hint: previous(k.expensesPreviousYear), tone: "expenses" },
+      { label: "Ergebnis", cents: cents(k.result), tone: "result" },
+      {
+        label: "Offene Rechnungen",
+        cents: cents(k.openInvoices?.amount),
+        hint: `${k.openInvoices?.count ?? 0} offen${overdue}`,
+        tone: k.overdue?.count ? "negative" : "neutral",
+      },
+    ],
   };
 };
 
@@ -599,9 +623,12 @@ const BUILDERS: Record<string, Builder> = {
   create_asset: assetPlan,
 };
 
-/** The card for a tool result, or null (unknown tool, no structured content, unexpected shape). */
-export function buildCard(toolName: string, structured: Record<string, unknown> | null): ChatCard | null {
-  const build = BUILDERS[toolName];
+/** cards shown above the main card, where a second view adds something the main one can't show */
+const LEAD_BUILDERS: Record<string, Builder> = {
+  get_dashboard: dashboardKpis,
+};
+
+function run(build: Builder | undefined, structured: Record<string, unknown> | null): ChatCard | null {
   if (!build || !structured) return null;
   try {
     return build(structured);
@@ -610,12 +637,23 @@ export function buildCard(toolName: string, structured: Record<string, unknown> 
   }
 }
 
+/** The main card for a tool result, or null (unknown tool, no structured content, unexpected shape). */
+export function buildCard(toolName: string, structured: Record<string, unknown> | null): ChatCard | null {
+  return run(BUILDERS[toolName], structured);
+}
+
+/** All cards for a tool result, top to bottom (lead card, then the main card); empty when there are none. */
+export function buildCards(toolName: string, structured: Record<string, unknown> | null): ChatCard[] {
+  return [run(LEAD_BUILDERS[toolName], structured), buildCard(toolName, structured)].filter((c) => c !== null);
+}
+
 const CARD_NOUNS: Record<ChatCard["kind"], string> = { kpis: "Kennzahlen-Karte", chart: "Diagramm", document: "Beleg-Karte", table: "Tabelle" };
 
 /**
  * Appended to the tool text for the model: the user already sees the card, so the answer should add a short
  * takeaway instead of repeating rows and figures.
  */
-export function cardNote(card: ChatCard): string {
-  return `[Der Nutzer sieht dieses Ergebnis bereits als ${CARD_NOUNS[card.kind]} im Chat. Nicht als Liste oder Tabelle wiederholen – antworte in 1–3 Sätzen mit dem Wesentlichen.]`;
+export function cardNote(cards: ChatCard | ChatCard[]): string {
+  const nouns = [...new Set((Array.isArray(cards) ? cards : [cards]).map((c) => CARD_NOUNS[c.kind]))].join(" und ");
+  return `[Der Nutzer sieht dieses Ergebnis bereits als ${nouns} im Chat. Nicht als Liste oder Tabelle wiederholen – antworte in 1–3 Sätzen mit dem Wesentlichen.]`;
 }

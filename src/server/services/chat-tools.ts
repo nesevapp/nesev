@@ -1,9 +1,9 @@
-import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult, type ChatUiAction, TOOL_GROUP_META, TOOL_GROUPS, type ToolGroup } from "../../shared/chat";
+import { CONFIRM_TOOLS, type ChatLink, type ChatToolResult, type ChatUiAction, resultCards, TOOL_GROUP_META, TOOL_GROUPS, type ToolGroup } from "../../shared/chat";
 import { todayIso } from "../../shared/dates";
 import { categoryLabel, VAT_TREATMENT_SHORT_LABELS, type VatTreatment } from "../../shared/expenses";
 import { formatCents, parseMoneyToCents } from "../../shared/money";
 import { TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
-import { buildCard, cardNote } from "./chat-cards";
+import { buildCards, cardNote } from "./chat-cards";
 import type { LlmTool } from "./chat-llm";
 
 // The assistant's tools are nesev's MCP tools (src/mcp), executed in-process: an MCP client linked to buildServer()
@@ -311,15 +311,16 @@ export function toChatToolResult(outcome: ToolOutcome, toolName?: string): ChatT
   const summary = first.length > 160 ? `${first.slice(0, 157)}…` : first;
   const result: ChatToolResult = { ok: !outcome.isError, summary: summary || (outcome.isError ? "Fehler" : "Erledigt"), links: outcome.isError ? [] : extractLinks(outcome.structured) };
   if (outcome.isError) return result;
-  const card = toolName ? buildCard(toolName, outcome.structured) : null;
-  if (card) result.card = card;
+  const cards = toolName ? buildCards(toolName, outcome.structured) : [];
+  if (cards.length) result.cards = cards;
   if (outcome.action) result.action = outcome.action;
   return result;
 }
 
 /** What the model reads for a tool result: the tool text, plus a note when the user already sees it as a card. */
 export function toolContent(outcome: ToolOutcome, result: ChatToolResult): string {
-  return result.card ? `${outcome.text}\n${cardNote(result.card)}` : outcome.text;
+  const cards = resultCards(result);
+  return cards.length ? `${outcome.text}\n${cardNote(cards)}` : outcome.text;
 }
 
 // --- confirmation summaries -----------------------------------------------------------------------------------

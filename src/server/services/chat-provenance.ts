@@ -1,4 +1,4 @@
-import type { ChatToolCall, ChatToolResult } from "../../shared/chat";
+import { type ChatToolCall, type ChatToolResult, resultCards } from "../../shared/chat";
 import { contextRecord, DEICTIC, namedRefs } from "./chat-context";
 import { appPath, type ToolHost } from "./chat-tools";
 
@@ -119,9 +119,10 @@ export function addPathRefs(p: Provenance, link: string): void {
 
 function addResultRefs(p: Provenance, result: ChatToolResult | null | undefined): void {
   for (const l of result?.links ?? []) addPathRefs(p, l.path);
-  const card = result?.card;
-  if (card?.kind === "table") for (const r of card.rows) if (r.path) addPathRefs(p, r.path);
-  if (card?.kind === "document") addPathRefs(p, card.path);
+  for (const card of resultCards(result)) {
+    if (card.kind === "table") for (const r of card.rows) if (r.path) addPathRefs(p, r.path);
+    if (card.kind === "document") addPathRefs(p, card.path);
+  }
 }
 
 export interface ProvenanceRow {

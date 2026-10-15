@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronRight, CircleAlert, CircleSlash, Clock, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ChatCard, ChatConversationDetail, ChatMessageView, ChatToolCall } from "@/sdk";
+import { type ChatCard, type ChatConversationDetail, type ChatMessageView, type ChatToolCall, resultCards } from "@/sdk";
 import { ActionButton } from "./chat-actions";
 import { ChatCardView, cardPaths } from "./chat-cards";
 import { MarkdownView, type LinkRenderer } from "./markdown-view";
@@ -102,10 +102,10 @@ function ToolCard({
     unknown: null,
   };
 
-  const card = state === "ok" ? r?.card : null;
+  const cards = state === "ok" ? resultCards(r) : [];
   const action = state === "ok" ? r?.action : null;
-  const covered = card ? cardPaths(card) : null;
-  const links = (r?.links ?? []).filter((l) => !covered?.has(l.path));
+  const covered = new Set(cards.flatMap((c) => [...cardPaths(c)]));
+  const links = (r?.links ?? []).filter((l) => !covered.has(l.path));
 
   return (
     <div className="space-y-1.5">
@@ -148,7 +148,7 @@ function ToolCard({
           </pre>
         )}
       </div>
-      {card && collapsed && (
+      {cards.length > 0 && collapsed && (
         <button
           type="button"
           onClick={() => setShowCard((v) => !v)}
@@ -156,10 +156,10 @@ function ToolCard({
           className="flex items-center gap-1 pl-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ChevronRight className={cn("size-3.5 transition-transform", showCard && "rotate-90")} />
-          {CARD_LABELS[card.kind]}
+          {cards.length === 1 ? CARD_LABELS[cards[0]!.kind] : `${cards.length} Karten anzeigen`}
         </button>
       )}
-      {card && (!collapsed || showCard) && <ChatCardView card={card} />}
+      {(!collapsed || showCard) && cards.map((c, i) => <ChatCardView key={i} card={c} />)}
     </div>
   );
 }
@@ -193,9 +193,9 @@ function lastCardPerTurn(messages: ChatMessageView[], results: Map<string, ChatM
     else if (m.role === "assistant") {
       for (const c of m.toolCalls ?? []) {
         shown.add(c.id);
-        if (results.get(c.id)?.toolResult?.card) lastInTurn = c.id;
+        if (resultCards(results.get(c.id)?.toolResult).length) lastInTurn = c.id;
       }
-    } else if (m.toolResult?.card) {
+    } else if (resultCards(m.toolResult).length) {
       // a result without its call in an assistant message is rendered on its own (same id as in MessageList)
       const id = m.toolCallId ?? String(m.id);
       if (!m.toolCallId || !shown.has(m.toolCallId)) lastInTurn = id;
@@ -251,7 +251,7 @@ export function MessageList({
               call={call}
               result={m}
               state={callState(call, m, pendingId, live, false)}
-              collapsed={!!m.toolResult?.card && !expanded.has(call.id)}
+              collapsed={resultCards(m.toolResult).length > 0 && !expanded.has(call.id)}
             />
           );
         }

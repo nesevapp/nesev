@@ -2,6 +2,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { resultCards } from "../../shared/chat";
 import { PROJECT_ROOT } from "../lib/paths";
 import { CASES } from "./chat-eval.cases";
 import {
@@ -219,7 +220,7 @@ async function runCase(base: string, c: EvalCase, run: number): Promise<{ result
           summary: m.toolResult?.summary ?? m.content,
           content: m.content,
           action: m.toolResult?.action ?? null,
-          card: m.toolResult?.card?.kind ?? null,
+          card: resultCards(m.toolResult).map((c) => c.kind).join("+") || null,
         })),
       confirm: detail.pending ? { name: detail.pending.toolCall.name, arguments: detail.pending.toolCall.arguments, summary: detail.pending.summary } : null,
       answer: msgs.filter((m: any) => m.role === "assistant" && m.content).map((m: any) => m.content).join("\n"),

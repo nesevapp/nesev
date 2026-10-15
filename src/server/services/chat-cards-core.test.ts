@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { formatCents } from "../../shared/money";
-import { buildCard, CARD_ROWS, cardNote } from "./chat-cards";
+import { buildCard, buildCards, CARD_ROWS, cardNote } from "./chat-cards";
 import { type ConfirmLookups, confirmSummary, toChatToolResult, toolContent } from "./chat-tools";
 
 // Cards of the core, document, list, finance and record tools, and the confirmation summaries of the record tools,
@@ -43,6 +43,45 @@ describe("cards", () => {
       [40, 0, null, 0],
       [60, 0, null, 500],
     ]);
+  });
+
+  test("get_dashboard → KPIs above the chart; other tools keep one card", () => {
+    const fig = (count: number, cents: number) => ({ count, amount: m(cents) });
+    const data = {
+      year: 2026,
+      kpis: {
+        revenue: m(500000),
+        revenuePreviousYear: m(400000),
+        expenses: m(120000),
+        expensesPreviousYear: m(100000),
+        result: m(380000),
+        paid: fig(3, 300000),
+        openInvoices: fig(2, 150000),
+        overdue: fig(1, 114000),
+        openOffers: fig(0, 0),
+      },
+      monthly: [{ month: "2026-01", revenue: m(500000), expenses: m(120000), result: m(380000) }],
+    };
+    const cards = buildCards("get_dashboard", data);
+    expect(cards.map((c) => c.kind)).toEqual(["kpis", "chart"]);
+    expect(cards[0]).toEqual({
+      kind: "kpis",
+      title: "Kennzahlen 2026",
+      items: [
+        { label: "Umsatz netto", cents: 500000, hint: `Vorjahr ${formatCents(400000)}`, tone: "revenue" },
+        { label: "Ausgaben netto", cents: 120000, hint: `Vorjahr ${formatCents(100000)}`, tone: "expenses" },
+        { label: "Ergebnis", cents: 380000, tone: "result" },
+        { label: "Offene Rechnungen", cents: 150000, hint: "2 offen, 1 überfällig", tone: "negative" },
+      ],
+    });
+    // without kpis (older shape) only the chart
+    expect(buildCards("get_dashboard", { ...data, kpis: undefined }).map((c) => c.kind)).toEqual(["chart"]);
+    expect(buildCards("list_clients", { total: 1, clients: [{ name: "Alpen", link: "/clients/1" }] }).map((c) => c.kind)).toEqual(["table"]);
+    expect(buildCards("create_client", { id: 1 })).toEqual([]);
+    const result = toChatToolResult({ isError: false, text: "Dashboard", structured: data }, "get_dashboard");
+    expect(result.cards?.length).toBe(2);
+    expect(result.card).toBeUndefined();
+    expect(cardNote(result.cards!)).toContain("als Kennzahlen-Karte und Diagramm im Chat");
   });
 
   test("tool summaries drop the trailing colon of a heading line", () => {
@@ -201,7 +240,7 @@ describe("cards", () => {
     expect(toChatToolResult({ isError: true, text: "Fehler: x", structured: { documents: [] } }, "list_documents")).toEqual({ ok: false, summary: "Fehler: x", links: [] });
     const outcome = { isError: false, text: "1 Kunde", structured: { total: 1, clients: [{ name: "Alpen", link: "/clients/1" }] } };
     const result = toChatToolResult(outcome, "list_clients");
-    expect(toolContent(outcome, result)).toBe(`1 Kunde\n${cardNote(result.card!)}`);
+    expect(toolContent(outcome, result)).toBe(`1 Kunde\n${cardNote(result.cards!)}`);
     expect(toolContent(outcome, toChatToolResult(outcome))).toBe("1 Kunde");
   });
 });

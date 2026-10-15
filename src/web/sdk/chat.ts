@@ -31,6 +31,7 @@ export const chatApi = {
   status: (): Promise<ChatStatus> => parseResponse(chat.status.$get()),
 };
 
+export { resultCards } from "@shared/chat";
 export type {
   ChatCard,
   ChatLink,

@@ -178,10 +178,19 @@ export interface ChatToolResult {
   /** one line, German, e.g. "3 Treffer" or "RE-2026-0004 finalisiert" */
   summary: string;
   links: ChatLink[];
-  /** generative UI for the result (optional; older rows have none) */
+  /** generative UI for the result, rendered stacked (e.g. dashboard KPIs above the monthly chart) */
+  cards?: ChatCard[];
+  /** older rows: a single card (read via resultCards(), no longer written) */
   card?: ChatCard | null;
   /** UI action of an assistant-only tool */
   action?: ChatUiAction | null;
+}
+
+/** the cards of a tool result: `cards`, or the single `card` of older rows */
+export function resultCards(result: Pick<ChatToolResult, "cards" | "card"> | null | undefined): ChatCard[] {
+  if (!result) return [];
+  if (Array.isArray(result.cards)) return result.cards;
+  return result.card ? [result.card] : [];
 }
 
 export type ChatMessageStatus = "done" | "pending" | "cancelled" | "error";

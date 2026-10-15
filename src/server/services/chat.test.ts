@@ -222,7 +222,7 @@ describe("agent loop", () => {
       ok: true,
       summary: "2 offene Rechnungen",
       links: [{ label: "RE-2026-0001", path: "/invoices/1" }],
-      card: { kind: "table", rows: [{ path: "/invoices/1" }] },
+      cards: [{ kind: "table", rows: [{ path: "/invoices/1" }] }],
     });
     // the second request carries the call and its result
     const msgs = requests[1].messages;
@@ -241,7 +241,7 @@ describe("agent loop", () => {
     scripts.push(toolCall("get_document", '{"id":5}'), toolCall("download_pdf", '{"id":5}'), text("Lädt."));
     const events = await collect((emit) => sendMessage(deps, c.id, { text: "Lade mir die Vorschau vom Entwurf 5 herunter" }, emit));
     const results = events.filter((e) => e.type === "tool_result") as Extract<ChatStreamEvent, { type: "tool_result" }>[];
-    expect(results[0]!.message.toolResult?.card).toMatchObject({ kind: "document", typeLabel: "Rechnung", number: null, grossCents: 54000, path: "/invoices/5", pdfUrl: "/api/pdf/documents/5" });
+    expect(results[0]!.message.toolResult?.cards?.[0]).toMatchObject({ kind: "document", typeLabel: "Rechnung", number: null, grossCents: 54000, path: "/invoices/5", pdfUrl: "/api/pdf/documents/5" });
     expect(results[0]!.message.content).toContain("Beleg-Karte im Chat");
     expect(results[1]!.message.toolResult).toEqual({
       ok: true,
