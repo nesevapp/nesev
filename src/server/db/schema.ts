@@ -73,6 +73,12 @@ export const settings = sqliteTable("settings", {
   incomeTaxPrepaymentCents: integer("income_tax_prepayment_cents").notNull().default(0),
   /** in-app assistant config (JSON, shape = ChatSettings in src/shared/chat.ts, unknown keys ignored); null → defaults */
   chatSettings: text("chat_settings", { mode: "json" }).$type<unknown>(),
+  /** print a payment QR code (EPC/GiroCode, "Zahlen mit Code") on invoices; needs IBAN */
+  paymentQr: integer("payment_qr", { mode: "boolean" }).notNull().default(true),
+  /** receipt inbox: folder watched for new receipt files (absolute path); "" = off */
+  receiptInboxPath: str("receipt_inbox_path"),
+  /** accountant export config (JSON: BMD account mapping per category, …; shape owned by the export feature); null → defaults */
+  accountingExport: text("accounting_export", { mode: "json" }).$type<unknown>(),
   ...timestamps,
 });
 
@@ -98,6 +104,12 @@ export const clients = sqliteTable(
     paymentTermsDays: integer("payment_terms_days"),
     /** null → derived via defaultTaxMode() */
     defaultTaxMode: text("default_tax_mode").$type<TaxMode>(),
+    /** e-invoice format for this client: null = none (PDF only); shape = EInvoiceFormat in src/shared */
+    eInvoiceFormat: text("e_invoice_format"),
+    /** default buyer reference: Leitweg-ID (XRechnung) / Auftragsreferenz (ebInterface); per document overridable */
+    eInvoiceBuyerReference: str("e_invoice_buyer_reference"),
+    /** our supplier number at the client (ebInterface BillersInvoiceRecipientID, e.g. Lieferantennummer beim Bund) */
+    eInvoiceSupplierId: str("e_invoice_supplier_id"),
     notes: str("notes"),
     archivedAt: text("archived_at"),
     ...timestamps,
@@ -249,6 +261,8 @@ export const documents = sqliteTable(
     paidAt: text("paid_at"),
     /** frozen PDF relative to data dir, e.g. "pdfs/RE-2026-0001.pdf" */
     pdfPath: text("pdf_path"),
+    /** e-invoice buyer reference / order reference; "" → client's eInvoiceBuyerReference */
+    buyerReference: str("buyer_reference"),
     ...timestamps,
   },
   (t) => [
@@ -612,6 +626,49 @@ export const chatMessages = sqliteTable(
     ...timestamps,
   },
   (t) => [index("chat_messages_conversation_idx").on(t.conversationId, t.id)],
+);
+
+/**
+ * Receipt inbox: files picked up from settings.receiptInboxPath (copied to data/receipts/inbox/). Nothing is
+ * analysed automatically; the user turns an item into an expense (and may queue analysis) or dismisses it.
+ */
+export const receiptInboxItems = sqliteTable(
+  "receipt_inbox_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    fileName: text("file_name").notNull(),
+    /** copy relative to data dir, e.g. "receipts/inbox/3-rechnung.pdf"; cleared when converted/dismissed and moved */
+    storedPath: text("stored_path"),
+    /** where the file was found */
+    sourcePath: str("source_path"),
+    /** sha256 of the file, for de-duplication */
+    sha256: text("sha256").notNull(),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    /** "new" | "converted" | "dismissed" */
+    status: text("status").$type<"new" | "converted" | "dismissed">().notNull().default("new"),
+    expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("receipt_inbox_sha_uq").on(t.sha256), index("receipt_inbox_status_idx").on(t.status)],
+);
+
+/** Assistant answers the user flagged as wrong; exported as draft eval cases (bun run eval:feedback). */
+export const chatFeedback = sqliteTable(
+  "chat_feedback",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    conversationId: integer("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    /** the flagged assistant message */
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    /** what the user expected, optional */
+    note: str("note"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("chat_feedback_message_uq").on(t.messageId)],
 );
 
 export const numberSequences = sqliteTable(
