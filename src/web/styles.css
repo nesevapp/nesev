@@ -54,6 +54,12 @@
   --chart-neutral: #71717a;
   --chart-muted: #d4d4d8;
   --chart-grid: oklch(0.967 0.001 286.4);
+  /* forecast sources */
+  --chart-recurring: #5b4fcf;
+  --chart-offer: #1baf7a;
+  --chart-expenses-mid: #f5b583;
+  --chart-vat: #c2410c;
+  --chart-income-tax: #7c2d12;
   --shadow-edge: oklch(0 0 0 / 0.09);
 }
 
@@ -106,6 +112,11 @@
   --chart-neutral: #a1a1aa;
   --chart-muted: #52525b;
   --chart-grid: oklch(1 0 0 / 7%);
+  --chart-recurring: #8b80f0;
+  --chart-offer: #34c98f;
+  --chart-expenses-mid: #b06a38;
+  --chart-vat: #f26a3a;
+  --chart-income-tax: #c4542b;
   --shadow-edge: oklch(0 0 0 / 0.45);
 }
 
@@ -161,6 +172,11 @@
   --color-chart-neutral: var(--chart-neutral);
   --color-chart-muted: var(--chart-muted);
   --color-chart-grid: var(--chart-grid);
+  --color-chart-recurring: var(--chart-recurring);
+  --color-chart-offer: var(--chart-offer);
+  --color-chart-expenses-mid: var(--chart-expenses-mid);
+  --color-chart-vat: var(--chart-vat);
+  --color-chart-income-tax: var(--chart-income-tax);
 }
 
 @layer base {
