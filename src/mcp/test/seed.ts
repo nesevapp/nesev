@@ -5,7 +5,7 @@ import { api, call, idParam } from "../api";
 
 // Demo data for the MCP tests and for trying the server by hand, created through nesev's own API (in-process):
 //   NESEV_DATA_DIR=/tmp/nesev-mcp bun src/mcp/test/seed.ts
-// Refuses to run against the default data dir (the user's real data). Dates are relative to today, so the first
+// Refuses to run against the default data dir (your real data). Dates are relative to today, so the first
 // invoice is always overdue. Prints the created ids as JSON on stdout.
 // `bun run demo` (scripts/demo-seed.ts) builds on this with its own company and more history.
 
