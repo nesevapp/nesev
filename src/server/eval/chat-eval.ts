@@ -2,6 +2,8 @@
 // turn against its case, the result table and totals. No process, network or DB access here (unit-tested in
 // chat-eval.test.ts); the runner is run.ts, the cases are chat-eval.cases.ts.
 
+import { knownNumbers, unknownNumbers } from "../services/chat-numbers";
+
 export type Verdict = "pass" | "partial" | "fail";
 
 /** what the eval sees of one turn (the last one of a case) */
@@ -36,6 +38,8 @@ export interface Expectation {
   facts?: Fact[];
   /** the answer must not contain these (e.g. an invented draft number → partial) */
   notInAnswer?: RegExp[];
+  /** every record number in the answer (RE-…, ER-…, K-…) appears in a tool result or user message of the case (else partial) */
+  knownNumbers?: boolean;
 }
 
 export interface EvalTurn {
@@ -101,6 +105,8 @@ const LOG_GUARDS: [RegExp, string][] = [
   [/claim-guard .*retrying once/, "claim retry"],
   [/claim-guard .*fixed reply/, "claim reply"],
   [/offer-nudge /, "offer nudge"],
+  [/number-guard .*retrying once/, "number retry"],
+  [/number-guard .*replaced/, "number replaced"],
   [/repetition loop cut/, "repetition"],
 ];
 /** guard interventions visible as tool results */
@@ -145,8 +151,11 @@ export interface Judgement {
   notes: string[];
 }
 
-/** Judges the last turn of a case: fail = wrong path/action/confirm, partial = right path but facts or details off. */
-export function judge(c: EvalCase, t: TurnRecord, earlierCalls: string[] = []): Judgement {
+/**
+ * Judges the last turn of a case: fail = wrong path/action/confirm, partial = right path but facts or details off.
+ * `earlierResults`: tool result texts of the case's earlier turns (numbers the conversation already showed).
+ */
+export function judge(c: EvalCase, t: TurnRecord, earlierCalls: string[] = [], earlierResults: string[] = []): Judgement {
   const e = c.expect;
   const fails: string[] = [];
   const partials: string[] = [];
@@ -212,6 +221,14 @@ export function judge(c: EvalCase, t: TurnRecord, earlierCalls: string[] = []): 
     if (!ok) partials.push(`answer lacks ${label}`);
   }
   for (const re of e.notInAnswer ?? []) if (re.test(answer)) partials.push(`answer contains ${re}`);
+  if (e.knownNumbers) {
+    const known = knownNumbers([
+      ...c.turns.map((x) => ({ role: "user" as const, content: `${x.text}\n${x.contextTitle ?? ""}` })),
+      ...[...earlierResults, ...t.results.map((r) => r.content)].map((content) => ({ role: "tool" as const, content })),
+    ]);
+    const unknown = unknownNumbers(answer, known);
+    if (unknown.length) partials.push(`unknown numbers in the answer: ${unknown.join(", ")}`);
+  }
 
   if (fails.length) return { verdict: "fail", notes: [...fails, ...partials] };
   if (partials.length) return { verdict: "partial", notes: partials };

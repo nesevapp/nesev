@@ -9,6 +9,7 @@ import type {
   ChatToolCall,
   ChatToolResult,
 } from "../../shared/chat";
+import { resultCards } from "../../shared/chat";
 import type { DbOrTx } from "../db/client";
 import { type ChatConversation, type ChatMessage, chatConversations, chatMessages } from "../db/schema";
 import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
@@ -16,6 +17,7 @@ import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
 import { claimRetryMessage, detectClaims, honestReply, isWriteRequest, unbackedClaims } from "./chat-claims";
 import { checkContextUse } from "./chat-context";
+import { knownNumbers, NumberGate, neutralizeNumbers, numberRetryMessage, unknownNumbers } from "./chat-numbers";
 import { OFFER_NUDGE, offerInsteadOfAction } from "./chat-offers";
 import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
@@ -29,6 +31,8 @@ import { getSettings } from "./settings";
 // stream, and confirm() executes or cancels it and continues the loop. Everything is persisted as it happens, so a
 // reload (or an aborted stream) shows the same conversation; aborting keeps the partial assistant text. In turns that
 // ask for a change, texts are held back and a final answer claiming what no tool did is retried (chat-claims.ts).
+// Record numbers in answers must come from the conversation (chat-numbers.ts): streamed text stops before an unknown
+// one, the answer is retried once, then the number is replaced by neutral wording.
 
 export const MAX_STEPS = 8;
 /** malformed tool calls (bad JSON, unknown tool, a failed call repeated unchanged) per turn before giving up; the first one goes back to the model */
@@ -459,6 +463,17 @@ export function needsData(text: string): boolean {
   return /\d|€|rechnung|angebot|gutschrift|mahnung|kunde|kundin|ausgabe|beleg|umsatz|gewinn|ergebnis|uva|zm\b|ear\b|steuer|ust|afa|anlage|fixkost|prognose|offen|bezahlt|überfällig|fällig|summe|betrag|wie viel|wieviel|welche|zeig|such|finde|liste|anleg|erstell|finalisier|markier|artikel|öffne|oeffne|pdf|herunterlad|download|vorschau|bank|konto|buchung|zuordn|änder|aender|e-mail|email|adresse|verknüpf|übernimm|übernehm|serienrechnung|wie lief|wie läuft|wie steh|monat|quartal|jänner|januar|februar|märz|april|mai\b|juni|juli|august|september|oktober|november|dezember/.test(t);
 }
 
+/** paths of drafts shown in this conversation (a link labelled with an invented number becomes "Entwurf") */
+function draftPaths(rows: ChatMessage[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) {
+    for (const card of r.role === "tool" ? resultCards(r.toolResult as ChatToolResult | null) : []) {
+      if (card.kind === "document" && card.statusKey === "draft") out.add(card.path);
+    }
+  }
+  return out;
+}
+
 let callSeq = 0;
 const newCallId = () => `call_${Date.now().toString(36)}_${(callSeq++).toString(36)}`;
 
@@ -480,6 +495,8 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
   let claimRetried = false;
   /** a final answer offering the requested action instead of calling the tool (chat-offers.ts) is retried once */
   let offerNudged = false;
+  /** a final answer with a record number no tool result showed (chat-numbers.ts) is retried once, then neutralized */
+  let numberRetried = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal?.aborted) return;
     const rows = messages(db, state.conversationId);
@@ -504,6 +521,8 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
     const holdText = forcedHold || writeTurn;
     const extra: LlmMessage[] = correction ?? [];
     correction = null;
+    const known = knownNumbers(rows, [state.contextTitle]);
+    const gate = new NumberGate(known);
     let assistant: ChatMessage | null = null;
     let thinkingSent = false;
     const result = await deps.withModel(
@@ -524,7 +543,9 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           fetchFn: deps.fetchFn,
           onDelta: (text) => {
             pendingText += text;
-            if (!holdText) void emit({ type: "delta", messageId, text });
+            if (holdText) return;
+            const shown = gate.push(text);
+            if (shown) void emit({ type: "delta", messageId, text: shown });
           },
           onThinking: () => {
             if (thinkingSent) return;
@@ -600,7 +621,28 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
         }
       }
     }
+    const unknownNums = unknownNumbers(content, known);
+    if (unknownNums.length && !calls.length && !numberRetried) {
+      numberRetried = true;
+      deps.log?.(`[chat] conv ${state.conversationId}: number-guard ${unknownNums.join(", ")} not in any tool result – retrying once`);
+      if (!holdText) await emit({ type: "discard", messageId });
+      db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
+      correction = [
+        { role: "assistant", content },
+        { role: "user", content: numberRetryMessage(unknownNums) },
+      ];
+      continue;
+    }
+    if (unknownNums.length) {
+      deps.log?.(`[chat] conv ${state.conversationId}: number-guard ${unknownNums.join(", ")} – replaced`);
+      content = neutralizeNumbers(content, known, draftPaths(rows));
+    }
     if (holdText && content) await emit({ type: "delta", messageId, text: content });
+    else if (!holdText && (unknownNums.length || gate.blocked)) await emit({ type: "replace", messageId, text: content });
+    else if (!holdText) {
+      const rest = gate.flush();
+      if (rest) await emit({ type: "delta", messageId, text: rest });
+    }
     updateMessage(db, messageId, { content, toolCalls: calls.length ? calls : null });
     for (const c of calls) await emit({ type: "tool_call", messageId, toolCall: c });
 

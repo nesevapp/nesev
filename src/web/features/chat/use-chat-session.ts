@@ -70,6 +70,10 @@ export function applyEvent(d: ChatConversationDetail, e: ChatStreamEvent): ChatC
           ? patch(d.messages, e.messageId, (m) => ({ ...m, content: m.content + e.text }))
           : [...d.messages, placeholder(e.messageId, "assistant", e.text)],
       };
+    case "replace":
+      return { ...d, messages: patch(d.messages, e.messageId, (m) => ({ ...m, content: e.text })) };
+    case "discard":
+      return { ...d, messages: d.messages.filter((m) => m.id !== e.messageId) };
     case "tool_call":
       return {
         ...d,

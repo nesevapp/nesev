@@ -16,7 +16,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
 |---|---|---|
 | `--model <gguf>` / `auto` | `auto` | chat model; auto = the same pick as the app (Qwen3.5-4B preferred) |
 | `--runs N` | 1 | runs per case |
-| `--filter <id\|tag>` | all | e.g. `nav`, `bank`, `confirm`, `context`, `hard`, `facts`, `multi-turn` |
+| `--filter <id\|tag>` | all | e.g. `nav`, `bank`, `confirm`, `context`, `hard`, `facts`, `multi-turn`, `numbers` |
 | `--reasoning` | off | `chat_template_kwargs.enable_thinking` per request |
 | `--context N` | the app default (64k) | context size of the chat server |
 | `--temperature T` | the app default (0.4) | sampling temperature (passed as `NESEV_CHAT_TEMPERATURE`; top_p 0.8, top_k 20, min_p 0 stay) |
@@ -31,7 +31,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
   the API restarts on a fresh copy of the seed.
 - Drives `/api/chat` like the UI: one conversation per case, all turns of a case in it, every confirmation
   rejected. Per-step stats (prompt tokens, first token, total) and guard hits come from the API's log
-  (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply, "offer-nudge") and from tool results (context guard,
+  (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply, "offer-nudge", "number-guard" → number retry / number replaced) and from tool results (context guard,
   repeated failing call).
 - Stops its API and llama-server by PID, also on Ctrl-C and errors, and deletes its temp dirs. It never uses
   `data/` or ports 3998/5174.
@@ -44,7 +44,9 @@ expectation for the last turn:
 - `action`: navigate path, download URL/file name, open_tab URL, or `"none"`;
 - `confirm`: the tool and an argument subset (`exact` = no other arguments); `false` = none allowed;
 - `facts`: strings, regexes, or functions that take a figure from a tool result, all of which the answer must contain;
-- `notInAnswer`: e.g. an invented draft number.
+- `notInAnswer`: e.g. an invented draft number;
+- `knownNumbers`: every record number in the answer (RE-…, ER-…, K-…) appears in a tool result or user message of the
+  case (the number guard should make this hold; its retries/replacements show up as guard hits).
 
 Verdicts: **fail** = an error, a missing or forbidden tool, a wrong action or a missing/wrong confirm. **partial** =
 the right path but facts missing, details off (arguments, open instead of download) or a confirm without a

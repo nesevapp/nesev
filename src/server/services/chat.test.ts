@@ -433,7 +433,7 @@ describe("agent loop", () => {
   });
 
   test("a degenerate repetition loop is cut and stopped", async () => {
-    const block = "Ich habe die Ausgaben geprüft. Offen ist ER-2026-0002.\n\nFalls Sie mehr wissen möchten, sagen Sie es.\n\n";
+    const block = "Ich habe die Ausgaben geprüft. Offen ist die Ausgabe von Adobe.\n\nFalls Sie mehr wissen möchten, sagen Sie es.\n\n";
     expect(repetitionCut("Antwort.\n\n" + block.repeat(4) + block.slice(0, 40))).toBe(`Antwort.\n\n${block.trimEnd()}`);
     expect(repetitionCut("Eine ganz normale Antwort ohne Wiederholung, die etwas länger ist als sechzig Zeichen.")).toBeNull();
     const c = createConversation(db);
@@ -526,6 +526,65 @@ describe("claim guard (claimed but not done)", () => {
     const after = await collect((emit) => confirmToolCall(deps, c.id, confirm.messageId, true, emit));
     expect(deltas(after)).toEqual(["Die Rechnung ist jetzt finalisiert."]);
     expect(logs.some((l) => l.includes("claim-guard"))).toBe(false);
+  });
+});
+
+describe("number guard (invented record numbers)", () => {
+  const deltas = (events: ChatStreamEvent[]) => events.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text).join("");
+  let logs: string[];
+  beforeEach(() => {
+    logs = [];
+    deps.log = (line) => void logs.push(line);
+  });
+
+  test("a streamed answer stops before an unknown number, is discarded and retried; the fake is never shown", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":5}'), text("Der Entwurf ", "RE-2026-00", "04 hat € 540,00."), text("Der Entwurf für Alpen hat € 540,00."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Zeig mir den Entwurf id 5" }, emit));
+    expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "tool_result", "assistant_start", "discard", "assistant_start", "done"]);
+    expect(deltas(events)).not.toContain("RE-2026");
+    expect(requests[2].messages.slice(-2)).toEqual([
+      { role: "assistant", content: "Der Entwurf RE-2026-0004 hat € 540,00." },
+      { role: "user", content: expect.stringContaining("Die Nummer „RE-2026-0004“ steht in keinem Werkzeug-Ergebnis") },
+    ]);
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("Der Entwurf für Alpen hat € 540,00.");
+    expect(logs.filter((l) => l.includes("number-guard"))).toEqual([`[chat] conv ${c.id}: number-guard RE-2026-0004 not in any tool result – retrying once`]);
+  });
+
+  test("a second invention is replaced by neutral wording (replace event, stored fixed)", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":5}'), text("Der Entwurf RE-2026-0004 ist fertig."), text("Hier: [RE-2026-0004](/invoices/5)."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Zeig mir den Entwurf id 5" }, emit));
+    const replace = events.find((e) => e.type === "replace") as Extract<ChatStreamEvent, { type: "replace" }>;
+    // the draft card of get_document makes the link label "Entwurf"
+    expect(replace.text).toBe("Hier: [Entwurf](/invoices/5).");
+    expect(deltas(events)).toBe("Der Entwurf Hier: [");
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("Hier: [Entwurf](/invoices/5).");
+    expect(requests).toHaveLength(3);
+    expect(logs.at(-1)).toContain("number-guard RE-2026-0004 – replaced");
+  });
+
+  test("numbers from tool results, the user's text and the page title pass untouched", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("list_documents", "{}"), text("Offen ist RE-2026-0001, du fragst nach AN-2026-0003 auf RE-2026-0009."));
+    const events = await collect((emit) =>
+      sendMessage(deps, c.id, { text: "Was ist mit AN-2026-0003?", context: { path: "/invoices/9", title: "Rechnung RE-2026-0009" } }, emit),
+    );
+    expect(deltas(events)).toBe("Offen ist RE-2026-0001, du fragst nach AN-2026-0003 auf RE-2026-0009.");
+    expect(events.some((e) => e.type === "discard" || e.type === "replace")).toBe(false);
+    expect(requests).toHaveLength(2);
+  });
+
+  test("in a held write turn the retry needs no discard of shown text", async () => {
+    const c = createConversation(db);
+    scripts.push(
+      toolCall("create_invoice_draft", '{"clientId":1,"title":"Beratung"}'),
+      text("Entwurf RE-2026-0004 angelegt."),
+      text("Entwurf angelegt."),
+    );
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Erstelle eine Rechnung für Kunde id 1" }, emit));
+    expect(deltas(events)).toBe("Entwurf angelegt.");
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("Entwurf angelegt.");
   });
 });
 

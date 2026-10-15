@@ -64,7 +64,7 @@ export const CASES: EvalCase[] = [
     turns: [{ text: "Lade mir die Vorschau vom Entwurf für Alpen herunter" }],
     description: "download Entwurf-4.pdf (drafts have no number)",
     tags: ["nav", "pdf", "hard"],
-    expect: { action: { kind: "download", url: "/api/pdf/documents/4?download=1", fileName: "Entwurf-4.pdf" }, notInAnswer: [new RegExp(`RE-${YEAR}-0004`)] },
+    expect: { action: { kind: "download", url: "/api/pdf/documents/4?download=1", fileName: "Entwurf-4.pdf" }, notInAnswer: [new RegExp(`RE-${YEAR}-0004`)], knownNumbers: true },
   },
   {
     id: "fixed-costs",
@@ -191,6 +191,40 @@ export const CASES: EvalCase[] = [
       callArgs: [{ tool: "create_invoice_draft", args: { items: [{ quantity: 3, unitPrice: 120 }] } }],
       facts: ["432,00"],
       confirm: false,
+      knownNumbers: true,
     },
+  },
+  // invented numbers (number guard): a fresh draft has none, the answer must not make one up
+  {
+    id: "draft-number",
+    turns: [{ text: "Leg eine Rechnung für Berlin an: 5 Std. Entwicklung à 100 €. Welche Nummer hat sie?" }],
+    description: "create_invoice_draft; says it has no number yet (draft), names none",
+    tags: ["documents", "numbers", "hard"],
+    expect: {
+      tools: ["create_invoice_draft"],
+      callArgs: [{ tool: "create_invoice_draft", args: { items: [{ quantity: 5, unitPrice: 100 }] } }],
+      facts: [/entwurf|keine nummer|noch keine|finalisier/i],
+      confirm: false,
+      knownNumbers: true,
+    },
+  },
+  {
+    id: "offer-draft",
+    turns: [{ text: "Erstelle ein Angebot für Alpen über 2 Stk. Workshop à 800 €" }],
+    description: "create_offer_draft (2 × 800,00); no invented AN- number",
+    tags: ["documents", "numbers"],
+    expect: {
+      tools: ["create_offer_draft"],
+      callArgs: [{ tool: "create_offer_draft", args: { items: [{ quantity: 2, unitPrice: 800 }] } }],
+      confirm: false,
+      knownNumbers: true,
+    },
+  },
+  {
+    id: "draft-number-follow-up",
+    turns: [{ text: "Erstelle eine Rechnung für Alpen mit 2 Std. Beratung à 150 €" }, { text: "Welche Rechnungsnummer hat der neue Entwurf?" }],
+    description: "second turn: the draft has no number until it's finalized; names no invented one",
+    tags: ["documents", "numbers", "multi-turn", "hard"],
+    expect: { facts: [/keine|noch nicht|erst beim finalisieren|finalisier/i], confirm: false, knownNumbers: true },
   },
 ];

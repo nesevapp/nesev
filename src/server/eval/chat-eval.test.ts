@@ -45,13 +45,23 @@ describe("eval: parsing", () => {
       "[chat] conv 1: claim-guard „zugeordnet“ again – fixed reply",
       "[chat] conv 1: offer-nudge create_reminder offered instead of called – retrying once",
       "[chat] conv 1: repetition loop cut",
+      "[chat] conv 1: number-guard RE-2026-0004 not in any tool result – retrying once",
+      "[chat] conv 1: number-guard RE-2026-0004 – replaced",
     ];
     const t = turn({ results: [result("download_pdf", { ok: false, status: "error", summary: "Anderer Datensatz als auf der Seite gemeint" })] });
-    expect(guardHits(lines, t)).toEqual(["forced retry", "nudge", "provenance", "claim retry", "claim reply", "offer nudge", "repetition", "context"]);
+    expect(guardHits(lines, t)).toEqual(["forced retry", "nudge", "provenance", "claim retry", "claim reply", "offer nudge", "repetition", "number retry", "number replaced", "context"]);
   });
 });
 
 describe("eval: judging", () => {
+  test("knownNumbers: numbers must come from tool results (also of earlier turns) or the user's text", () => {
+    const c: EvalCase = { ...kase({ knownNumbers: true }), turns: [{ text: "Was ist mit AN-2026-0003?" }] };
+    const t = (answer: string) => turn({ answer, results: [result("list_documents", { content: "- RE-2026-0001 (invoice id 1)" })] });
+    expect(judge(c, t("RE-2026-0001 ist offen, AN-2026-0003 angenommen")).verdict).toBe("pass");
+    expect(judge(c, t("Der Entwurf RE-2026-0004 ist angelegt"))).toEqual({ verdict: "partial", notes: ["unknown numbers in the answer: RE-2026-0004"] });
+    expect(judge(c, t("Der Entwurf RE-2026-0004 ist angelegt"), [], ["Entwurf … RE-2026-0004"]).verdict).toBe("pass");
+  });
+
   test("subset matching for confirm and call arguments", () => {
     expect(containsSubset({ id: 1, targets: [{ kind: "invoice", id: 1 }] }, { id: 1, targets: [{ id: 1 }] })).toBe(true);
     expect(containsSubset({ id: 1, targets: [{ id: 2 }] }, { targets: [{ id: 1 }] })).toBe(false);

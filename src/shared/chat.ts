@@ -241,6 +241,10 @@ export type ChatStreamEvent =
   | { type: "user_message"; message: ChatMessageView }
   | { type: "assistant_start"; messageId: number }
   | { type: "delta"; messageId: number; text: string }
+  /** the whole text of an already streamed message, after a guard corrected it (e.g. an invented number) */
+  | { type: "replace"; messageId: number; text: string }
+  /** an already started message was dropped (a guard retries the answer; a new assistant_start follows) */
+  | { type: "discard"; messageId: number }
   /** the model is reasoning (only with settings.reasoning); text is not stored */
   | { type: "thinking"; messageId: number }
   | { type: "tool_call"; messageId: number; toolCall: ChatToolCall }

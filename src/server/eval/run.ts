@@ -192,6 +192,7 @@ function newLogLines(): string[] {
 async function runCase(base: string, c: EvalCase, run: number): Promise<{ result: CaseResult; dirty: boolean }> {
   const conv = (await (await fetch(`${base}/conversations`, { method: "POST" })).json()).id as number;
   const earlierCalls: string[] = [];
+  const earlierResults: string[] = [];
   let turn: TurnRecord | null = null;
   let lines: string[] = [];
   let turnMs = 0;
@@ -232,12 +233,15 @@ async function runCase(base: string, c: EvalCase, run: number): Promise<{ result
       await post(`${base}/conversations/${conv}/confirm`, { messageId: detail.pending.messageId, approve: false }).catch(() => []);
       newLogLines();
     }
-    if (i < c.turns.length - 1) earlierCalls.push(...record.calls.map((x) => x.name));
+    if (i < c.turns.length - 1) {
+      earlierCalls.push(...record.calls.map((x) => x.name));
+      earlierResults.push(...record.results.map((r) => r.content));
+    }
     turn = record;
   }
   const t = turn!;
   const steps = lines.map(parseStepLine).filter((s) => s !== null);
-  const j = judge(c, t, earlierCalls);
+  const j = judge(c, t, earlierCalls, earlierResults);
   const prompts = steps.flatMap((s) => (s.promptTokens === null ? [] : [s.promptTokens]));
   return {
     dirty,
