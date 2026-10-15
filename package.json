@@ -1,6 +1,8 @@
 {
   "name": "nesev",
   "private": true,
+  "description": "Local-first invoicing and bookkeeping for Austrian sole traders",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,magenta \"bun --hot src/server/index.ts\" \"vite\"",
