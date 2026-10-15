@@ -12,6 +12,8 @@ export type { AppType } from "./app";
 
 const isProd = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT ?? 3001);
+// No auth: listen on the loopback interface only. NESEV_HOST=0.0.0.0 opens it to the network (at your own risk).
+const hostname = process.env.NESEV_HOST ?? "127.0.0.1";
 
 if (isProd) {
   // Built SPA: static assets, falling back to index.html for client-side routes.
@@ -34,6 +36,6 @@ if (DB_PATH !== ":memory:") {
   getLlamaServer();
 }
 
-console.log(`nesev ${isProd ? "server" : "API"} listening on http://localhost:${port}`);
+console.log(`nesev ${isProd ? "server" : "API"} listening on http://${hostname}:${port}`);
 
-export default { port, fetch: app.fetch };
+export default { port, hostname, fetch: app.fetch };

@@ -25,7 +25,7 @@ export interface ToolContext {
 }
 
 export const DEFAULT_WEB_URL = "http://localhost:5174";
-export const DEFAULT_API_URL = "http://localhost:3998";
+export const DEFAULT_API_URL = "http://127.0.0.1:3998";
 
 export function createContext(env: Record<string, string | undefined> = process.env): ToolContext {
   const base = (env.NESEV_WEB_URL?.trim() || DEFAULT_WEB_URL).replace(/\/+$/, "");
