@@ -5,6 +5,7 @@ import bank from "./routes/bank";
 import clients from "./routes/clients";
 import dashboard from "./routes/dashboard";
 import documents from "./routes/documents";
+import einvoice from "./routes/einvoice";
 import expenses from "./routes/expenses";
 import exportRoutes from "./routes/export";
 import files from "./routes/files";
@@ -39,6 +40,7 @@ export const app = base
   .route("/api/documents", documents)
   .route("/api/templates", templates)
   .route("/api/pdf", pdf)
+  .route("/api/einvoice", einvoice)
   .route("/api/files", files)
   .route("/api/dashboard", dashboard)
   .route("/api/export", exportRoutes)

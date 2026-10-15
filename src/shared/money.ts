@@ -82,3 +82,25 @@ function parseLocaleDecimal(input: string): number | null {
   if (!/^(\d+(\.\d*)?|\.\d+)$/.test(s)) return null;
   return sign * Number(s);
 }
+
+// Machine formats (XML, e-invoices): "." as decimal separator, no grouping.
+
+/** 123456 → "1234.56", -5 → "-0.05" */
+export function centsToDecimal(cents: number): string {
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(cents);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+/** 1500 → "1.5", 2000 → "2", 1234 → "1.234" */
+export function quantityToDecimal(milli: number): string {
+  const sign = milli < 0 ? "-" : "";
+  const abs = Math.abs(milli);
+  const frac = String(abs % QTY_SCALE).padStart(3, "0").replace(/0+$/, "");
+  return `${sign}${Math.floor(abs / QTY_SCALE)}${frac ? `.${frac}` : ""}`;
+}
+
+/** 2000 → "20.00", 550 → "5.50" (percent with two decimals) */
+export function bpToPercentDecimal(bp: number): string {
+  return centsToDecimal(bp);
+}

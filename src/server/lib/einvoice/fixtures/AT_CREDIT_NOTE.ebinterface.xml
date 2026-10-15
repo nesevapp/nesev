@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="nesev" DocumentType="CreditMemo" InvoiceCurrency="EUR" DocumentTitle="Gutschrift zu Rechnung RE-2026-0001" Language="de">
+  <InvoiceNumber>GS-2026-0001</InvoiceNumber>
+  <InvoiceDate>2026-04-10</InvoiceDate>
+  <RelatedDocument>
+    <InvoiceNumber>RE-2026-0001</InvoiceNumber>
+    <InvoiceDate>2026-03-31</InvoiceDate>
+    <DocumentType>Invoice</DocumentType>
+  </RelatedDocument>
+  <Delivery>
+    <Period>
+      <FromDate>2026-03-01</FromDate>
+      <ToDate>2026-03-31</ToDate>
+    </Period>
+  </Delivery>
+  <Biller>
+    <VATIdentificationNumber>ATU12345678</VATIdentificationNumber>
+    <FurtherIdentification IdentificationType="FN">FN 123456a</FurtherIdentification>
+    <Address>
+      <Name>Muster Design e.U.</Name>
+      <Street>Mariahilfer Straße 1/5</Street>
+      <Town>Wien</Town>
+      <ZIP>1060</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+      <Phone>+43 1 234 56 78</Phone>
+      <Email>office@muster-design.at</Email>
+    </Address>
+    <Contact>
+      <Name>Maria Muster</Name>
+      <Phone>+43 1 234 56 78</Phone>
+      <Email>office@muster-design.at</Email>
+    </Contact>
+    <InvoiceRecipientsBillerID>312345</InvoiceRecipientsBillerID>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>00000000</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>4500012345</OrderID>
+    </OrderReference>
+    <Address>
+      <Name>Bundesministerium für Testwesen</Name>
+      <Street>Herrengasse 12</Street>
+      <Town>Wien</Town>
+      <ZIP>1010</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+      <Email>einkauf@bmtw.gv.at</Email>
+    </Address>
+    <Contact>
+      <Name>Max Mustermann</Name>
+    </Contact>
+    <BillersInvoiceRecipientID>K-0007</BillersInvoiceRecipientID>
+  </InvoiceRecipient>
+  <Details>
+    <HeaderDescription>Vielen Dank für Ihren Auftrag.</HeaderDescription>
+    <ItemList>
+      <ListLineItem>
+        <PositionNumber>1</PositionNumber>
+        <Description>Fachbuch „Gutes Webdesign“ &amp; &lt;Zubehör&gt;</Description>
+        <Quantity Unit="H87">2</Quantity>
+        <UnitPrice>39.90</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>79.80</TaxableAmount>
+          <TaxPercent TaxCategoryCode="S">10.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>79.80</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+    <FooterDescription>Wir freuen uns auf die weitere Zusammenarbeit.</FooterDescription>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>79.80</TaxableAmount>
+      <TaxPercent TaxCategoryCode="S">10.00</TaxPercent>
+      <TaxAmount>7.98</TaxAmount>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>87.78</TotalGrossAmount>
+  <PayableAmount>87.78</PayableAmount>
+</Invoice>

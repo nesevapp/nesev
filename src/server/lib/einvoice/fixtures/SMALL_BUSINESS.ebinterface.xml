@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="nesev" DocumentType="Invoice" InvoiceCurrency="EUR" DocumentTitle="Website-Relaunch" Language="de">
+  <InvoiceNumber>RE-2026-0003</InvoiceNumber>
+  <InvoiceDate>2026-03-31</InvoiceDate>
+  <Delivery>
+    <Period>
+      <FromDate>2026-03-01</FromDate>
+      <ToDate>2026-03-31</ToDate>
+    </Period>
+  </Delivery>
+  <Biller>
+    <VATIdentificationNumber>00000000</VATIdentificationNumber>
+    <FurtherIdentification IdentificationType="FN">FN 123456a</FurtherIdentification>
+    <Address>
+      <Name>Muster Design e.U.</Name>
+      <Street>Mariahilfer Straße 1/5</Street>
+      <Town>Wien</Town>
+      <ZIP>1060</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+      <Phone>+43 1 234 56 78</Phone>
+      <Email>office@muster-design.at</Email>
+    </Address>
+    <Contact>
+      <Name>Maria Muster</Name>
+      <Phone>+43 1 234 56 78</Phone>
+      <Email>office@muster-design.at</Email>
+    </Contact>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>ATU87654321</VATIdentificationNumber>
+    <OrderReference>
+      <OrderID>PO-77</OrderID>
+    </OrderReference>
+    <Address>
+      <Name>Alpen Handel GmbH</Name>
+      <Street>Herrengasse 12</Street>
+      <Town>Wien</Town>
+      <ZIP>1010</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+      <Email>office@alpen.at</Email>
+    </Address>
+    <Contact>
+      <Name>Max Mustermann</Name>
+    </Contact>
+    <BillersInvoiceRecipientID>K-0003</BillersInvoiceRecipientID>
+  </InvoiceRecipient>
+  <Details>
+    <HeaderDescription>Vielen Dank für Ihren Auftrag.</HeaderDescription>
+    <ItemList>
+      <ListLineItem>
+        <PositionNumber>1</PositionNumber>
+        <Description>Konzeption &amp; Workshop</Description>
+        <Description>Anforderungsanalyse
+und Wireframes</Description>
+        <Quantity Unit="HUR">7.5</Quantity>
+        <UnitPrice>95.00</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>712.50</TaxableAmount>
+          <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>712.50</LineItemAmount>
+      </ListLineItem>
+      <ListLineItem>
+        <PositionNumber>2</PositionNumber>
+        <Description>Umsetzung</Description>
+        <Quantity Unit="LS">1</Quantity>
+        <UnitPrice>2400.00</UnitPrice>
+        <ReductionAndSurchargeListLineItemDetails>
+          <ReductionListLineItem>
+            <BaseAmount>2400.00</BaseAmount>
+            <Percentage>10.00</Percentage>
+            <Amount>240.00</Amount>
+            <Comment>Rabatt</Comment>
+          </ReductionListLineItem>
+        </ReductionAndSurchargeListLineItemDetails>
+        <TaxItem>
+          <TaxableAmount>2160.00</TaxableAmount>
+          <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>2160.00</LineItemAmount>
+      </ListLineItem>
+      <ListLineItem>
+        <PositionNumber>3</PositionNumber>
+        <Description>Fachbuch „Gutes Webdesign“ &amp; &lt;Zubehör&gt;</Description>
+        <Quantity Unit="H87">2</Quantity>
+        <UnitPrice>39.90</UnitPrice>
+        <TaxItem>
+          <TaxableAmount>79.80</TaxableAmount>
+          <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+        </TaxItem>
+        <LineItemAmount>79.80</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+    <FooterDescription>Wir freuen uns auf die weitere Zusammenarbeit.</FooterDescription>
+  </Details>
+  <Tax>
+    <TaxItem>
+      <TaxableAmount>2952.30</TaxableAmount>
+      <TaxPercent TaxCategoryCode="E">0.00</TaxPercent>
+      <TaxAmount>0.00</TaxAmount>
+      <Comment>Umsatzsteuerbefreit – Kleinunternehmer gem. § 6 Abs. 1 Z 27 UStG.</Comment>
+    </TaxItem>
+  </Tax>
+  <TotalGrossAmount>2952.30</TotalGrossAmount>
+  <PayableAmount>2952.30</PayableAmount>
+  <PaymentMethod>
+    <Comment>Überweisung</Comment>
+    <UniversalBankTransaction>
+      <BeneficiaryAccount>
+        <BankName>Bank Austria</BankName>
+        <BIC>BKAUATWW</BIC>
+        <IBAN>AT611904300234573201</IBAN>
+        <BankAccountOwner>Muster Design e.U.</BankAccountOwner>
+      </BeneficiaryAccount>
+      <PaymentReference>RE-2026-0003</PaymentReference>
+    </UniversalBankTransaction>
+  </PaymentMethod>
+  <PaymentConditions>
+    <DueDate>2026-04-14</DueDate>
+    <Comment>Zahlbar bis 14.04.2026 ohne Abzug</Comment>
+  </PaymentConditions>
+  <Comment>Umsatzsteuerbefreit – Kleinunternehmer gem. § 6 Abs. 1 Z 27 UStG.</Comment>
+</Invoice>

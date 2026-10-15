@@ -245,6 +245,7 @@ export function createDocument(db: DbOrTx, input: DocumentCreate & { parentId?: 
         introText: input.introText ?? d.introText,
         closingText: input.closingText ?? d.closingText,
         templateId: input.templateId ?? null,
+        buyerReference: input.buyerReference ?? "",
         parentId: input.parentId ?? null,
         ...cachedTotals(items, taxMode),
       })
@@ -410,6 +411,7 @@ export function convertOfferToInvoice(db: DbOrTx, offerId: number): DocumentDeta
       title: offer.title,
       servicePeriodStart: offer.servicePeriodStart,
       servicePeriodEnd: offer.servicePeriodEnd,
+      buyerReference: offer.buyerReference,
       items: copyItems(getItems(tx, offerId)),
       parentId: offer.id,
     });
@@ -436,6 +438,7 @@ export function createCreditNote(db: DbOrTx, invoiceId: number): DocumentDetail 
       title: `Gutschrift zu Rechnung ${invoice.number}`,
       servicePeriodStart: invoice.servicePeriodStart,
       servicePeriodEnd: invoice.servicePeriodEnd,
+      buyerReference: invoice.buyerReference,
       items: copyItems(getItems(tx, invoiceId)),
       parentId: invoice.id,
     });
@@ -456,6 +459,7 @@ export function duplicateDocument(db: DbOrTx, id: number): DocumentDetail {
       servicePeriodStart: doc.servicePeriodStart,
       servicePeriodEnd: doc.servicePeriodEnd,
       templateId: doc.templateId,
+      buyerReference: doc.buyerReference,
       items: copyItems(getItems(tx, id)),
       parentId: doc.type === "credit_note" ? doc.parentId : null,
     });
