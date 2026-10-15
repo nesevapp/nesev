@@ -68,6 +68,9 @@ export const keys = {
     all: ["export"] as const,
     summary: (range: object) => ["export", "summary", range] as const,
     backups: ["export", "backups"] as const,
+    accounting: ["export", "accounting"] as const,
+    accountingSettings: ["export", "accounting", "settings"] as const,
+    accountingSummary: (params: object) => ["export", "accounting", "summary", params] as const,
   },
   expenses: {
     all: ["expenses"] as const,

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
+import { accountingExportSettingsSchema } from "../../shared/accounting-export";
 import { todayIso } from "../../shared/dates";
 import { db } from "../db";
 import { validate } from "../lib/validate";
@@ -12,6 +13,15 @@ import {
   writeLocalBackup,
 } from "../services/backup";
 import { clientsCsv, documentsCsv, documentsZip, exportFileNames, exportSummary } from "../services/export";
+import {
+  accountingExportSummary,
+  accountingFileNames,
+  accountingZipStream,
+  bmdCsv,
+  genericCsv,
+  getAccountingExportSettings,
+  updateAccountingExportSettings,
+} from "../services/export-accounting";
 
 // Automatic daily snapshots to data/backups (not for in-memory DBs / tests).
 
@@ -20,7 +30,13 @@ const rangeSchema = z
   .object({ from: isoDate, to: isoDate })
   .refine((r) => r.from <= r.to, { message: "Das Enddatum liegt vor dem Startdatum", path: ["to"] });
 
-function download(body: string | Uint8Array, fileName: string, contentType: string) {
+/** Accountant export: range plus `payments=1` to include bank payments. */
+const accountingQuery = z
+  .object({ from: isoDate, to: isoDate, payments: z.enum(["0", "1"]).optional() })
+  .refine((r) => r.from <= r.to, { message: "Das Enddatum liegt vor dem Startdatum", path: ["to"] });
+const accountingOptions = (q: { payments?: "0" | "1" }) => ({ payments: q.payments === "1" });
+
+function download(body: string | Uint8Array | ReadableStream<Uint8Array>, fileName: string, contentType: string) {
   return new Response(body as BodyInit, {
     headers: {
       "Content-Type": contentType,
@@ -43,6 +59,28 @@ const app = new Hono()
   .get("/documents.zip", validate("query", rangeSchema), async (c) => {
     const range = c.req.valid("query");
     return download(await documentsZip(db, range), exportFileNames.documentsZip(range), ZIP);
+  })
+  /** Steuerberatung: BMD account mapping (settings.accountingExport, defaults when unset). */
+  .get("/accounting-settings", (c) => c.json(getAccountingExportSettings(db)))
+  .put("/accounting-settings", validate("json", accountingExportSettingsSchema), (c) =>
+    c.json(updateAccountingExportSettings(db, c.req.valid("json"))),
+  )
+  .get("/accounting/summary", validate("query", accountingQuery), (c) => {
+    const q = c.req.valid("query");
+    return c.json(accountingExportSummary(db, q, accountingOptions(q)));
+  })
+  .get("/accounting/bmd.csv", validate("query", accountingQuery), (c) => {
+    const q = c.req.valid("query");
+    const { encoding } = getAccountingExportSettings(db);
+    return download(bmdCsv(db, q, accountingOptions(q)), accountingFileNames.bmd(q), `text/csv; charset=${encoding}`);
+  })
+  .get("/accounting/belege.csv", validate("query", accountingQuery), (c) => {
+    const q = c.req.valid("query");
+    return download(genericCsv(db, q, accountingOptions(q)), accountingFileNames.generic(q), CSV);
+  })
+  .get("/accounting.zip", validate("query", accountingQuery), (c) => {
+    const q = c.req.valid("query");
+    return download(accountingZipStream(db, q, accountingOptions(q)), accountingFileNames.zip(q), ZIP);
   })
   .get("/clients.csv", () => download(clientsCsv(db), exportFileNames.clientsCsv(todayIso()), CSV))
   /** Full backup: DB snapshot + assets + PDFs. */

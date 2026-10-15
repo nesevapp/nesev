@@ -63,6 +63,8 @@ const affects = {
     keys.tax.all,
   ],
   backups: [keys.export.backups],
+  /** Steuerberatung-Export: account mapping changes the export summary. */
+  accountingExport: [keys.export.accounting],
   /** Fixkosten: projected outflows in the forecast. */
   recurringExpenses: [keys.recurringExpenses.all, keys.forecast.all],
   /** Expense ↔ Fixkosten-slot links: schedules, suggestions, forecast (linked slots aren't projected). */

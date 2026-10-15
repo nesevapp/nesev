@@ -1,55 +1,22 @@
-import { useState } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Download, FileArchive, FileSpreadsheet, HardDriveDownload, Loader2 } from "lucide-react";
+import { Download, FileArchive, FileSpreadsheet, HardDriveDownload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDate, toIsoDate } from "@shared/dates";
+import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { FormSection } from "@/components/form-fields";
 import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   apiErrorMessage,
-  type ExportRange,
   exportSummaryQuery,
   exportUrls,
   localBackupsQuery,
   useCreateLocalBackup,
 } from "@/sdk";
-
-type Preset = "month" | "quarter" | "year" | "custom";
-const PRESETS: { value: Preset; label: string }[] = [
-  { value: "month", label: "Monat" },
-  { value: "quarter", label: "Quartal" },
-  { value: "year", label: "Jahr" },
-  { value: "custom", label: "Benutzerdefiniert" },
-];
-const STEP_MONTHS: Record<Exclude<Preset, "custom">, number> = { month: 1, quarter: 3, year: 12 };
-
-const monthName = (d: Date, style: "long" | "short" = "long") => d.toLocaleDateString("de-AT", { month: style });
-
-/** Range for a preset around an anchor month. */
-function presetRange(preset: Exclude<Preset, "custom">, anchor: Date): ExportRange & { label: string } {
-  const y = anchor.getFullYear();
-  const m = anchor.getMonth();
-  if (preset === "month") {
-    return { from: toIsoDate(new Date(y, m, 1)), to: toIsoDate(new Date(y, m + 1, 0)), label: `${monthName(anchor)} ${y}` };
-  }
-  if (preset === "quarter") {
-    const q = Math.floor(m / 3);
-    const start = new Date(y, q * 3, 1);
-    const end = new Date(y, q * 3 + 3, 0);
-    return {
-      from: toIsoDate(start),
-      to: toIsoDate(end),
-      label: `Q${q + 1} ${y} · ${monthName(start, "short")} – ${monthName(end, "short")}`,
-    };
-  }
-  return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y) };
-}
+import { AccountantExport } from "./accountant-export";
+import { DownloadButton } from "./download-button";
+import { useRangePicker } from "./range-picker";
 
 function formatBytes(n: number): string {
   const fmt = (v: number) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(v);
@@ -62,6 +29,7 @@ export function ExportPage() {
   return (
     <Page title="Export & Backup" description="Belege für die Steuerberatung exportieren und Daten sichern.">
       <DocumentsExport />
+      <AccountantExport />
       <FormSection title="Kunden" description="Alle Kunden inkl. archivierter als CSV.">
         <div>
           <Button variant="outline" asChild>
@@ -78,19 +46,8 @@ export function ExportPage() {
 }
 
 function DocumentsExport() {
-  const [preset, setPreset] = useState<Preset>("quarter");
-  const [anchor, setAnchor] = useState(() => new Date());
-  const [custom, setCustom] = useState<ExportRange>(() => presetRange("month", new Date()));
-
-  const range: ExportRange & { label?: string } = preset === "custom" ? custom : presetRange(preset, anchor);
-  const valid = !!range.from && !!range.to && range.from <= range.to;
-  const query = { from: range.from, to: range.to };
+  const { range: query, valid, controls } = useRangePicker("export");
   const summary = useQuery({ ...exportSummaryQuery(query), enabled: valid });
-
-  const step = (dir: -1 | 1) => {
-    if (preset === "custom") return;
-    setAnchor((a) => new Date(a.getFullYear(), a.getMonth() + dir * STEP_MONTHS[preset], 1));
-  };
 
   const s = summary.data;
   const empty = s && s.invoices + s.creditNotes === 0;
@@ -100,54 +57,7 @@ function DocumentsExport() {
       title="Belege"
       description="Finalisierte Rechnungen und Gutschriften nach Belegdatum. Entwürfe sind nicht enthalten."
     >
-      <Tabs value={preset} onValueChange={(v) => setPreset(v as Preset)}>
-        <TabsList>
-          {PRESETS.map((p) => (
-            <TabsTrigger key={p.value} value={p.value}>
-              {p.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      {preset === "custom" ? (
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="export-from">Von</Label>
-            <Input
-              id="export-from"
-              type="date"
-              className="w-40"
-              value={custom.from}
-              onChange={(e) => setCustom((r) => ({ ...r, from: e.target.value }))}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="export-to">Bis</Label>
-            <Input
-              id="export-to"
-              type="date"
-              className="w-40"
-              value={custom.to}
-              aria-invalid={!valid}
-              onChange={(e) => setCustom((r) => ({ ...r, to: e.target.value }))}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="size-8" onClick={() => step(-1)} aria-label="Zurück">
-            <ChevronLeft />
-          </Button>
-          <div className="min-w-48 text-center text-sm font-medium">{range.label}</div>
-          <Button variant="outline" size="icon" className="size-8" onClick={() => step(1)} aria-label="Weiter">
-            <ChevronRight />
-          </Button>
-          <span className="ml-2 text-sm text-muted-foreground tabular">
-            {formatDate(range.from)} – {formatDate(range.to)}
-          </span>
-        </div>
-      )}
+      {controls}
 
       <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
         {!valid ? (
@@ -205,35 +115,6 @@ function Stat({ label, cents }: { label: string; cents: number }) {
     <span className="text-muted-foreground">
       {label} <span className="font-medium text-foreground tabular">{formatCents(cents)}</span>
     </span>
-  );
-}
-
-function DownloadButton({
-  href,
-  disabled,
-  icon: Icon,
-  variant = "default",
-  children,
-}: {
-  href: string;
-  disabled?: boolean;
-  icon: typeof Download;
-  variant?: "default" | "outline";
-  children: React.ReactNode;
-}) {
-  if (disabled) {
-    return (
-      <Button variant={variant} disabled>
-        <Icon /> {children}
-      </Button>
-    );
-  }
-  return (
-    <Button variant={variant} asChild>
-      <a href={href} download>
-        <Icon /> {children}
-      </a>
-    </Button>
   );
 }
 
