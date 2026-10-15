@@ -28,6 +28,8 @@
   --sidebar-accent: oklch(0.94 0.003 286.3);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.9);
   --sidebar-border: oklch(0.92 0.004 286.3);
+  /* brand accent: the square dot of the nesev wordmark (components/brand/logo.tsx) */
+  --brand: #e5813e;
   /* status colors (badges, notices, amounts): text / soft background / border */
   --success: oklch(0.508 0.118 165.6);
   --success-muted: oklch(0.979 0.021 166.1);
@@ -71,6 +73,7 @@
 /* Dark theme: class "dark" on <html> (set before first paint by index.html, see app/theme.ts). */
 .dark {
   color-scheme: dark;
+  --brand: #ef9450;
   --background: oklch(0.16 0.004 285.9);
   --foreground: oklch(0.96 0 0);
   --card: oklch(0.2 0.005 285.9);
@@ -158,6 +161,7 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  --color-brand: var(--brand);
   --color-success: var(--success);
   --color-success-muted: var(--success-muted);
   --color-success-border: var(--success-border);

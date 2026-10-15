@@ -1,4 +1,5 @@
-import { Outlet } from "@tanstack/react-router";
+import { Link, Outlet } from "@tanstack/react-router";
+import { Logo } from "@/components/brand/logo";
 import { ChatFab } from "@/features/chat/chat-fab";
 import { ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
@@ -8,12 +9,9 @@ export function AppShell() {
   return (
     <div className="flex h-dvh overflow-hidden">
       <aside className="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-        <div className="flex h-14 shrink-0 items-center gap-2 px-5">
-          <div className="grid size-6 place-items-center rounded-md bg-primary text-[11px] font-semibold text-primary-foreground">
-            n
-          </div>
-          <span className="text-sm font-semibold tracking-tight text-foreground">nesev</span>
-        </div>
+        <Link to="/" className="flex h-14 shrink-0 items-center px-5 text-foreground" aria-label="nesev – Dashboard">
+          <Logo className="h-[18px]" aria-hidden />
+        </Link>
         <div className="shrink-0 px-3 pb-2">
           <GlobalSearch />
         </div>
