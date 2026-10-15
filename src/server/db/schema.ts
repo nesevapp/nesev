@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { DocumentStatus, DocumentType, NumberedType, TemplateDocType } from "../../shared/documents";
 import type { TaxMode } from "../../shared/tax";
+import type { EInvoiceFormat } from "../../shared/einvoice";
 import type { ClientType } from "../../shared/schemas/client";
 import type { ClientSnapshot, SellerSnapshot } from "../../shared/types";
 
@@ -104,8 +105,8 @@ export const clients = sqliteTable(
     paymentTermsDays: integer("payment_terms_days"),
     /** null → derived via defaultTaxMode() */
     defaultTaxMode: text("default_tax_mode").$type<TaxMode>(),
-    /** e-invoice format for this client: null = none (PDF only); shape = EInvoiceFormat in src/shared */
-    eInvoiceFormat: text("e_invoice_format"),
+    /** e-invoice format for this client: null = none (PDF only); src/shared/einvoice.ts */
+    eInvoiceFormat: text("e_invoice_format").$type<EInvoiceFormat>(),
     /** default buyer reference: Leitweg-ID (XRechnung) / Auftragsreferenz (ebInterface); per document overridable */
     eInvoiceBuyerReference: str("e_invoice_buyer_reference"),
     /** our supplier number at the client (ebInterface BillersInvoiceRecipientID, e.g. Lieferantennummer beim Bund) */

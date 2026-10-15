@@ -36,6 +36,8 @@ export const documentFormSchema = z.object({
   introText: z.string().max(5000),
   closingText: z.string().max(5000),
   templateId: z.number().int().positive().nullable(),
+  /** e-invoice buyer/order reference; "" → the client's default */
+  buyerReference: z.string().trim().max(200),
   items: z.array(documentItemSchema),
 });
 

@@ -1,5 +1,6 @@
-import { z } from "./zod";
+import { partialWithoutDefaults, z } from "./zod";
 import { TAX_MODES } from "../tax";
+import { EINVOICE_FORMATS } from "../einvoice";
 
 const text = (max = 500) => z.string().trim().max(max);
 
@@ -22,10 +23,17 @@ export const clientCreateSchema = z.object({
   phone: text(50).default(""),
   paymentTermsDays: z.number().int().min(0).max(365).nullable().default(null),
   defaultTaxMode: z.enum(TAX_MODES).nullable().default(null),
+  /** null = PDF only */
+  eInvoiceFormat: z.enum(EINVOICE_FORMATS).nullable().default(null),
+  /** Leitweg-ID (XRechnung) / Auftragsreferenz (ebInterface) */
+  eInvoiceBuyerReference: text(200).default(""),
+  /** our supplier number at the client (ebInterface) */
+  eInvoiceSupplierId: text(100).default(""),
   notes: z.string().max(5000).default(""),
 });
 
-export const clientUpdateSchema = clientCreateSchema.partial();
+/** omitted fields stay unchanged */
+export const clientUpdateSchema = partialWithoutDefaults(clientCreateSchema);
 
 export type ClientCreate = z.infer<typeof clientCreateSchema>;
 export type ClientUpdate = z.infer<typeof clientUpdateSchema>;

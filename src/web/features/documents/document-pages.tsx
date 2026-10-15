@@ -43,6 +43,7 @@ export function NewDocumentPage({ type, clientId }: { type: DocumentType; client
     introText: d.introText,
     closingText: d.closingText,
     templateId: null,
+    buyerReference: "",
     items: [newItem()],
   };
   return <DocumentEditor key={`${type}-${clientId ?? ""}`} type={type} initialValues={initialValues} />;

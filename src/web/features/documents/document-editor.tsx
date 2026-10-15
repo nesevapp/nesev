@@ -58,6 +58,7 @@ export function toFormValues(doc: Document): DocumentFormValues {
     introText: doc.introText,
     closingText: doc.closingText,
     templateId: doc.templateId,
+    buyerReference: doc.buyerReference,
     items: doc.items.map(({ articleId, title, description, quantity, unit, unitPriceCents, taxRateBp, discountBp }) => ({
       articleId,
       title,

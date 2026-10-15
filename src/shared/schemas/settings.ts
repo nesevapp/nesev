@@ -34,6 +34,10 @@ export const settingsUpdateSchema = z.object({
   taxNoteSmallBusiness: longText(),
   vatBasis: z.enum(["accrual", "cash"]),
   vatPeriod: z.enum(["monthly", "quarterly"]),
+  /** payment QR code (EPC/GiroCode) on invoices */
+  paymentQr: z.boolean().default(true),
+  /** receipt inbox folder (absolute path); "" = off */
+  receiptInboxPath: text(1000).default(""),
 });
 
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;
