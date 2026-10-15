@@ -16,6 +16,16 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   assistent: "Assistent",
 };
 
+/** Tabs of the settings area that are pages of their own (they keep their URLs: search, shortcuts and the assistant link there). */
+export const SETTINGS_LINK_TABS = {
+  vorlagen: { label: "PDF-Vorlagen", to: "/templates" },
+  export: { label: "Export & Backup", to: "/export" },
+} as const;
+export type SettingsLinkTab = keyof typeof SETTINGS_LINK_TABS;
+export type SettingsAreaTab = SettingsTab | SettingsLinkTab;
+
+export const isLinkTab = (tab: string): tab is SettingsLinkTab => tab in SETTINGS_LINK_TABS;
+
 export const settingsSearch = z.object({ tab: z.enum(SETTINGS_TABS).optional().catch(undefined) });
 
 /** Old section anchors (`/settings#assistent`) → the tab that now holds the section. */

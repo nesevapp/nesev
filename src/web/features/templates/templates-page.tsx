@@ -4,7 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Copy, FileText, MoreHorizontal, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { TEMPLATE_DOC_TYPE_LABELS, TEMPLATE_DOC_TYPES, type TemplateDocType } from "@shared/documents";
-import { Page } from "@/components/page";
+import { SettingsAreaPage, SettingsTabs } from "@/features/settings/settings-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,15 +67,16 @@ export function TemplatesPage() {
     });
 
   return (
-    <Page
-      title="PDF-Vorlagen"
-      description="Layouts für Angebote, Rechnungen und Gutschriften. Die Standardvorlage wird verwendet, wenn ein Beleg keine eigene Vorlage hat."
-      actions={
+    <SettingsAreaPage>
+      <SettingsTabs value="vorlagen" />
+      <div className="mt-6 mb-6 flex items-start justify-between gap-4">
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Layouts für Angebote, Rechnungen und Gutschriften. Die Standardvorlage wird verwendet, wenn ein Beleg keine eigene Vorlage hat.
+        </p>
         <Button size="sm" onClick={() => setCreateOpen({ docType: "invoice", name: "" })}>
           <Plus /> Neue Vorlage
         </Button>
-      }
-    >
+      </div>
       <div className="space-y-8">
         {TEMPLATE_DOC_TYPES.map((docType) => {
           const rows = templates.filter((t) => t.docType === docType);
@@ -128,7 +129,7 @@ export function TemplatesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </SettingsAreaPage>
   );
 }
 

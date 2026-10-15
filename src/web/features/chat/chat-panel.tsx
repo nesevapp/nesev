@@ -1,13 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import { chatApi, chatStatusQuery } from "@/sdk";
-import { Kbd, modKey } from "@/features/search/kbd";
 import { cn } from "@/lib/utils";
 import { ChatComposer, type ComposerHandle } from "./chat-composer";
 import { ChatHeader } from "./chat-header";
 import { ConfirmCard, EmptyState, MessageList } from "./chat-messages";
-import { chatUi, useChatUi } from "./chat-store";
+import { chatUi, returnFocusTarget, setChatActivity, useChatUi } from "./chat-store";
 import { usePageContext } from "./page-context";
 import { useChatSession } from "./use-chat-session";
 
@@ -76,13 +75,19 @@ function ChatPanelBody({ open }: { open: boolean }) {
   const pending = detail?.pending ?? null;
   const context = dropContext ? null : page;
 
+  // for the floating button's status dot while the panel is closed
+  useEffect(() => {
+    setChatActivity({ busy: session.streaming, pending: !!pending && !session.streaming });
+  }, [session.streaming, pending]);
+
   // a new page brings its context back
   useEffect(() => setDropContext(false), [page.path]);
 
-  // focus the composer on open, give focus back on close
+  // focus the composer on open, give focus back on close (to the floating button when it opened the panel: it is
+  // hidden while the panel is open, so it has lost the focus by now)
   useEffect(() => {
     if (open) {
-      restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      restoreFocus.current = returnFocusTarget() ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
       requestAnimationFrame(() => composer.current?.focus());
     } else if (restoreFocus.current?.isConnected) {
       // the hidden panel dropped the focus to <body>: give it back to where it was before opening
@@ -180,28 +185,5 @@ function ChatPanelBody({ open }: { open: boolean }) {
         onDropContext={() => setDropContext(true)}
       />
     </aside>
-  );
-}
-
-/** Sidebar button under the search button. */
-export function ChatButton() {
-  const { open } = useChatUi();
-  return (
-    <button
-      type="button"
-      onClick={() => chatUi.toggle()}
-      aria-pressed={open}
-      className={cn(
-        "mt-1.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        open && "bg-sidebar-accent text-sidebar-accent-foreground",
-      )}
-    >
-      <Sparkles className="size-4 opacity-70" strokeWidth={1.75} />
-      <span className="flex-1 text-left">Assistent</span>
-      <span className="flex gap-0.5">
-        <Kbd>{modKey}</Kbd>
-        <Kbd>J</Kbd>
-      </span>
-    </button>
   );
 }

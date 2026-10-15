@@ -79,7 +79,7 @@ export function ChatSettingsSection() {
             </div>
           )}
 
-          <SwitchField control={control} name="enabled" label="Assistent aktivieren" description="Aus: Seitenleiste und ⌘J bleiben, senden ist aber gesperrt." />
+          <SwitchField control={control} name="enabled" label="Assistent aktivieren" description="Aus: der runde Assistent-Knopf unten rechts verschwindet; ⌘J öffnet das Panel weiterhin, senden ist aber gesperrt." />
 
           {enabled && (
             <>

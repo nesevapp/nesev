@@ -2,12 +2,11 @@ import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate, useSearch } from "@tanstack/react-router";
+import { useBlocker, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import { ImageUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { COUNTRY_OPTIONS } from "@shared/countries";
 import { type SettingsFormValues, type SettingsUpdate, settingsUpdateSchema } from "@shared/schemas/settings";
-import { Page } from "@/components/page";
 import { FormSection, NumberField, SwitchField, TextField, TextareaField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -29,7 +28,8 @@ import {
   useUploadLogo,
 } from "@/sdk";
 import { cn } from "@/lib/utils";
-import { FORM_TABS, HASH_TABS, SETTINGS_TAB_LABELS, SETTINGS_TABS, type SettingsTab, tabsOfFields } from "./settings-tabs";
+import { FORM_TABS, HASH_TABS, SETTINGS_TAB_LABELS, type SettingsTab, tabsOfFields } from "./settings-tabs";
+import { SettingsAreaPage, SettingsTabs } from "./settings-area";
 import { UnitSettingsSection } from "./unit-settings";
 
 function toFormValues(s: Settings): SettingsFormValues {
@@ -53,6 +53,12 @@ export function SettingsPage() {
     defaultValues: toFormValues(data),
   });
   const { control, formState } = form;
+  // tab switches stay on /settings and keep the edits; leaving (also via the PDF-Vorlagen / Export tabs) asks first
+  useBlocker({
+    shouldBlockFn: ({ next }) =>
+      formState.isDirty && next.pathname !== "/settings" && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
+    enableBeforeUnload: () => formState.isDirty,
+  });
   const dirtyTabs = tabsOfFields(Object.keys(formState.dirtyFields));
   const errorTabs = tabsOfFields(Object.keys(formState.errors));
 
@@ -94,20 +100,18 @@ export function SettingsPage() {
   );
 
   return (
-    <Page title="Einstellungen" description="Unternehmensdaten, Belege, Mahnwesen, Prognose, Belegerkennung und Assistent.">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)} className="gap-6">
-        <TabsList variant="line" className="w-full max-w-4xl flex-wrap justify-start border-b pb-1 group-data-[orientation=horizontal]/tabs:h-auto">
-          {SETTINGS_TABS.map((t) => (
-            <TabsTrigger key={t} value={t} className="flex-none px-3">
-              {SETTINGS_TAB_LABELS[t]}
-              {errorTabs.includes(t) ? (
-                <TabDot className="bg-destructive" label="enthält Fehler" />
-              ) : dirtyTabs.includes(t) ? (
-                <TabDot className="bg-warning-solid" label="ungespeicherte Änderungen" />
-              ) : null}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <SettingsAreaPage>
+      <SettingsTabs
+        value={tab}
+        onTabChange={setTab}
+        mark={(t) =>
+          errorTabs.includes(t) ? (
+            <TabDot className="bg-destructive" label="enthält Fehler" />
+          ) : dirtyTabs.includes(t) ? (
+            <TabDot className="bg-warning-solid" label="ungespeicherte Änderungen" />
+          ) : null
+        }
+      >
 
         {formState.isDirty && !FORM_TABS.includes(tab) && (
           <UnsavedBanner tabs={dirtyTabs} pending={update.isPending} onShow={() => setTab(dirtyTabs[0] ?? "unternehmen")} onSave={() => void onSubmit()} />
@@ -298,8 +302,8 @@ export function SettingsPage() {
           <ChatSettingsSection />
           <VoiceSettingsSection />
         </TabsContent>
-      </Tabs>
-    </Page>
+      </SettingsTabs>
+    </SettingsAreaPage>
   );
 }
 

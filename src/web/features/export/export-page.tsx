@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { FormSection } from "@/components/form-fields";
-import { Page } from "@/components/page";
+import { SettingsAreaPage, SettingsTabs } from "@/features/settings/settings-area";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -27,7 +27,9 @@ function formatBytes(n: number): string {
 
 export function ExportPage() {
   return (
-    <Page title="Export & Backup" description="Belege für die Steuerberatung exportieren und Daten sichern.">
+    <SettingsAreaPage>
+      <SettingsTabs value="export" />
+      <p className="mt-6 text-sm text-muted-foreground">Belege für die Steuerberatung exportieren und Daten sichern.</p>
       <DocumentsExport />
       <AccountantExport />
       <FormSection title="Kunden" description="Alle Kunden inkl. archivierter als CSV.">
@@ -41,7 +43,7 @@ export function ExportPage() {
       </FormSection>
       <BackupSection />
       <RestoreSection />
-    </Page>
+    </SettingsAreaPage>
   );
 }
 
