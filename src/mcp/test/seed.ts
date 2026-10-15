@@ -7,32 +7,45 @@ import { api, call, idParam } from "../api";
 //   NESEV_DATA_DIR=/tmp/nesev-mcp bun src/mcp/test/seed.ts
 // Refuses to run against the default data dir (the user's real data). Dates are relative to today, so the first
 // invoice is always overdue. Prints the created ids as JSON on stdout.
+// `bun run demo` (scripts/demo-seed.ts) builds on this with its own company and more history.
 
-export async function seed() {
+/** the seller: settings fields; `iban`/`bankName` also name the seeded bank account */
+export interface SeedCompany {
+  companyName: string;
+  ownerName: string;
+  street: string;
+  zip: string;
+  city: string;
+  country: string;
+  uid: string;
+  email: string;
+  iban: string;
+  bic: string;
+  bankName: string;
+  phone?: string;
+  website?: string;
+}
+
+export const TEST_COMPANY: SeedCompany = {
+  companyName: "Muster IT e.U.",
+  ownerName: "Max Muster",
+  street: "Hauptstraße 1",
+  zip: "1010",
+  city: "Wien",
+  country: "AT",
+  uid: "ATU12345678",
+  email: "office@muster.at",
+  iban: "AT61 1904 3002 3457 3201",
+  bic: "BKAUATWW",
+  bankName: "Testbank",
+};
+
+export async function seed(company: SeedCompany = TEST_COMPANY) {
   const today = todayIso();
   const year = Number(today.slice(0, 4));
 
   const settings = await call(api.settings.index.$get());
-  await call(
-    api.settings.index.$put({
-      json: {
-        ...settings,
-        companyName: "Muster IT e.U.",
-        ownerName: "Max Muster",
-        street: "Hauptstraße 1",
-        zip: "1010",
-        city: "Wien",
-        country: "AT",
-        uid: "ATU12345678",
-        email: "office@muster.at",
-        iban: "AT61 1904 3002 3457 3201",
-        bic: "BKAUATWW",
-        bankName: "Testbank",
-        vatBasis: "accrual",
-        vatPeriod: "monthly",
-      },
-    }),
-  );
+  await call(api.settings.index.$put({ json: { ...settings, ...company, vatBasis: "accrual", vatPeriod: "monthly" } }));
 
   const alpen = await call(
     api.clients.index.$post({
@@ -147,7 +160,7 @@ export async function seed() {
   // ── bank + recurring (tools/bank.ts, tools/recurring.ts) ──────────────────────
   // One account without auto-matching, so nothing is allocated yet: payment of the overdue invoice (number + open
   // amount), the Adobe expense (amount + name), a private card payment (to ignore). Plus a monthly recurring invoice.
-  const bankAccount = await call(api.bank.accounts.$post({ json: { name: "Geschäftskonto", iban: "AT61 1904 3002 3457 3201", bankName: "Testbank", autoMatch: "off" } }));
+  const bankAccount = await call(api.bank.accounts.$post({ json: { name: "Geschäftskonto", iban: company.iban, bankName: company.bankName, autoMatch: "off" } }));
   const inv1Number = (await call(api.documents[":id"].$get({ param: idParam(inv1.id) }))).number;
   const csv = [
     "Datum;Betrag;Name;IBAN;Zweck",

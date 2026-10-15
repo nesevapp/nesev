@@ -61,6 +61,7 @@ export interface ScanResult {
 export type HeicConverter = (src: string, dest: string) => Promise<void>;
 
 export const sipsConvert: HeicConverter = async (src, dest) => {
+  if (!Bun.which("sips")) throw new Error("HEIC-Umwandlung ist auf diesem System nicht verfügbar (nur macOS) – bitte als JPG, PNG oder PDF ablegen");
   const proc = Bun.spawn(["sips", "-s", "format", "jpeg", src, "--out", dest], { stdout: "ignore", stderr: "pipe" });
   const code = await proc.exited;
   if (code !== 0 || !existsSync(dest)) {

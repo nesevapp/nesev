@@ -3,6 +3,9 @@
   "private": true,
   "description": "Local-first invoicing and bookkeeping for Austrian sole traders",
   "license": "AGPL-3.0-only",
+  "engines": {
+    "bun": ">=1.3.13"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,magenta \"bun --hot src/server/index.ts\" \"vite\"",
@@ -17,6 +20,7 @@
     "mcp": "bun src/mcp/server.ts",
     "eval:chat": "bun src/server/eval/run.ts",
     "eval:feedback": "bun src/server/eval/feedback.ts",
+    "demo": "bun scripts/demo.ts",
     "service:install": "bun scripts/service.ts install",
     "service:uninstall": "bun scripts/service.ts uninstall",
     "service:status": "bun scripts/service.ts status"
