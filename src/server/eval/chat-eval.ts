@@ -98,6 +98,8 @@ const LOG_GUARDS: [RegExp, string][] = [
   [/forced tool call answered with text/, "forced retry"],
   [/not looked up – rejected/, "provenance"],
   [/nudged (\S+) → (\S+)/, "nudge"],
+  [/claim-guard .*retrying once/, "claim retry"],
+  [/claim-guard .*fixed reply/, "claim reply"],
 ];
 /** guard interventions visible as tool results */
 const RESULT_GUARDS: [RegExp, string][] = [

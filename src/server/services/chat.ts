@@ -14,6 +14,7 @@ import { type ChatConversation, type ChatMessage, chatConversations, chatMessage
 import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
 import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
+import { claimRetryMessage, detectClaims, honestReply, isWriteRequest, unbackedClaims } from "./chat-claims";
 import { checkContextUse } from "./chat-context";
 import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
@@ -25,7 +26,8 @@ import { getSettings } from "./settings";
 // calls executed in-process (MCP tools) → model again … until the model answers without tools (max MAX_STEPS calls).
 // State-changing tools (needsConfirm) are not executed: the tool row is stored "pending", a `confirm` event ends the
 // stream, and confirm() executes or cancels it and continues the loop. Everything is persisted as it happens, so a
-// reload (or an aborted stream) shows the same conversation; aborting keeps the partial assistant text.
+// reload (or an aborted stream) shows the same conversation; aborting keeps the partial assistant text. In turns that
+// ask for a change, texts are held back and a final answer claiming what no tool did is retried (chat-claims.ts).
 
 export const MAX_STEPS = 8;
 /** malformed tool calls (bad JSON, unknown tool, a failed call repeated unchanged) per turn before giving up; the first one goes back to the model */
@@ -471,6 +473,9 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
   let emptyRetried = false;
   /** a forced first call answered with text instead of a tool call (Qwen3.5-4B ignores "required" now and then) is retried once */
   let forcedRetried = false;
+  /** a final answer claiming a change no tool made (chat-claims.ts) is retried once with this correction, the next one replaced */
+  let claimRetry: LlmMessage[] | null = null;
+  let claimRetried = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal?.aborted) return;
     const rows = messages(db, state.conversationId);
@@ -483,11 +488,18 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
     const selection = selectToolsDetailed(host.tools, { userTexts, contextPath: lastUser?.contextPath, recentTools, budgetTokens: Math.floor(available * 0.6) });
     const tools = selection.tools;
     const history = buildHistory(rows, available - toolTokens(tools), state.contextTitle);
+    const turnRows = lastUser ? rows.slice(rows.indexOf(lastUser) + 1) : [];
 
     // first call after a new user message (not after a confirmation, which already ran a tool); its text is held
     // back until it's clear the model called a tool
     const forceTool = rows.at(-1)?.role === "user" && needsData(rows.at(-1)!.content);
-    const holdText = forceTool && !forcedRetried;
+    const forcedHold = forceTool && !forcedRetried;
+    // the user asked for a change: every text is held back, a final answer until its claims are checked
+    const previousAnswer = lastUser ? rows.slice(0, rows.indexOf(lastUser)).findLast((r) => r.role === "assistant" && r.content.trim())?.content : null;
+    const writeTurn = !!lastUser && isWriteRequest(lastUser.content, previousAnswer);
+    const holdText = forcedHold || writeTurn;
+    const extra: LlmMessage[] = claimRetry ?? [];
+    claimRetry = null;
     let assistant: ChatMessage | null = null;
     let thinkingSent = false;
     const result = await deps.withModel(
@@ -500,7 +512,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           baseUrl: endpoint.baseUrl,
           apiKey: endpoint.apiKey,
           model: endpoint.model,
-          messages: [{ role: "system", content: system }, ...history],
+          messages: [{ role: "system", content: system }, ...history, ...extra],
           tools: tools.map(toLlmTool),
           reasoning,
           toolChoice: forceTool ? "required" : "auto",
@@ -546,14 +558,33 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
       if (nudged.name !== raw.name) deps.log?.(`[chat] conv ${state.conversationId}: nudged ${raw.name} → ${nudged.name}`);
       calls.push({ id, ...nudged });
     }
-    if (holdText && !calls.length) {
+    if (forcedHold && !calls.length) {
       forcedRetried = true;
       deps.log?.(`[chat] conv ${state.conversationId}: forced tool call answered with text – retrying once`);
       db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
       continue;
     }
-    if (holdText && result.content) await emit({ type: "delta", messageId, text: result.content });
-    updateMessage(db, messageId, { content: result.content, toolCalls: calls.length ? calls : null });
+    let content: string = result.content;
+    if (writeTurn && !calls.length && content.trim()) {
+      const unbacked = unbackedClaims(detectClaims(content), turnRows);
+      if (unbacked.length) {
+        const words = [...new Set(unbacked.map((c) => c.word))].join(", ");
+        if (!claimRetried) {
+          claimRetried = true;
+          deps.log?.(`[chat] conv ${state.conversationId}: claim-guard „${words}“ without a matching tool call – retrying once`);
+          db.delete(chatMessages).where(eq(chatMessages.id, messageId)).run();
+          claimRetry = [
+            { role: "assistant", content },
+            { role: "user", content: claimRetryMessage(unbacked) },
+          ];
+          continue;
+        }
+        deps.log?.(`[chat] conv ${state.conversationId}: claim-guard „${words}“ again – fixed reply`);
+        content = honestReply(unbacked);
+      }
+    }
+    if (holdText && content) await emit({ type: "delta", messageId, text: content });
+    updateMessage(db, messageId, { content, toolCalls: calls.length ? calls : null });
     for (const c of calls) await emit({ type: "tool_call", messageId, toolCall: c });
 
     if (!calls.length && !result.content.trim() && !emptyRetried) {

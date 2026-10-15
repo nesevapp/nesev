@@ -445,6 +445,81 @@ describe("agent loop", () => {
   });
 });
 
+describe("claim guard (claimed but not done)", () => {
+  const deltas = (events: ChatStreamEvent[]) => events.filter((e) => e.type === "delta").map((e) => (e as { text: string }).text);
+  let logs: string[];
+  beforeEach(() => {
+    logs = [];
+    deps.log = (line) => void logs.push(line);
+  });
+
+  test("a claim without a write call is discarded and retried with a correction; the tool call then gets its confirm", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":2}'), text("Ich habe die Rechnung ", "finalisiert."), toolCall("finalize_document", '{"id":2}'));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "tool_result", "assistant_start", "assistant_start", "tool_call", "confirm"]);
+    expect(deltas(events)).toEqual([]);
+    // the retry sees the discarded claim and the correction; neither is stored
+    expect(requests[2].messages.slice(-2)).toEqual([
+      { role: "assistant", content: "Ich habe die Rechnung finalisiert." },
+      { role: "user", content: expect.stringContaining("Du hast behauptet, das Finalisieren sei erledigt („finalisiert“), aber in dieser Runde wurde kein passendes Tool ausgeführt (finalize_document).") },
+    ]);
+    expect(conversationDetail(db, c.id).messages.map((m) => m.content)).not.toContain("Ich habe die Rechnung finalisiert.");
+    expect(conversationDetail(db, c.id).pending?.toolCall.name).toBe("finalize_document");
+    expect(logs.filter((l) => l.includes("claim-guard"))).toEqual([`[chat] conv ${c.id}: claim-guard „finalisiert“ without a matching tool call – retrying once`]);
+  });
+
+  test("a second claim is replaced by a fixed honest reply and ends the turn", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":2}'), text("Ich habe die Rechnung finalisiert."), text("Die Rechnung wurde erfolgreich finalisiert."), text("unused"));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    const reply = "Das ist noch nicht erledigt: Es wurde noch nichts finalisiert. Soll ich das Finalisieren jetzt vorbereiten?";
+    expect(deltas(events)).toEqual([reply]);
+    expect(events.at(-1)?.type).toBe("done");
+    expect(requests).toHaveLength(3);
+    const stored = conversationDetail(db, c.id).messages;
+    expect(stored.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(stored.at(-1)!.content).toBe(reply);
+    expect(logs.filter((l) => l.includes("claim-guard"))).toHaveLength(2);
+    expect(logs.at(-1)).toContain("claim-guard „finalisiert“ again – fixed reply");
+  });
+
+  test("an honest answer in a write turn is emitted once checked (held back, one delta)", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("get_document", '{"id":2}'), text("Die Rechnung ist ", "noch ein Entwurf. ", "Soll ich sie finalisieren?"));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    expect(deltas(events)).toEqual(["Die Rechnung ist noch ein Entwurf. Soll ich sie finalisieren?"]);
+    expect(requests).toHaveLength(2);
+    expect(logs.some((l) => l.includes("claim-guard"))).toBe(false);
+  });
+
+  test("a read-only turn is untouched and keeps streaming", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("list_documents", "{}"), text("RE-2026-0001 wurde ", "erfolgreich ", "erstellt."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Welche Rechnungen sind offen?" }, emit));
+    expect(deltas(events)).toEqual(["RE-2026-0001 wurde ", "erfolgreich ", "erstellt."]);
+    expect(requests).toHaveLength(2);
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("RE-2026-0001 wurde erfolgreich erstellt.");
+  });
+
+  test("a genuine success after the write call passes", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("create_invoice_draft", '{"clientId":1,"title":"Beratung"}'), text("Ich habe den Entwurf erstellt."));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Erstelle eine Rechnung für Kunde id 1" }, emit));
+    expect(deltas(events)).toEqual(["Ich habe den Entwurf erstellt."]);
+    expect(requests).toHaveLength(2);
+    expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe("Ich habe den Entwurf erstellt.");
+    // after an approved confirmation the executed call backs the claim
+    scripts.push(toolCall("finalize_document", '{"id":2}'));
+    const pending = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    const confirm = pending.at(-1) as Extract<ChatStreamEvent, { type: "confirm" }>;
+    scripts.push(text("Die Rechnung ist jetzt finalisiert."));
+    const after = await collect((emit) => confirmToolCall(deps, c.id, confirm.messageId, true, emit));
+    expect(deltas(after)).toEqual(["Die Rechnung ist jetzt finalisiert."]);
+    expect(logs.some((l) => l.includes("claim-guard"))).toBe(false);
+  });
+});
+
 describe("history", () => {
   const row = (id: number, r: Partial<typeof chatMessages.$inferSelect>) =>
     ({ id, conversationId: 1, content: "", toolCalls: null, toolCallId: null, toolName: null, toolResult: null, status: "done", contextPath: null, createdAt: "", updatedAt: "", ...r }) as typeof chatMessages.$inferSelect;
