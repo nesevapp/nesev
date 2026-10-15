@@ -101,6 +101,7 @@ const LOG_GUARDS: [RegExp, string][] = [
   [/claim-guard .*retrying once/, "claim retry"],
   [/claim-guard .*fixed reply/, "claim reply"],
   [/offer-nudge /, "offer nudge"],
+  [/repetition loop cut/, "repetition"],
 ];
 /** guard interventions visible as tool results */
 const RESULT_GUARDS: [RegExp, string][] = [

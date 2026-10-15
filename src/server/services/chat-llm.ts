@@ -56,6 +56,13 @@ export class ChatLlmError extends Error {}
 /** Qwen's recommended non-thinking sampling, a bit cooler for reliable tool arguments. */
 const SAMPLING = { temperature: 0.4, top_p: 0.8, top_k: 20, min_p: 0 };
 
+/** temperature from NESEV_CHAT_TEMPERATURE (0–2, for experiments such as the eval's --temperature), else 0.4 */
+export function samplingTemperature(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.NESEV_CHAT_TEMPERATURE?.trim();
+  const t = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(t) && t >= 0 && t <= 2 ? t : SAMPLING.temperature;
+}
+
 export async function streamChat(o: StreamOptions): Promise<StreamResult> {
   const t0 = performance.now();
   const fetchFn = o.fetchFn ?? ((url, init) => fetch(url, init));
@@ -67,6 +74,7 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
     max_tokens: o.maxTokens ?? (o.reasoning ? 8192 : 2048),
     chat_template_kwargs: { enable_thinking: o.reasoning },
     ...SAMPLING,
+    temperature: samplingTemperature(),
   };
   const result: StreamResult = {
     content: "",
@@ -116,7 +124,7 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
     }
     const choice = chunk.choices?.[0];
     if (!choice) return;
-    if (choice.finish_reason) result.finishReason = choice.finish_reason;
+    if (choice.finish_reason && result.finishReason !== "repetition") result.finishReason = choice.finish_reason;
     const delta = choice.delta ?? {};
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content && !thinking) {
       thinking = true;

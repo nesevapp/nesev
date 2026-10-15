@@ -31,6 +31,7 @@ const { values: flags } = parseArgs({
     filter: { type: "string" },
     reasoning: { type: "boolean", default: false },
     context: { type: "string" },
+    temperature: { type: "string" },
     json: { type: "string" },
     min: { type: "string" },
     timeout: { type: "string", default: "240" },
@@ -39,7 +40,7 @@ const { values: flags } = parseArgs({
 });
 
 if (flags.help) {
-  console.log(`bun run eval:chat [--model <gguf>|auto] [--runs N] [--filter <id|tag>[,…]] [--reasoning] [--context N] [--json <file>] [--min <pass %>] [--timeout <s per turn>]`);
+  console.log(`bun run eval:chat [--model <gguf>|auto] [--runs N] [--filter <id|tag>[,…]] [--reasoning] [--context N] [--temperature T] [--json <file>] [--min <pass %>] [--timeout <s per turn>]`);
   process.exit(0);
 }
 
@@ -135,7 +136,14 @@ async function startApi(template: string) {
   const log = join(dir, "api.log");
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {
     cwd: PROJECT_ROOT,
-    env: { ...process.env, NESEV_DATA_DIR: dir, NESEV_API_URL: "http://127.0.0.1:9", PORT: String(port), NODE_ENV: "development" },
+    env: {
+      ...process.env,
+      NESEV_DATA_DIR: dir,
+      NESEV_API_URL: "http://127.0.0.1:9",
+      PORT: String(port),
+      NODE_ENV: "development",
+      ...(flags.temperature ? { NESEV_CHAT_TEMPERATURE: flags.temperature } : {}),
+    },
     stdout: Bun.file(log),
     stderr: "inherit",
   });
@@ -256,7 +264,7 @@ try {
   console.log(`Seeding demo data …`);
   const template = seedTemplate();
   let { base, model } = await startApi(template);
-  console.log(`Model ${model}${flags.reasoning ? " (reasoning on)" : ""}, ${cases.length} case(s) × ${runs} run(s), API :${api!.port}\n`);
+  console.log(`Model ${model}${flags.reasoning ? " (reasoning on)" : ""}${flags.temperature ? `, temperature ${flags.temperature}` : ""}, ${cases.length} case(s) × ${runs} run(s), API :${api!.port}\n`);
   let dirty = false;
   for (let run = 1; run <= runs; run++) {
     for (const c of cases) {
@@ -279,7 +287,7 @@ if (results.length) {
   const t = totals(results);
   console.log(`\n${formatTable(results)}\n\n${formatTotals(t)}\n\n${formatFailures(results)}`);
   if (flags.json) {
-    await Bun.write(flags.json, JSON.stringify({ model: flags.model, reasoning: flags.reasoning, context: flags.context ?? null, date: new Date().toISOString(), totals: t, results }, null, 2));
+    await Bun.write(flags.json, JSON.stringify({ model: flags.model, reasoning: flags.reasoning, context: flags.context ?? null, temperature: flags.temperature ?? null, date: new Date().toISOString(), totals: t, results }, null, 2));
     console.log(`\nJSON: ${flags.json}`);
   }
   if (flags.min && t.passRate < Number(flags.min)) {

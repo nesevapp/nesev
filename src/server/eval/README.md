@@ -19,6 +19,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
 | `--filter <id\|tag>` | all | e.g. `nav`, `bank`, `confirm`, `context`, `hard`, `facts`, `multi-turn` |
 | `--reasoning` | off | `chat_template_kwargs.enable_thinking` per request |
 | `--context N` | the app default (64k) | context size of the chat server |
+| `--temperature T` | the app default (0.4) | sampling temperature (passed as `NESEV_CHAT_TEMPERATURE`; top_p 0.8, top_k 20, min_p 0 stay) |
 | `--json <file>` | – | totals and every case result |
 | `--min <pct>` | – | minimum pass rate in %, else exit code 1 |
 | `--timeout <s>` | 240 | per turn |

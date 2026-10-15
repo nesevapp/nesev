@@ -28,7 +28,7 @@ import {
   renameConversation,
   sendMessage,
 } from "./chat";
-import { repetitionCut } from "./chat-llm";
+import { repetitionCut, samplingTemperature } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
 import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
@@ -193,6 +193,12 @@ describe("agent loop", () => {
     const req = requests[0];
     expect(req.stream).toBe(true);
     expect(req.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect([req.temperature, req.top_p, req.top_k]).toEqual([samplingTemperature(), 0.8, 20]);
+    expect(samplingTemperature({})).toBe(0.4);
+    expect(samplingTemperature({ NESEV_CHAT_TEMPERATURE: "0.7" })).toBe(0.7);
+    expect(samplingTemperature({ NESEV_CHAT_TEMPERATURE: "0" })).toBe(0);
+    expect(samplingTemperature({ NESEV_CHAT_TEMPERATURE: "warm" })).toBe(0.4);
+    expect(samplingTemperature({ NESEV_CHAT_TEMPERATURE: "5" })).toBe(0.4);
     expect(req.messages[0].content).toContain("14.10.2026");
     expect(req.messages[1].content).toBe("(Kontext: Der Nutzer sieht gerade Rechnung id 12 („RE-2026-0004“). Gilt nur für „diese/hier/davon“.)\nHallo");
     expect(req.tools.map((t: any) => t.function.name)).toEqual(host.tools.map((t) => t.name));
@@ -431,9 +437,12 @@ describe("agent loop", () => {
     expect(repetitionCut("Antwort.\n\n" + block.repeat(4) + block.slice(0, 40))).toBe(`Antwort.\n\n${block.trimEnd()}`);
     expect(repetitionCut("Eine ganz normale Antwort ohne Wiederholung, die etwas länger ist als sechzig Zeichen.")).toBeNull();
     const c = createConversation(db);
+    const logs: string[] = [];
+    deps.log = (line) => void logs.push(line);
     scripts.push(text("Antwort.\n\n", ...Array(40).fill(block)));
     await collect((emit) => sendMessage(deps, c.id, { text: "Hallo" }, emit));
     expect(conversationDetail(db, c.id).messages.at(-1)!.content).toBe(`Antwort.\n\n${block.trimEnd()}`);
+    expect(logs).toContain(`[chat] conv ${c.id}: repetition loop cut`);
   });
 
   test("stops after MAX_STEPS tool rounds", async () => {

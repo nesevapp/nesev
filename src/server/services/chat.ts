@@ -541,6 +541,7 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
           `[chat] conv ${state.conversationId} step ${step + 1}: ${tools.length} tools (${selection.groups.join("+")}${selection.fallback ? " +read" : ""}), prompt ${out.promptTokens ?? "?"} tok, ` +
             `first token ${Math.round(out.firstTokenMs ?? 0)} ms, total ${Math.round(out.totalMs)} ms${endpoint.startMs ? `, server start ${endpoint.startMs} ms` : ""}`,
         );
+        if (out.finishReason === "repetition") deps.log?.(`[chat] conv ${state.conversationId}: repetition loop cut`);
         return out;
       },
       { signal, onStatus: (text) => void emit({ type: "status", text }) },
