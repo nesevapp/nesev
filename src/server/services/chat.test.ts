@@ -27,8 +27,9 @@ import {
   rejectionReply,
   renameConversation,
   sendMessage,
+  warmupPrompt,
 } from "./chat";
-import { repetitionCut, samplingTemperature } from "./chat-llm";
+import { primeCache, repetitionCut, samplingTemperature } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
 import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
@@ -526,6 +527,20 @@ describe("claim guard (claimed but not done)", () => {
     const after = await collect((emit) => confirmToolCall(deps, c.id, confirm.messageId, true, emit));
     expect(deltas(after)).toEqual(["Die Rechnung ist jetzt finalisiert."]);
     expect(logs.some((l) => l.includes("claim-guard"))).toBe(false);
+  });
+});
+
+describe("warm-up prompt", () => {
+  test("system prompt + core/ui tools, sent as a one-token completion with cache_prompt", async () => {
+    const withUi: ToolHost = { ...host, tools: [...host.tools, tool("open_in_app", true, false, "ui"), tool("list_expenses", true, false, "expenses")] };
+    const p = await warmupPrompt({ ...deps, host: async () => withUi });
+    expect(p.tools.map((t) => t.function.name)).toEqual([...host.tools.map((t) => t.name), "open_in_app"]);
+    expect(p.messages[0]!.content).toContain("14.10.2026");
+    scripts.push({ chunks: [{ choices: [{ index: 0, message: { content: "H" }, finish_reason: "length" }] }] });
+    await primeCache({ baseUrl: endpoint.baseUrl, apiKey: "k", model: "m", ...p });
+    expect(requests[0]).toMatchObject({ stream: false, max_tokens: 1, cache_prompt: true, chat_template_kwargs: { enable_thinking: false }, tool_choice: "auto" });
+    expect(requests[0].messages).toEqual(p.messages);
+    expect(requests[0].tools).toEqual(p.tools);
   });
 });
 

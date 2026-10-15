@@ -7,6 +7,7 @@ import type {
   ChatSettings,
   ChatStatus,
   ChatStreamEvent,
+  ChatWarmState,
 } from "@shared/chat";
 import { chat, idParam, parseResponse } from "./client";
 import { type Change, useInvalidate } from "./invalidate";
@@ -29,6 +30,8 @@ export const chatApi = {
   settings: (): Promise<ChatSettings> => parseResponse(chat.settings.$get()),
   updateSettings: (json: ChatSettings): Promise<ChatSettings> => parseResponse(chat.settings.$put({ json })),
   status: (): Promise<ChatStatus> => parseResponse(chat.status.$get()),
+  /** starts the model and fills its prompt cache in the background (the panel opened) */
+  warm: (): Promise<{ state: ChatWarmState }> => parseResponse(chat.warm.$post()),
 };
 
 export { resultCards } from "@shared/chat";
@@ -45,6 +48,7 @@ export type {
   ChatStreamEvent,
   ChatToolCall,
   ChatToolResult,
+  ChatWarmState,
 } from "@shared/chat";
 
 export const chatConversationsQuery = queryOptions({

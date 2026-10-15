@@ -16,6 +16,7 @@ import { z } from "./schemas/zod";
 //          (approve or reject a pending state-changing tool call; the loop then continues)
 //   GET    /settings / PUT /settings      ChatSettings
 //   GET    /status                        → ChatStatus
+//   POST   /warm                          → { state: ChatWarmState } (starts the model in the background)
 // Aborting the fetch (client disconnect) stops generation; the partial assistant text is kept.
 
 /** Tools whose execution needs an explicit click in the UI (the MCP's destructiveHint tools). */
@@ -255,6 +256,13 @@ export type ChatStreamEvent =
   | { type: "status"; text: string }
   | { type: "done"; conversation: ChatConversationSummary }
   | { type: "error"; message: string };
+
+/**
+ * POST /warm (the panel opened): "warming" = the model server starts and/or its prompt cache is being filled in the
+ * background; "warm" = already done; "busy" = receipt recognition or a reply is using the server (nothing done);
+ * "disabled" / "unavailable" = assistant off / no binary or model.
+ */
+export type ChatWarmState = "warming" | "warm" | "busy" | "disabled" | "unavailable";
 
 export interface ChatStatus {
   enabled: boolean;

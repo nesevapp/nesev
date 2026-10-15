@@ -123,6 +123,12 @@ export const keys = {
     settings: ["chat", "settings"] as const,
     status: ["chat", "status"] as const,
   },
+  voice: {
+    all: ["voice"] as const,
+    settings: ["voice", "settings"] as const,
+    status: ["voice", "status"] as const,
+    models: ["voice", "models"] as const,
+  },
   search: {
     all: ["search"] as const,
     query: (q: string) => ["search", q] as const,

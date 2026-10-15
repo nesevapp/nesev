@@ -26,3 +26,4 @@ export * from "./recurring-expenses";
 export * from "./assets";
 export * from "./search";
 export * from "./chat";
+export * from "./voice";

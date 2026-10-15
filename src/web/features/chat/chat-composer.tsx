@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUp, Square, X } from "lucide-react";
 import type { ChatContext } from "@shared/chat";
 import { Button } from "@/components/ui/button";
+import { VoiceInput } from "./voice-input";
+import { appendTranscript } from "./voice-recorder";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -85,6 +87,13 @@ export const ChatComposer = forwardRef<
           placeholder="Frag etwas … (Enter senden, Shift+Enter neue Zeile)"
           aria-label="Nachricht an den Assistenten"
           className="max-h-[200px] min-h-6 flex-1 resize-none bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <VoiceInput
+          disabled={!!blocked && !streaming}
+          onText={(text) => {
+            onChange(appendTranscript(textarea.current?.value ?? value, text));
+            textarea.current?.focus();
+          }}
         />
         {streaming ? (
           <Button size="icon-xs" variant="secondary" onClick={onStop} aria-label="Stopp" title="Stopp">

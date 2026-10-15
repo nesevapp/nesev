@@ -18,6 +18,7 @@ import { ForecastSettingsSection } from "@/features/forecast/forecast-settings-s
 import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
 import { ReceiptInboxSettings } from "@/features/expenses/inbox/inbox-settings";
 import { ChatSettingsSection } from "@/features/chat/chat-settings-section";
+import { VoiceSettingsSection } from "@/features/chat/voice-settings-section";
 import {
   apiErrorMessage,
   fileUrl,
@@ -295,6 +296,7 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="assistent" forceMount className={PANEL}>
           <ChatSettingsSection />
+          <VoiceSettingsSection />
         </TabsContent>
       </Tabs>
     </Page>

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles, X } from "lucide-react";
-import { chatStatusQuery } from "@/sdk";
+import { chatApi, chatStatusQuery } from "@/sdk";
 import { Kbd, modKey } from "@/features/search/kbd";
 import { cn } from "@/lib/utils";
 import { ChatComposer, type ComposerHandle } from "./chat-composer";
@@ -31,6 +31,24 @@ function useToggleShortcut() {
   }, []);
 }
 
+let lastWarm = 0;
+
+/**
+ * While the panel is open and the model usable: start it (and fill its prompt cache) in the background, so the first
+ * question doesn't wait for the model to load. At most every 30 s; repeats are cheap on the server anyway.
+ */
+function useWarmUp(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => {
+      if (Date.now() - lastWarm < 30_000) return;
+      lastWarm = Date.now();
+      chatApi.warm().catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [active]);
+}
+
 export function ChatPanel() {
   useToggleShortcut();
   const { open } = useChatUi();
@@ -45,6 +63,7 @@ function ChatPanelBody({ open }: { open: boolean }) {
   const { conversationId } = useChatUi();
   const session = useChatSession(conversationId);
   const status = useQuery(chatStatusQuery(open));
+  useWarmUp(open && !!status.data?.enabled && !!status.data.ready);
   const page = usePageContext();
   const [draft, setDraft] = useState("");
   const [dropContext, setDropContext] = useState(false);

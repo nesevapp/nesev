@@ -63,10 +63,9 @@ export function samplingTemperature(env: Record<string, string | undefined> = pr
   return Number.isFinite(t) && t >= 0 && t <= 2 ? t : SAMPLING.temperature;
 }
 
-export async function streamChat(o: StreamOptions): Promise<StreamResult> {
-  const t0 = performance.now();
-  const fetchFn = o.fetchFn ?? ((url, init) => fetch(url, init));
-  const body = {
+/** the /chat/completions body of a streamed request (the warm-up sends the same, see primeCache) */
+function requestBody(o: Omit<StreamOptions, "baseUrl" | "apiKey">) {
+  return {
     model: o.model,
     messages: o.messages,
     ...(o.tools.length ? { tools: o.tools, tool_choice: o.toolChoice ?? "auto", parallel_tool_calls: false } : {}),
@@ -76,6 +75,28 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
     ...SAMPLING,
     temperature: samplingTemperature(),
   };
+}
+
+/**
+ * Warm-up: a one-token completion of `messages` + `tools` with cache_prompt, so llama-server keeps their KV cache in
+ * its slot and the next request that starts with the same prefix (system prompt + core tools) skips reading it.
+ */
+export async function primeCache(o: Pick<StreamOptions, "baseUrl" | "apiKey" | "model" | "messages" | "tools" | "reasoning" | "signal" | "fetchFn">): Promise<void> {
+  const fetchFn = o.fetchFn ?? ((url, init) => fetch(url, init));
+  const res = await fetchFn(`${o.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${o.apiKey}` },
+    body: JSON.stringify({ ...requestBody(o), stream: false, max_tokens: 1, cache_prompt: true }),
+    signal: o.signal,
+  });
+  if (!res.ok) throw new ChatLlmError(httpErrorMessage(res.status, await res.text().catch(() => "")));
+  await res.arrayBuffer();
+}
+
+export async function streamChat(o: StreamOptions): Promise<StreamResult> {
+  const t0 = performance.now();
+  const fetchFn = o.fetchFn ?? ((url, init) => fetch(url, init));
+  const body = requestBody(o);
   const result: StreamResult = {
     content: "",
     toolCalls: [],

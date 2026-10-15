@@ -32,6 +32,8 @@ export class LlamaLease {
   private tail: Promise<void> = Promise.resolve();
   private holders = 0;
   private lastUse: Record<LeaseOwner, number> = { ocr: 0, chat: 0 };
+  /** owner whose fn runs right now */
+  private current: LeaseOwner | null = null;
 
   constructor(
     private readonly manager: Manager,
@@ -41,6 +43,16 @@ export class LlamaLease {
   /** Someone holds or waits for the server. */
   get busy(): boolean {
     return this.holders > 0;
+  }
+
+  /** Who runs on the server right now (null: nobody, or still waiting for the server to start). */
+  get holder(): LeaseOwner | null {
+    return this.current;
+  }
+
+  /** When `owner` last used the server (ms timestamp, 0 = never). */
+  lastUsedAt(owner: LeaseOwner): number {
+    return this.lastUse[owner];
   }
 
   /** `owner` used the server within the last `ms` (default: the idle-stop window). */
@@ -76,9 +88,11 @@ export class LlamaLease {
       if (effective === config) opts.onStart?.();
       const endpoint = await this.manager.ensure(effective, opts.signal);
       this.lastUse[owner] = this.now();
+      this.current = owner;
       try {
         return await fn(endpoint);
       } finally {
+        this.current = null;
         this.lastUse[owner] = this.now();
       }
     } finally {

@@ -19,6 +19,7 @@ import type recurringExpensesApp from "@server/routes/recurring-expenses";
 import type assetsApp from "@server/routes/assets";
 import type searchApp from "@server/routes/search";
 import type chatApp from "@server/routes/chat";
+import type transcribeApp from "@server/routes/transcribe";
 
 /**
  * One typed hc client per route module, each typed against that module only (not the merged AppType),
@@ -48,6 +49,7 @@ export const recurringExpenses = hc<typeof recurringExpensesApp>(`${base}/recurr
 export const assets = hc<typeof assetsApp>(`${base}/assets`);
 export const search = hc<typeof searchApp>(`${base}/search`);
 export const chat = hc<typeof chatApp>(`${base}/chat`);
+export const transcribe = hc<typeof transcribeApp>(`${base}/transcribe`);
 export const units = hc<typeof unitsApp>(`${base}/units`);
 
 /** parseResponse() returns the typed JSON body and throws DetailedError on non-2xx. */

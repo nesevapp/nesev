@@ -17,7 +17,10 @@ import {
   listConversations,
   renameConversation,
   sendMessage,
+  warmupPrompt,
 } from "../services/chat";
+import { primeCache } from "../services/chat-llm";
+import { ChatWarmer } from "../services/chat-warm";
 import { chatLlamaConfig, chatStatus, getChatSettings, syncChatServer, updateChatSettings } from "../services/chat-settings";
 import { mcpToolHost, type ToolHost } from "../services/chat-tools";
 import { withUiTools } from "../services/chat-ui-tools";
@@ -50,7 +53,8 @@ const deps: ChatDeps = {
     try {
       return await lease.run("chat", config, fn, {
         signal,
-        onWait: () => onStatus("Wartet, bis die Belegerkennung das Modell freigibt …"),
+        onWait: () =>
+          onStatus(lease.holder === "chat" ? "Modell wird vorbereitet …" : "Wartet, bis die Belegerkennung das Modell freigibt …"),
         onStart: () => onStatus("Modell wird geladen … (beim ersten Mal einige Sekunden)"),
       });
     } finally {
@@ -59,6 +63,25 @@ const deps: ChatDeps = {
     }
   },
 };
+
+/** the panel's warm-up (created on first use: importing app.ts must stay side-effect free) */
+let warmer: ChatWarmer | null = null;
+function chatWarmer(): ChatWarmer {
+  warmer ??= new ChatWarmer({
+    settings: () => getChatSettings(db),
+    config: () => chatLlamaConfig(getChatSettings(db), getOcrSettings(db)),
+    lease: getLlamaLease,
+    serverPort: () => getLlamaServer().state().port,
+    workerBusy: () => getReceiptWorker(db).busy,
+    prompt: () => warmupPrompt(deps),
+    prime: (endpoint, prompt, signal) => primeCache({ baseUrl: endpoint.baseUrl, apiKey: endpoint.apiKey, model: endpoint.model, ...prompt, signal }),
+    afterWarm: () => {
+      if (!getLlamaLease().busy) getLlamaServer().scheduleIdleStop();
+    },
+    log: (line) => console.log(line),
+  });
+  return warmer;
+}
 
 /** one SSE event per ChatStreamEvent; writes after the client left are ignored */
 function sse(c: Parameters<typeof streamSSE>[0], run: (emit: (e: ChatStreamEvent) => Promise<void>, signal: AbortSignal) => Promise<void>) {
@@ -144,6 +167,7 @@ const app = new Hono()
     await syncChatServer(db, getLlamaServer(), getLlamaLease(), getReceiptWorker(db).busy);
     return c.json(saved);
   })
-  .get("/status", (c) => c.json(chatStatus(db, getLlamaServer())));
+  .get("/status", (c) => c.json(chatStatus(db, getLlamaServer())))
+  .post("/warm", (c) => c.json({ state: chatWarmer().warm() }));
 
 export default app;

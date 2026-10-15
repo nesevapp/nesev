@@ -14,7 +14,7 @@ import type { DbOrTx } from "../db/client";
 import { type ChatConversation, type ChatMessage, chatConversations, chatMessages } from "../db/schema";
 import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
 import { AbortedError } from "../lib/ocr/run";
-import { ChatLlmError, type LlmMessage, streamChat } from "./chat-llm";
+import { ChatLlmError, type LlmMessage, type LlmTool, streamChat } from "./chat-llm";
 import { claimRetryMessage, detectClaims, honestReply, isWriteRequest, unbackedClaims } from "./chat-claims";
 import { checkContextUse } from "./chat-context";
 import { knownNumbers, NumberGate, neutralizeNumbers, numberRetryMessage, unknownNumbers } from "./chat-numbers";
@@ -260,6 +260,18 @@ Regeln:
 - „Öffne …“ / „geh zu …“ → open_in_app (Seite oder Datensatz), „PDF zeigen“ → open_pdf, „herunterladen“ → download_pdf – mit der id aus einem Werkzeug-Ergebnis (sonst zuerst search). Danach nur kurz bestätigen; Nummern nur aus Werkzeug-Ergebnissen (Entwürfe haben keine).
 - Tabellen, Diagramme und Belege aus Werkzeug-Ergebnissen sieht der Nutzer direkt im Chat. Wiederhole sie nicht als Liste, sondern nenne in 1–3 Sätzen das Wesentliche (Summe, Auffälliges, nächster Schritt).
 - Beginnt eine Nutzernachricht mit „(Kontext: …)“, steht dort, was der Nutzer gerade in der App sieht. Diesen Datensatz meint er nur mit „diese/dieses/davon/hier/die aktuelle“. Nennt er einen Kunden, eine Nummer oder „den Entwurf für X“, such genau diesen (search) – nimm dann nie die id aus dem Kontext. Schreib selbst keine solche Kontext-Zeile.`;
+}
+
+/**
+ * The prompt prefix every request starts with: the system prompt and the always-offered core + ui tools (selectTools
+ * puts them first, in this order). The warm-up (services/chat-warm.ts) has llama-server cache it.
+ */
+export async function warmupPrompt(deps: Pick<ChatDeps, "db" | "host" | "settings" | "now">): Promise<{ messages: LlmMessage[]; tools: LlmTool[]; reasoning: boolean }> {
+  const host = await deps.host();
+  const system = systemPrompt(getSettings(deps.db).companyName, deps.now?.() ?? new Date());
+  const always = host.tools.filter((t) => t.group === "core" || t.group === "ui");
+  const tools = selectToolsDetailed(always, { userTexts: [], budgetTokens: Number.POSITIVE_INFINITY }).tools;
+  return { messages: [{ role: "system", content: system }, { role: "user", content: "Hallo" }], tools: tools.map(toLlmTool), reasoning: deps.settings().reasoning };
 }
 
 const PAGE_TYPES: [RegExp, string][] = [
