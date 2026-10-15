@@ -153,7 +153,7 @@ describe("write intent", () => {
   });
 
   test("the eval's read-only cases are not write requests; its write cases are", () => {
-    const write = new Set(["bank-match", "update-client", "expense-paid", "reminder", "draft"]);
+    const write = new Set(["bank-match", "update-client", "expense-paid", "reminder", "draft", "draft-number", "offer-draft"]);
     for (const c of CASES) {
       const text = c.turns.at(-1)!.text;
       expect([c.id, isWriteRequest(text)]).toEqual([c.id, write.has(c.id)]);
