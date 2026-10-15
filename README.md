@@ -79,8 +79,9 @@ All screenshots show demo data.
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3 or newer. No Node.js needed.
-- **macOS recommended.** The core app (documents, expenses, bank, taxes, PDFs) is plain TypeScript and SQLite.
+- [Bun](https://bun.sh) 1.3.13 or newer. No Node.js needed.
+- **macOS recommended.** The core app (documents, expenses, bank, taxes, PDFs) is plain TypeScript and SQLite and is
+  tested on macOS and Linux in CI.
   Apple Vision OCR and receipt cropping need macOS with the Xcode command line tools (`swiftc`); on other systems receipt
   recognition falls back to Tesseract if it is installed.
 - Optional, for the assistant and receipt recognition: [llama.cpp](https://github.com/ggml-org/llama.cpp)
