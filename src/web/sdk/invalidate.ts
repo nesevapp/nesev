@@ -42,6 +42,12 @@ const affects = {
   /** New or replaced receipt file: also earlier analysis results. */
   expenseReceipt: [keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.receipts.all],
   receipts: [keys.receipts.all],
+  /** Belege-Eingang: items added/dismissed, folder changed. */
+  receiptInbox: [keys.receiptInbox.all],
+  /** Inbox folder setting: the inbox status and the settings row. */
+  receiptInboxFolder: [keys.receiptInbox.all, keys.settings.all],
+  /** Inbox items turned into expense drafts: the inbox plus everything a new expense with a receipt affects. */
+  receiptInboxConvert: [keys.receiptInbox.all, keys.expenses.lists, keys.expenses.suppliersAll, keys.tax.all, keys.bank.all, keys.receipts.all],
   /** Reminders change the dunning state shown on the dashboard. */
   reminders: [keys.reminders.all, keys.dashboard.all],
   /** Recurring invoice settings: the forecast projects them. */

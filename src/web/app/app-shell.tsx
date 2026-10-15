@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ChatButton, ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
+import { InboxNavBadge } from "@/features/expenses/inbox/inbox-badge";
 
 interface NavItem {
   to:
@@ -122,6 +123,7 @@ export function AppShell() {
                     >
                       <Icon className="size-4 opacity-70" strokeWidth={1.75} />
                       {label}
+                      {to === "/expenses" && <InboxNavBadge />}
                     </Link>
                   </li>
                 ))}

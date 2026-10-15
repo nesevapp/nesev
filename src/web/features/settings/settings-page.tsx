@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ReminderSettingsSection } from "@/features/reminders/reminder-settings";
 import { ForecastSettingsSection } from "@/features/forecast/forecast-settings-section";
 import { ReceiptSettingsSection } from "@/features/receipts/receipt-settings";
+import { ReceiptInboxSettings } from "@/features/expenses/inbox/inbox-settings";
 import { ChatSettingsSection } from "@/features/chat/chat-settings-section";
 import {
   apiErrorMessage,
@@ -31,7 +32,8 @@ import { FORM_TABS, HASH_TABS, SETTINGS_TAB_LABELS, SETTINGS_TABS, type Settings
 import { UnitSettingsSection } from "./unit-settings";
 
 function toFormValues(s: Settings): SettingsFormValues {
-  const { id: _id, logoPath: _logo, createdAt: _c, updatedAt: _u, ...values } = s;
+  // receiptInboxPath is saved by its own block (ReceiptInboxSettings), not by this form
+  const { id: _id, logoPath: _logo, createdAt: _c, updatedAt: _u, receiptInboxPath: _inbox, ...values } = s;
   return values;
 }
 
@@ -282,6 +284,7 @@ export function SettingsPage() {
           <ForecastSettingsSection />
         </TabsContent>
         <TabsContent value="belegerkennung" forceMount className={PANEL}>
+          <ReceiptInboxSettings />
           <ReceiptSettingsSection />
         </TabsContent>
         <TabsContent value="assistent" forceMount className={PANEL}>

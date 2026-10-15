@@ -7,8 +7,10 @@ import { rootRoute } from "@/app/root-route";
 import { expenseQuery, recurringExpensesQuery } from "@/sdk";
 import { ExpenseEditor } from "./expense-editor";
 import { ExpensesPage } from "./expenses-page";
+import { InboxPage } from "./inbox/inbox-page";
 
-// /expenses (list, drop receipts for quick capture), /expenses/new, /expenses/$id (editor).
+// /expenses (list, drop receipts for quick capture), /expenses/new, /expenses/$id (editor), /expenses/inbox
+// (Belege-Eingang).
 
 const listRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -70,4 +72,10 @@ const detailRoute = createRoute({
   },
 });
 
-export const expensesRoutes = [listRoute, newRoute, detailRoute] as const;
+const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/expenses/inbox",
+  component: InboxPage,
+});
+
+export const expensesRoutes = [listRoute, newRoute, detailRoute, inboxRoute] as const;

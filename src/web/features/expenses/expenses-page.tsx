@@ -29,6 +29,7 @@ import {
   SelectCell,
   useReceiptListState,
 } from "@/features/receipts/analysis-list";
+import { InboxButton } from "./inbox/inbox-badge";
 import { cn } from "@/lib/utils";
 import {
   apiErrorMessage,
@@ -248,6 +249,7 @@ export function ExpensesPage({
       description="Eingangsrechnungen und Belege. Belege einfach auf die Seite ziehen, um sie schnell anzulegen."
       actions={
         <>
+          <InboxButton />
           <Button
             variant="outline"
             size="sm"

@@ -36,8 +36,9 @@ export const settingsUpdateSchema = z.object({
   vatPeriod: z.enum(["monthly", "quarterly"]),
   /** payment QR code (EPC/GiroCode) on invoices */
   paymentQr: z.boolean().default(true),
-  /** receipt inbox folder (absolute path); "" = off */
-  receiptInboxPath: text(1000).default(""),
+  /** receipt inbox folder (absolute path); "" = off. Omitted = unchanged: the settings form doesn't carry it, the
+   *  Belege-Eingang block saves it via PUT /api/receipt-inbox/folder (validated). */
+  receiptInboxPath: text(1000).optional(),
 });
 
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;

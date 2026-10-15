@@ -2,6 +2,7 @@ import { app } from "./app";
 import { db } from "./db";
 import { DB_PATH, WEB_DIST_DIR } from "./lib/paths";
 import { startBackupScheduler } from "./services/backup";
+import { startReceiptInbox } from "./services/receipt-inbox";
 import { getLlamaServer } from "./services/receipt-llama";
 import { initReceiptQueue } from "./services/receipt-queue";
 import { startRecurringScheduler } from "./services/recurring";
@@ -24,6 +25,8 @@ if (isProd) {
 // Daily local DB snapshots to data/backups (guarded against double start under bun --hot).
 if (DB_PATH !== ":memory:") startBackupScheduler(db);
 if (DB_PATH !== ":memory:") startRecurringScheduler(db);
+// Belege-Eingang: poll the inbox folder (copies new files, never analyses them)
+if (DB_PATH !== ":memory:") startReceiptInbox(db);
 if (DB_PATH !== ":memory:") {
   // receipt analysis: recover runs interrupted by a restart, resume the queue
   initReceiptQueue(db);

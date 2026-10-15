@@ -19,6 +19,7 @@ export * from "./dashboard";
 export * from "./export";
 export * from "./expenses";
 export * from "./receipts";
+export * from "./receipt-inbox";
 export * from "./bank";
 export * from "./tax";
 export * from "./recurring-expenses";
