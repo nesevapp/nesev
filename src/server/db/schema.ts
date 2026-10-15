@@ -109,7 +109,7 @@ export const clients = sqliteTable(
     eInvoiceFormat: text("e_invoice_format").$type<EInvoiceFormat>(),
     /** default buyer reference: Leitweg-ID (XRechnung) / Auftragsreferenz (ebInterface); per document overridable */
     eInvoiceBuyerReference: str("e_invoice_buyer_reference"),
-    /** our supplier number at the client (ebInterface BillersInvoiceRecipientID, e.g. Lieferantennummer beim Bund) */
+    /** our supplier number at the client (ebInterface Biller/InvoiceRecipientsBillerID, e.g. Lieferantennummer beim Bund) */
     eInvoiceSupplierId: str("e_invoice_supplier_id"),
     notes: str("notes"),
     archivedAt: text("archived_at"),
