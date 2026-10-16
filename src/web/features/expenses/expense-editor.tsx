@@ -50,6 +50,7 @@ import {
   receiptOriginalUrl,
   receiptUrl,
   useCreateExpense,
+  useCreateExpenseDrafts,
   useLinkFixedCostPayment,
   useDeleteExpense,
   receiptAnalysisQuery,
@@ -161,6 +162,7 @@ export function ExpenseEditor({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const create = useCreateExpense();
+  const createDraft = useCreateExpenseDrafts();
   const linkPayment = useLinkFixedCostPayment();
   const update = useUpdateExpense();
   const remove = useDeleteExpense();
@@ -315,6 +317,18 @@ export function ExpenseEditor({
       return;
     }
     if (!expense) {
+      // nothing typed yet: become a draft right away (like dropping on the list), so the receipt can be cropped
+      // and analysed before anything is entered. With data already entered it waits for the first save.
+      if (!form.formState.isDirty && !linkTo) {
+        createDraft.mutate([accepted[0]], {
+          onSuccess: ([draft]) => {
+            leaving.current = true;
+            void navigate({ to: "/expenses/$id", params: { id: draft!.id }, replace: true });
+          },
+          onError: (err) => toast.error(apiErrorMessage(err)),
+        });
+        return;
+      }
       setPendingFile(accepted[0]);
       return;
     }
@@ -389,9 +403,14 @@ export function ExpenseEditor({
             onFile={onFile}
             onRemove={onRemoveReceipt}
             crop={crop}
-            busy={upload.isPending || removeReceipt.isPending || restoreReceipt.isPending}
+            busy={upload.isPending || removeReceipt.isPending || restoreReceipt.isPending || createDraft.isPending}
             className="min-h-0 flex-1"
           />
+          {pendingFile && (
+            <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Zuschneiden und Erkennung sind nach dem ersten Speichern verfügbar.
+            </p>
+          )}
           {expense && crop && <ReceiptCropDialog expense={expense} open={cropOpen} onOpenChange={setCropOpen} />}
           {expense && (
             <AnalysisPanel
