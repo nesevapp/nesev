@@ -5,6 +5,7 @@ import {
   Calculator,
   CalendarClock,
   ChevronRight,
+  CircleHelp,
   FileText,
   HardDrive,
   Landmark,
@@ -19,7 +20,9 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InboxNavBadge } from "@/features/expenses/inbox/inbox-badge";
+import { SIDEBAR_OPEN_EVENT, tour } from "@/features/tour/tour-store";
 import { cn } from "@/lib/utils";
 
 // Sidebar navigation: the first group is always visible; the titled groups collapse. The group of the current page
@@ -132,9 +135,16 @@ export function SidebarNav() {
     if (activeGroup) update(activeGroup, true);
   }, [path, activeGroup]);
 
+  // the guided tour opens the group it points at
+  useEffect(() => {
+    const onOpen = (e: Event) => update((e as CustomEvent<string>).detail, true);
+    window.addEventListener(SIDEBAR_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(SIDEBAR_OPEN_EVENT, onOpen);
+  }, []);
+
   return (
     <nav aria-label="Hauptnavigation" className="flex-1 space-y-4 overflow-y-auto px-3 py-2">
-      <ul className="space-y-0.5">
+      <ul className="space-y-0.5" data-tour="overview">
         {TOP.map((item) => (
           <NavLink key={item.to} item={item} />
         ))}
@@ -166,7 +176,7 @@ function CollapsibleGroup({
   const id = `nav-group-${group.title.toLowerCase()}`;
   const badges = group.items.filter((i) => i.badge);
   return (
-    <div>
+    <div data-tour={`group-${group.title}`}>
       <button
         type="button"
         aria-expanded={open}
@@ -234,5 +244,24 @@ export function SettingsNavLink() {
       <Settings className="size-4 opacity-70" strokeWidth={1.75} />
       Einstellungen
     </Link>
+  );
+}
+
+/** Restarts the guided tour; next to "Einstellungen". */
+export function TourButton() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={tour.start}
+          aria-label="Rundgang starten"
+          className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          <CircleHelp className="size-4" strokeWidth={1.75} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">Rundgang durch nesev</TooltipContent>
+    </Tooltip>
   );
 }

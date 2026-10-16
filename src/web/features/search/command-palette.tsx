@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { History, Keyboard, Loader2 } from "lucide-react";
+import { CircleHelp, History, Keyboard, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Command,
@@ -12,6 +12,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { tour } from "@/features/tour/tour-store";
 import { searchQuery, type SearchResult } from "@/sdk";
 import { CREATE_ACTIONS, matchesCommand, PAGES, type PaletteCommand, RESULT_ICONS } from "./commands";
 import { clearRecent, loadRecent, pushRecent, type RecentEntry } from "./recent";
@@ -164,6 +165,16 @@ export function CommandPalette({
                     <span className="ml-auto">
                       <Kbd>?</Kbd>
                     </span>
+                  </CommandItem>
+                  <CommandItem
+                    value="help:tour"
+                    onSelect={() => {
+                      close();
+                      tour.start();
+                    }}
+                  >
+                    <CircleHelp strokeWidth={1.75} />
+                    Rundgang starten
                   </CommandItem>
                 </CommandGroup>
               </>

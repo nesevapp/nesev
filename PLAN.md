@@ -188,6 +188,10 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
   - Ranking: exact number → number of any year → amount → text, then newest; groups with a number/amount hit come first.
 - **Shortcuts** (`use-global-shortcuts.ts`, ignored while typing, while a dialog/menu is open and when a page already handled the key): `?` overview, `/` search (the bank list keeps its own `/`), `g` + d/p/a/r/g/m/w/e/f/v/b/s/k/i/x/, go to a page, `n` + r/a/g/k/e/w create. The map lives in `features/search/commands.ts` and the overview reads it.
 
+### Guided tour (`features/tour/`)
+- First-run tour: a dimmed overlay with a spotlight on one part of the shell (elements with `data-tour="…"`: overview, the three sidebar groups, search, the settings bar, the assistant button) and a card explaining what lives there. Welcome and finish steps are centred; a step whose target isn't on screen (assistant off) is skipped. It opens the sidebar group it points at (`nesev:sidebar-open` event) and never navigates.
+- Starts once per browser after the first paint (localStorage `nesev.tour`, not on the template designer); restart via the ? button next to „Einstellungen“, „Rundgang starten“ in the command palette or the link on the empty dashboard. Keys: → next, ← back, Esc ends.
+
 ### MCP server (`src/mcp`, details in `src/mcp/README.md`)
 - Local stdio MCP server for AI clients (Claude Code / Desktop): `bun run mcp`, respects `NESEV_DATA_DIR`; web links use `NESEV_WEB_URL` (default `http://localhost:5174`). SDK v2 (`@modelcontextprotocol/server` 2.3.1, pinned) via `serveStdio` with `legacy: 'serve'`, so 2025-era (`initialize`) and 2026-07-28 clients both work.
 - In-process: typed `hc` clients per route module whose `fetch` is `app.fetch` (no HTTP, no port, no raw SQL). Validation, rules and German error messages come from the routes; a non-2xx becomes a tool error (`isError: true`) with the API's message. It never imports `src/server/index.ts`, so no schedulers / OCR queue / llama-server run in the MCP process; it exits when stdin closes.

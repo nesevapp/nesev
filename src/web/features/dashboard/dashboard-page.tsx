@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PartialLabel, StatusBadge } from "@/features/documents/components/status-badge";
 import { docLink } from "@/features/documents/config";
 import { RemindButton } from "@/features/reminders/components/invoice-reminders";
+import { tour } from "@/features/tour/tour-store";
 import { cn } from "@/lib/utils";
 import {
   apiErrorMessage,
@@ -612,6 +613,13 @@ function Onboarding({ setup }: { setup: Dashboard["setup"] }) {
         <p className="mt-1 text-sm text-muted-foreground">
           Noch keine Belege vorhanden. In drei Schritten zur ersten Rechnung.
         </p>
+        <button
+          type="button"
+          onClick={tour.start}
+          className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          Rundgang durch nesev starten
+        </button>
       </div>
       <ol className="divide-y rounded-lg border">
         {steps.map((s, i) => (

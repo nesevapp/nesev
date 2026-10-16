@@ -3,7 +3,8 @@ import { Logo } from "@/components/brand/logo";
 import { ChatFab } from "@/features/chat/chat-fab";
 import { ChatPanel } from "@/features/chat/chat-panel";
 import { GlobalSearch } from "@/features/search/global-search";
-import { SettingsNavLink, SidebarNav } from "./sidebar-nav";
+import { Tour } from "@/features/tour/tour";
+import { SettingsNavLink, SidebarNav, TourButton } from "./sidebar-nav";
 
 export function AppShell() {
   return (
@@ -12,13 +13,16 @@ export function AppShell() {
         <Link to="/" className="flex h-14 shrink-0 items-center px-5 text-foreground" aria-label="nesev – Dashboard">
           <Logo className="h-[18px]" aria-hidden />
         </Link>
-        <div className="shrink-0 px-3 pb-2">
+        <div className="shrink-0 px-3 pb-2" data-tour="search">
           <GlobalSearch />
         </div>
         <SidebarNav />
         {/* outside the scrolling nav: always at the bottom, also in short windows */}
-        <div className="shrink-0 border-t border-sidebar-border px-3 py-3">
-          <SettingsNavLink />
+        <div className="flex shrink-0 items-center gap-1 border-t border-sidebar-border px-3 py-3" data-tour="settings">
+          <div className="min-w-0 flex-1">
+            <SettingsNavLink />
+          </div>
+          <TourButton />
         </div>
       </aside>
       {/* `relative`: absolutely positioned descendants (Radix Select/Switch/Checkbox render hidden native inputs with
@@ -29,6 +33,7 @@ export function AppShell() {
       </main>
       <ChatPanel />
       <ChatFab />
+      <Tour />
     </div>
   );
 }

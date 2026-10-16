@@ -58,6 +58,7 @@ export function ChatFab() {
           hidden={!visible}
           onClick={(e) => chatUi.setOpen(true, e.currentTarget)}
           aria-label={hint ? `Assistent öffnen (${hint})` : "Assistent öffnen"}
+          data-tour="assistant"
           style={{ bottom: FAB_BOTTOM, right: FAB_RIGHT, width: FAB_SIZE, height: FAB_SIZE }}
           className={cn(
             "fixed z-40 grid place-items-center rounded-full bg-primary text-primary-foreground shadow-lg ring-1 ring-foreground/10 transition-[transform,background-color] hover:scale-105 hover:bg-primary/90 focus-visible:ring-4 focus-visible:ring-ring/50 focus-visible:outline-none active:scale-95",
