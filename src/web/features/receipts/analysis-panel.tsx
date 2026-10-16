@@ -341,15 +341,22 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
     target.onApplied([key], analysis.id);
   };
 
+  // red suggestions (a failed check, a wild guess) are never applied in bulk, only one by one
+  const unsure = (k: ApplyKey) => confidenceLevel(suggestionFor(k, fields)!.confidence) === "low";
+
   const applyAll = () => {
-    const keys = APPLY_ORDER.filter((k) => applicable(k) && isEmpty(k) && !isSame(k, suggestionFor(k, fields)!.value));
+    const open = APPLY_ORDER.filter((k) => applicable(k) && isEmpty(k) && !isSame(k, suggestionFor(k, fields)!.value));
+    const keys = open.filter((k) => !unsure(k));
+    const skipped = open.filter(unsure).map((k) => LABELS[k]);
+    const skippedText = skipped.length ? `Unsicher, bitte einzeln prüfen: ${skipped.join(", ")}.` : "";
     for (const k of keys) apply(k);
     if (keys.length) {
       target.onApplied(keys, analysis.id);
       toast.success(keys.length === 1 ? "1 Feld übernommen" : `${keys.length} Felder übernommen`, {
-        description: "Wird erst beim Speichern übernommen.",
+        description: `Wird erst beim Speichern übernommen.${skippedText ? ` ${skippedText}` : ""}`,
       });
-    } else toast.info("Keine leeren Felder zum Ausfüllen");
+    } else if (skipped.length) toast.info("Nichts übernommen", { description: skippedText });
+    else toast.info("Keine leeren Felder zum Ausfüllen");
   };
 
   const rows = ORDER.filter(applicable);

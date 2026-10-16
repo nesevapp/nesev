@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
 import { shortDescription } from "../../shared/receipts";
-import { amountsIn, detectAmountBasis, extractWithRules, findCategory } from "./receipt-heuristics";
+import { amountsIn, detectAmountBasis, extractWithRules, findCategory, repairGrossTaxLines } from "./receipt-heuristics";
 import { groundIdentifiers, mapLlmOutput } from "./receipt-llm";
 import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
@@ -75,6 +75,24 @@ USt   Netto   USt   Brutto
 10%   46,36   4,64   51,00
 20%   15,67   3,13   18,80
 Bezahlt Bankomat   69,80`;
+
+/** A hut's till receipt as Apple Vision read it: total without a label, garbled tax table (Brutto Netto USt). */
+const HUT = `Almhütte Beispiel
+Dorfstraße 81, 8992 Altaussee
+Rechnung Nr. 15366 Orderman 1
+2 Schweinsbraten 21.90 43.80
+1 Steirerkasnockn 16.90 16.90
+1 Schokogugl V. Eis Schl 8.90 . 90
+2 Kleiner Brauner 3.50 7.00
+10,5 Apfelsaft gespr. 5.50 5.50
+2 0,5 Schiwasser 4.50 9.00
+91.10
+Barzahlung
+Satz Brutto Netto USt
+10 1% 69.60 01.27 3.58
+20 % 21.50 T1.92
+91.10
+Summe Euro`;
 
 const OWN = { ownUid: "ATU12345675", ownName: "Mustermann Consulting" };
 
@@ -315,22 +333,7 @@ Vielen Dank für Ihren Auftrag!`;
   });
 
   test("a bare total line without a label ends the items (garbled OCR of a hut's till receipt)", () => {
-    const text = `Almhütte Beispiel
-Dorfstraße 81, 8992 Altaussee
-Rechnung Nr. 15366 Orderman 1
-2 Schweinsbraten 21.90 43.80
-1 Steirerkasnockn 16.90 16.90
-1 Schokogugl V. Eis Schl 8.90 . 90
-2 Kleiner Brauner 3.50 7.00
-10,5 Apfelsaft gespr. 5.50 5.50
-2 0,5 Schiwasser 4.50 9.00
-91.10
-Barzahlung
-Satz Brutto Netto USt
-10 1% 69.60 01.27 3.58
-20 % 21.50 T1.92
-91.10
-Summe Euro`;
+    const text = HUT;
     // the model's broken tax lines (net/gross mixed up) still give the right gross total
     const fields = mapLlmOutput({
       grossTotal: 91.1,
@@ -353,5 +356,40 @@ Summe Euro`;
 
   test("no VAT, no difference: reverse charge gets no basis", () => {
     expect(basis(SAAS_IE)).toBeUndefined();
+  });
+});
+
+describe("repairGrossTaxLines", () => {
+  const brokenModel = () =>
+    mapLlmOutput({
+      grossTotal: 91.1,
+      vatTreatment: "domestic",
+      taxLines: [
+        { ratePercent: 10, net: 69.6, tax: 3.58, gross: 73.18 },
+        { ratePercent: 20, net: 17.5, tax: 1.92, gross: 19.42 },
+      ],
+    });
+
+  test("recomputes the rows from the one gross amount per rate that makes the total", () => {
+    expect(repairGrossTaxLines(HUT, brokenModel())).toEqual([
+      { taxRateBp: 1000, grossCents: 6960, netCents: 6327, taxCents: 633 },
+      { taxRateBp: 2000, grossCents: 2150, netCents: 1792, taxCents: 358 },
+    ]);
+  });
+
+  test("leaves consistent tax lines alone", () => {
+    expect(repairGrossTaxLines(SUPERMARKET, extractWithRules(SUPERMARKET, OWN).fields)).toBeUndefined();
+  });
+
+  test("no repair when more than one combination makes the total", () => {
+    const text = "10% 50,00 40,00\n20% 50,00 60,00";
+    const fields = mapLlmOutput({
+      grossTotal: 100,
+      taxLines: [
+        { ratePercent: 10, net: 50, tax: 1, gross: 51 },
+        { ratePercent: 20, net: 50, tax: 1, gross: 51 },
+      ],
+    });
+    expect(repairGrossTaxLines(text, fields)).toBeUndefined();
   });
 });

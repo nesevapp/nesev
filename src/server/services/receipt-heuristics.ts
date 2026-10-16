@@ -386,3 +386,55 @@ export function detectAmountBasis(text: string, fields: ReceiptFields): FieldSug
   if (TILL_CUE_RE.test(text)) return { ...rules<AmountBasis>("gross", 0.55), note: "Kassenbon" };
   return undefined;
 }
+
+// --- repairing a misread tax table on gross receipts ---------------------------------------------------
+
+/** Rows add up (net + tax = gross, tax fits the rate) and their gross sum is the total. */
+export function taxLinesConsistent(rows: TaxLineSuggestion[], grossCents: number | undefined): boolean {
+  const rowsOk = rows.every(
+    (r) =>
+      near(r.netCents + r.taxCents, r.grossCents) &&
+      near(taxOf(r.netCents, r.taxRateBp), r.taxCents, Math.max(2, Math.abs(r.netCents) / 500)),
+  );
+  const sum = rows.reduce((s, r) => s + r.grossCents, 0);
+  return rowsOk && (grossCents == null || near(sum, grossCents, 2 * rows.length));
+}
+
+/**
+ * A till receipt (gross basis) whose tax lines don't add up – typically the model mixed up the Brutto/Netto/USt
+ * columns of the tax table or OCR garbled them. Looks for exactly one gross amount per rate, among the amounts on
+ * the table rows of that rate and the model's own values for it, that together make the receipt total; net and tax
+ * then follow from the rate. Returns nothing unless that combination is unique.
+ */
+export function repairGrossTaxLines(text: string, fields: ReceiptFields): TaxLineSuggestion[] | undefined {
+  const rows = fields.taxLines?.value ?? [];
+  const total = fields.grossCents?.value;
+  const rates = [...new Set(rows.map((r) => r.taxRateBp))].filter((bp) => bp > 0);
+  if (!total || !rates.length || rates.length > 3 || rates.length !== rows.length || taxLinesConsistent(rows, total)) {
+    return undefined;
+  }
+
+  const candidates = new Map<number, Set<number>>(rates.map((bp) => [bp, new Set<number>()]));
+  for (const r of rows) for (const v of [r.grossCents, r.netCents]) if (v > 0) candidates.get(r.taxRateBp)!.add(v);
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw.includes("%")) continue;
+    // the rate of a table row: its first whole number that is one of the rates ("10 1% 69.60 …", "B 20% 8,73 …")
+    const rate = [...raw.matchAll(/(?<![\d.,])(\d{1,2})(?![\d.,])/g)].map((m) => Number(m[1]) * 100).find((bp) => candidates.has(bp));
+    if (rate == null) continue;
+    for (const a of amountsIn(raw)) if (a > 0) candidates.get(rate)!.add(a);
+  }
+
+  const solutions = new Map<string, number[]>();
+  const search = (i: number, picked: number[], sum: number) => {
+    if (solutions.size > 1) return;
+    if (i === rates.length) {
+      if (near(sum, total, rates.length)) solutions.set(picked.join(","), picked);
+      return;
+    }
+    for (const g of candidates.get(rates[i]!)!) if (sum + g <= total + rates.length) search(i + 1, [...picked, g], sum + g);
+  };
+  search(0, [], 0);
+  if (solutions.size !== 1) return undefined;
+  const [gross] = [...solutions.values()];
+  return rates.map((taxRateBp, i) => ({ taxRateBp, grossCents: gross![i]!, ...netFromGross(gross![i]!, taxRateBp) }));
+}

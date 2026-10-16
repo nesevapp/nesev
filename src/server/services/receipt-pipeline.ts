@@ -19,7 +19,7 @@ import { observationsToText } from "../lib/ocr/layout";
 import { AbortedError, runCommand } from "../lib/ocr/run";
 import { tesseractImage, tesseractStatus } from "../lib/ocr/tesseract";
 import { supplierSuggestions } from "./expenses";
-import { detectAmountBasis, extractWithRules, type RulesContext } from "./receipt-heuristics";
+import { detectAmountBasis, extractWithRules, repairGrossTaxLines, type RulesContext } from "./receipt-heuristics";
 import { modelAlias } from "../lib/llama/paths";
 import type { LlamaLease } from "../lib/llama/lease";
 import { getLlamaLease, llamaConfigFor, toLlmError } from "./receipt-llama";
@@ -247,8 +247,18 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
 
   // 5. supplier history + validation
   const history = supplierHistory(input.db, fields);
-  const v = validateFields(history.fields, input.today);
+  let v = validateFields(history.fields, input.today);
   const amountBasis = detectAmountBasis(text, v.fields);
+  if (amountBasis?.value === "gross") {
+    const repaired = repairGrossTaxLines(text, v.fields);
+    if (repaired) {
+      v = validateFields({ ...history.fields, taxLines: { value: repaired, confidence: 0.7, source: "rules" } }, input.today);
+      // a repair stays a suggestion to look at: medium confidence at most
+      const t = v.fields.taxLines!;
+      v.fields.taxLines = { ...t, confidence: Math.min(t.confidence, 0.75), note: "aus den Bruttobeträgen neu berechnet" };
+      v.warnings.unshift("Steueraufteilung des Modells ging nicht auf – aus den Bruttobeträgen je Steuersatz neu berechnet");
+    }
+  }
   timings.total = elapsed(started);
   return {
     status: error ? "failed" : "done",
