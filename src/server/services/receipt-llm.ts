@@ -128,6 +128,7 @@ export interface PromptContext {
   /** our own company (the recipient), so the model doesn't take it for the supplier */
   ownName?: string;
   ownUid?: string;
+  ownIban?: string;
 }
 
 export function buildPrompt(text: string, ctx: PromptContext, withImages: boolean): { system: string; user: string } {
@@ -138,7 +139,7 @@ export function buildPrompt(text: string, ctx: PromptContext, withImages: boolea
     "Regeln:",
     "- supplierName: Aussteller/Verkäufer des Belegs (Firmenname wie gedruckt), NICHT der Rechnungsempfänger." +
       (own ? ` Der Empfänger sind wir: ${own} – diese Daten nie als Lieferant verwenden.` : ""),
-    "- supplierUid: UID/VAT-Nummer des Ausstellers ohne Leerzeichen (z. B. ATU12345678, IE6388047V).",
+    "- supplierUid: UID/VAT-Nummer des Ausstellers ohne Leerzeichen, genau wie gedruckt (AT: „ATU“ + 8 Ziffern). Steht keine auf dem Beleg: null.",
     "- supplierCountry: ISO-Ländercode des Ausstellers (AT, DE, IE, …).",
     "- supplierInvoiceNumber: Rechnungs- oder Belegnummer.",
     "- issueDate/dueDate: Rechnungsdatum und Fälligkeit im Format YYYY-MM-DD.",
@@ -325,5 +326,28 @@ export async function extractFields(opts: ExtractOptions): Promise<ExtractResult
     const cut = choice?.finish_reason === "length" ? " (Antwort abgeschnitten – Kontextgröße zu klein?)" : "";
     throw new LlmError(`Modell lieferte kein gültiges JSON${cut}`, "bad_response");
   }
-  return { fields: mapLlmOutput(parsed), raw: parsed, durationMs: Math.round(performance.now() - started) };
+  // with page images the model reads more than the OCR text holds, so only the own-identifier check applies
+  const fields = groundIdentifiers(mapLlmOutput(parsed), withImages ? "" : opts.text, opts.context ?? {});
+  return { fields, raw: parsed, durationMs: Math.round(performance.now() - started) };
+}
+
+const compact = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * Drops a model UID/IBAN that is our own or, when `text` is given, isn't in it. A small model fills an empty
+ * field with an identifier it saw in the prompt (our own UID, an example) rather than answering null.
+ */
+export function groundIdentifiers(fields: ReceiptFields, text: string, ctx: PromptContext): ReceiptFields {
+  const haystack = compact(text);
+  const out = { ...fields };
+  for (const [key, own] of [
+    ["supplierUid", ctx.ownUid],
+    ["iban", ctx.ownIban],
+  ] as const) {
+    const value = out[key]?.value;
+    if (!value) continue;
+    const v = compact(value);
+    if ((own && v === compact(own)) || (haystack && !haystack.includes(v))) delete out[key];
+  }
+  return out;
 }

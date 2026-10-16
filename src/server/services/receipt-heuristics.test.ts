@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
 import { shortDescription } from "../../shared/receipts";
 import { amountsIn, extractWithRules, findCategory } from "./receipt-heuristics";
-import { mapLlmOutput } from "./receipt-llm";
+import { groundIdentifiers, mapLlmOutput } from "./receipt-llm";
 import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
 
@@ -259,5 +259,34 @@ describe("shortDescription", () => {
   test("model descriptions are shortened", () => {
     const fields = mapLlmOutput({ description: "Lieferung und Montage einer neuen Beleuchtung im Büro inklusive Material" });
     expect(fields.description?.value).toBe("Lieferung und Montage einer neuen Beleuchtung");
+  });
+});
+
+describe("groundIdentifiers", () => {
+  const text = "Papierwerk Graz KG\nUID: ATU 1469 7808\nIBAN AT61 1904 3002 3457 3201\nGesamt € 104,88";
+  const own = { ownUid: "ATU12345678", ownIban: "AT47 9999 9000 1234 5678" };
+
+  test("keeps identifiers printed on the receipt, in any spacing", () => {
+    const fields = groundIdentifiers(mapLlmOutput({ supplierUid: "ATU14697808", iban: "AT611904300234573201" }), text, own);
+    expect(fields.supplierUid?.value).toBe("ATU14697808");
+    expect(fields.iban?.value).toBe("AT611904300234573201");
+  });
+
+  test("drops identifiers the model made up or took from the prompt", () => {
+    const noUid = "Papierwerk Graz KG\nRechnung PW-1093\nGesamt € 104,88";
+    const fields = groundIdentifiers(mapLlmOutput({ supplierUid: "ATU12345678", iban: "AT479999900012345678", supplierName: "Papierwerk Graz KG" }), noUid, own);
+    expect(fields.supplierUid).toBeUndefined();
+    expect(fields.iban).toBeUndefined();
+    expect(fields.supplierName?.value).toBe("Papierwerk Graz KG");
+  });
+
+  test("drops our own UID even when it is printed (we are the recipient)", () => {
+    const fields = groundIdentifiers(mapLlmOutput({ supplierUid: "ATU12345678" }), `${text}\nKunde UID: ATU12345678`, own);
+    expect(fields.supplierUid).toBeUndefined();
+  });
+
+  test("without receipt text (image only) nothing can be checked", () => {
+    const fields = groundIdentifiers(mapLlmOutput({ supplierUid: "ATU14697808" }), "", own);
+    expect(fields.supplierUid?.value).toBe("ATU14697808");
   });
 });
