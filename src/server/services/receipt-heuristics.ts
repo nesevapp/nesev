@@ -360,11 +360,15 @@ export function detectAmountBasis(text: string, fields: ReceiptFields): FieldSug
     .split(/\r?\n/)
     .map((l) => l.replace(/\s+/g, " ").trim())
     .filter(Boolean);
-  // the first total or tax line with an amount (not a column header like "Menge Einzelpreis Gesamt")
-  const end = lines.findIndex(
-    (l) =>
-      (NET_TOTAL_RE.test(l) || GROSS_STRONG_RE.test(l) || GROSS_WEAK_RE.test(l) || RATE_TABLE_RE.test(l)) && amountsIn(l).length > 0,
-  );
+  // the first total or tax line with an amount (not a column header like "Menge Einzelpreis Gesamt"), or a bare
+  // total without a label (till receipts often print "91.10" alone and "Summe" elsewhere)
+  const isTotal = (l: string) => {
+    const amounts = amountsIn(l);
+    if (!amounts.length) return false;
+    if (NET_TOTAL_RE.test(l) || GROSS_STRONG_RE.test(l) || GROSS_WEAK_RE.test(l) || RATE_TABLE_RE.test(l)) return true;
+    return amounts.length === 1 && !/\p{L}/u.test(l) && (amounts[0] === gross || amounts[0] === net);
+  };
+  const end = lines.findIndex(isTotal);
   const items = (end < 0 ? [] : lines.slice(0, end))
     .filter((l) => !DATE_ON_LINE.test(l))
     .map((l) => amountsIn(l).at(-1))

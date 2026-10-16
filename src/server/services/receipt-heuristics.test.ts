@@ -314,6 +314,35 @@ Vielen Dank für Ihren Auftrag!`;
     expect(basis(RESTAURANT)).toMatchObject({ value: "gross", confidence: 0.85 });
   });
 
+  test("a bare total line without a label ends the items (garbled OCR of a hut's till receipt)", () => {
+    const text = `Almhütte Beispiel
+Dorfstraße 81, 8992 Altaussee
+Rechnung Nr. 15366 Orderman 1
+2 Schweinsbraten 21.90 43.80
+1 Steirerkasnockn 16.90 16.90
+1 Schokogugl V. Eis Schl 8.90 . 90
+2 Kleiner Brauner 3.50 7.00
+10,5 Apfelsaft gespr. 5.50 5.50
+2 0,5 Schiwasser 4.50 9.00
+91.10
+Barzahlung
+Satz Brutto Netto USt
+10 1% 69.60 01.27 3.58
+20 % 21.50 T1.92
+91.10
+Summe Euro`;
+    // the model's broken tax lines (net/gross mixed up) still give the right gross total
+    const fields = mapLlmOutput({
+      grossTotal: 91.1,
+      vatTreatment: "domestic",
+      taxLines: [
+        { ratePercent: 10, net: 69.6, tax: 3.58, gross: 73.18 },
+        { ratePercent: 20, net: 17.5, tax: 1.92, gross: 19.42 },
+      ],
+    });
+    expect(detectAmountBasis(text, fields)).toMatchObject({ value: "gross", confidence: 0.85 });
+  });
+
   test("without item amounts the wording decides", () => {
     const fields = extractWithRules(SERVICE_AT, OWN).fields;
     expect(detectAmountBasis("Beratung laut Angebot\nzzgl. 20 % USt", fields)?.value).toBe("net");
