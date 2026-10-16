@@ -1,5 +1,5 @@
 import { defaultVatTreatment, netFromGross, type VatTreatment } from "../../shared/expenses";
-import type { FieldSuggestion, ReceiptFields, TaxLineSuggestion } from "../../shared/receipts";
+import type { AmountBasis, FieldSuggestion, ReceiptFields, TaxLineSuggestion } from "../../shared/receipts";
 import { addDays } from "../../shared/dates";
 import type { ExpenseCategoryKey } from "../../shared/expenses";
 import {
@@ -332,4 +332,53 @@ export function extractWithRules(text: string, ctx: RulesContext = {}): { fields
 
   for (const k of Object.keys(fields) as (keyof ReceiptFields)[]) if (!fields[k]) delete fields[k];
   return { fields, warnings };
+}
+
+// --- amount basis (gross or net entry) ----------------------------------------------------------------
+
+const DATE_ON_LINE = /\b\d{1,2}\.\d{1,2}\.\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/;
+const RATE_TABLE_RE = /\b(ust|mwst|vat|ust\.?|steuer)\b.*\d\s?%|\d\s?%.*\b(ust|mwst|vat)\b/i;
+const NET_CUE_RE = /\b(zzgl|zuzüglich|zuzueglich|exkl|excl|excluding|plus\s+(?:\d+\s?%\s+)?(?:ust|mwst|vat))\b/i;
+const GROSS_CUE_RE = /\b(inkl|incl|inklusive|including|enthalten|enthaltene|darin|davon\s+(?:ust|mwst))\b/i;
+const TILL_CUE_RE = /\b(registrierkasse|kassenbon|kassa|bankomat|kartenzahlung|rückgeld|rueckgeld|gegeben|bar\b|beleg-?nr|kassen-?id)/i;
+
+/**
+ * Whether the receipt's amounts are best entered gross (till receipts: item prices include VAT) or net
+ * (invoices: net items plus VAT). Arithmetic first: the item lines above the first total/tax line add up to
+ * either the net or the gross total. Otherwise wording ("zzgl." / "inkl.", cash-register terms). Only for
+ * receipts with VAT; reverse charge, ig. Erwerb and receipts without VAT have no difference.
+ */
+export function detectAmountBasis(text: string, fields: ReceiptFields): FieldSuggestion<AmountBasis> | undefined {
+  const treatment = fields.vatTreatment?.value;
+  if (treatment && treatment !== "domestic" && treatment !== "import") return undefined;
+  const rows = fields.taxLines?.value ?? [];
+  const net = rows.reduce((s, r) => s + r.netCents, 0);
+  const gross = fields.grossCents?.value ?? rows.reduce((s, r) => s + r.grossCents, 0);
+  if (!rows.length || net <= 0 || gross <= net) return undefined;
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  // the first total or tax line with an amount (not a column header like "Menge Einzelpreis Gesamt")
+  const end = lines.findIndex(
+    (l) =>
+      (NET_TOTAL_RE.test(l) || GROSS_STRONG_RE.test(l) || GROSS_WEAK_RE.test(l) || RATE_TABLE_RE.test(l)) && amountsIn(l).length > 0,
+  );
+  const items = (end < 0 ? [] : lines.slice(0, end))
+    .filter((l) => !DATE_ON_LINE.test(l))
+    .map((l) => amountsIn(l).at(-1))
+    .filter((a): a is number => a != null && a > 0);
+  if (items.length) {
+    const sum = items.reduce((s, a) => s + a, 0);
+    const tolerance = Math.max(2, items.length);
+    if (Math.abs(sum - net) <= tolerance) return { ...rules<AmountBasis>("net", 0.85), note: "Positionen ergeben die Nettosumme" };
+    if (Math.abs(sum - gross) <= tolerance) return { ...rules<AmountBasis>("gross", 0.85), note: "Positionen ergeben die Bruttosumme" };
+  }
+  const netCue = NET_CUE_RE.test(text);
+  const grossCue = GROSS_CUE_RE.test(text);
+  if (netCue && !grossCue) return { ...rules<AmountBasis>("net", 0.65), note: "„zuzüglich USt“ auf dem Beleg" };
+  if (grossCue && !netCue) return { ...rules<AmountBasis>("gross", 0.65), note: "„inklusive USt“ auf dem Beleg" };
+  if (TILL_CUE_RE.test(text)) return { ...rules<AmountBasis>("gross", 0.55), note: "Kassenbon" };
+  return undefined;
 }

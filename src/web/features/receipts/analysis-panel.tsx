@@ -14,6 +14,8 @@ import {
 } from "@shared/expenses";
 import { formatBp, formatCents } from "@shared/money";
 import {
+  AMOUNT_BASIS_LABELS,
+  type AmountBasis,
   confidenceLevel,
   FIELD_SOURCE_LABELS,
   type FieldSuggestion,
@@ -48,6 +50,7 @@ export type ApplyKey =
   | "vatTreatment"
   | "category"
   | "description"
+  | "amountBasis"
   | "lines";
 
 export interface ApplyTarget {
@@ -56,6 +59,9 @@ export interface ApplyTarget {
   applyTreatment: (t: VatTreatment) => void;
   /** the expense is a draft: its defaulted date / country / treatment count as empty */
   draft: boolean;
+  /** the editor's "Brutto-Eingabe" switch */
+  grossMode: boolean;
+  setGrossMode: (gross: boolean) => void;
   onApplied: (keys: ApplyKey[], analysisId: number) => void;
 }
 
@@ -72,6 +78,7 @@ const LABELS: Record<ApplyKey, string> = {
   vatTreatment: "USt.",
   category: "Kategorie",
   description: "Beschreibung",
+  amountBasis: "Eingabe",
   lines: "Positionen",
 };
 
@@ -85,6 +92,7 @@ const ORDER: ApplyKey[] = [
   "vatTreatment",
   "category",
   "description",
+  "amountBasis",
   "lines",
 ];
 
@@ -114,6 +122,8 @@ function display(key: ApplyKey, value: unknown, fields: ReceiptFields, treatment
       return VAT_TREATMENT_SHORT_LABELS[value as VatTreatment];
     case "category":
       return categoryLabel(value as string);
+    case "amountBasis":
+      return AMOUNT_BASIS_LABELS[value as AmountBasis];
     case "lines":
       return linesSummary(suggestedLines(fields, treatment));
     default:
@@ -259,10 +269,13 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
   const current = (key: ApplyKey): unknown => {
     if (key === "lines") return lines;
     if (key === "category") return lines.map((l) => l.category);
+    if (key === "amountBasis") return target.grossMode ? "gross" : "net";
     return form.getValues(key);
   };
 
   const isEmpty = (key: ApplyKey): boolean => {
+    // a switch, not data: following the receipt never overwrites anything
+    if (key === "amountBasis") return true;
     if (key === "lines") return untouchedLines(lines);
     if (key === "category") return untouchedLines(lines) || lines.every((l) => l.category === DEFAULT_EXPENSE_CATEGORY);
     const v = form.getValues(key);
@@ -281,6 +294,7 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
       );
     }
     if (key === "category") return lines.length > 0 && lines.every((l) => l.category === value);
+    if (key === "amountBasis") return target.grossMode === (value === "gross");
     const cur = form.getValues(key);
     if (typeof cur === "string" && typeof value === "string") {
       return cur.replace(/\s+/g, "").toUpperCase() === value.replace(/\s+/g, "").toUpperCase();
@@ -304,6 +318,9 @@ function Suggestions({ analysis, target }: { analysis: ReceiptAnalysis; target: 
         });
         break;
       }
+      case "amountBasis":
+        target.setGrossMode(s.value === "gross");
+        break;
       case "lines": {
         const next = suggestedLines(fields, form.getValues("vatTreatment"));
         if (next.length) form.setValue("lines", next, opts);

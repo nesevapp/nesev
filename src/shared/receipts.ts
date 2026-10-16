@@ -125,7 +125,11 @@ export interface ReceiptFields {
   category?: FieldSuggestion<ExpenseCategoryKey>;
   vatTreatment?: FieldSuggestion<VatTreatment>;
   taxLines?: FieldSuggestion<TaxLineSuggestion[]>;
+  /** how the receipt states its amounts: item prices incl. VAT (till receipts) or net plus VAT (invoices) */
+  amountBasis?: FieldSuggestion<AmountBasis>;
 }
+
+export type AmountBasis = "gross" | "net";
 
 export type ReceiptFieldKey = keyof ReceiptFields;
 
@@ -158,6 +162,12 @@ export const RECEIPT_FIELD_LABELS: Record<ReceiptFieldKey, string> = {
   category: "Kategorie",
   vatTreatment: "Umsatzsteuer",
   taxLines: "Steueraufteilung",
+  amountBasis: "Eingabe",
+};
+
+export const AMOUNT_BASIS_LABELS: Record<AmountBasis, string> = {
+  gross: "Brutto (Preise inkl. USt)",
+  net: "Netto (zuzüglich USt)",
 };
 
 export function isCategoryKey(key: unknown): key is ExpenseCategoryKey {

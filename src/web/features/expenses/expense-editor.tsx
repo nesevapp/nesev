@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { CircleCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +52,7 @@ import {
   useCreateExpense,
   useLinkFixedCostPayment,
   useDeleteExpense,
+  receiptAnalysisQuery,
   useMarkAnalysisApplied,
   useRemoveReceipt,
   useRestoreReceipt,
@@ -110,23 +111,33 @@ export function emptyFormValues(): ExpenseFormValues {
 
 const GROSS_MODE_KEY = "nesev.expenses.grossMode";
 
-function useGrossMode(): [boolean, (v: boolean) => void] {
-  const [value, setValue] = useState(() => {
+/**
+ * Gross or net entry. The receipt's own basis when the analysis found one (till receipt → gross, invoice with net
+ * items → net), otherwise the last manual choice (remembered per browser). A manual switch wins for this expense.
+ */
+function useGrossMode(expenseId: number | null): [boolean, (v: boolean) => void, boolean] {
+  const [remembered, setRemembered] = useState(() => {
     try {
       return localStorage.getItem(GROSS_MODE_KEY) !== "0";
     } catch {
       return true;
     }
   });
+  const [manual, setManual] = useState<boolean | null>(null);
+  useEffect(() => setManual(null), [expenseId]);
+  const { data: analysis } = useQuery({ ...receiptAnalysisQuery(expenseId ?? 0), enabled: expenseId != null });
+  const basis = analysis && !analysis.stale ? analysis.result?.fields.amountBasis?.value : undefined;
   const set = (v: boolean) => {
-    setValue(v);
+    setManual(v);
+    setRemembered(v);
     try {
       localStorage.setItem(GROSS_MODE_KEY, v ? "1" : "0");
     } catch {
       // ignore
     }
   };
-  return [value, set];
+  // third value: the receipt decides (no manual choice for this expense)
+  return [manual ?? (basis ? basis === "gross" : remembered), set, manual == null && !!basis];
 }
 
 /**
@@ -158,7 +169,7 @@ export function ExpenseEditor({
   const restoreReceipt = useRestoreReceipt();
   const [cropOpen, setCropOpen] = useState(false);
   const markApplied = useMarkAnalysisApplied();
-  const [grossMode, setGrossMode] = useGrossMode();
+  const [grossMode, setGrossMode, grossFromReceipt] = useGrossMode(expense?.id ?? null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** receipt dropped on a new, unsaved expense; uploaded on first save */
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -394,6 +405,8 @@ export function ExpenseEditor({
                   applyTreatment(t);
                 },
                 draft: startedIncomplete,
+                grossMode,
+                setGrossMode,
                 onApplied: (keys, analysisId) =>
                   setApplied((prev) => ({
                     analysisId,
@@ -557,6 +570,11 @@ export function ExpenseEditor({
                   <Switch id="gross-mode" checked={grossMode} onCheckedChange={setGrossMode} />
                   <Label htmlFor="gross-mode" className="text-sm font-normal text-muted-foreground">
                     Brutto-Eingabe
+                    {grossFromReceipt && (
+                      <span className="text-xs text-muted-foreground/70" title="Aus der Beleg-Erkennung: Positionen inkl. oder zuzüglich USt">
+                        (laut Beleg)
+                      </span>
+                    )}
                   </Label>
                 </div>
               </div>

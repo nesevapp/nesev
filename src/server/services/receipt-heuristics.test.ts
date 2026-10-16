@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
 import { shortDescription } from "../../shared/receipts";
-import { amountsIn, extractWithRules, findCategory } from "./receipt-heuristics";
+import { amountsIn, detectAmountBasis, extractWithRules, findCategory } from "./receipt-heuristics";
 import { groundIdentifiers, mapLlmOutput } from "./receipt-llm";
 import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
@@ -288,5 +288,41 @@ describe("groundIdentifiers", () => {
   test("without receipt text (image only) nothing can be checked", () => {
     const fields = groundIdentifiers(mapLlmOutput({ supplierUid: "ATU14697808" }), "", own);
     expect(fields.supplierUid?.value).toBe("ATU14697808");
+  });
+});
+
+describe("detectAmountBasis", () => {
+  const basis = (text: string) => detectAmountBasis(text, extractWithRules(text, OWN).fields);
+  const PAPIERWERK = `Papierwerk Graz KG
+Kornmarkt 3, 8010 Graz
+Rechnung PW-1093 21.05.2026
+Druckerpapier A4, 5×500 Blatt € 24,90
+Notizbücher (3 Stk.) € 19,50
+Toner schwarz € 43,00
+Netto € 87,40
+USt 20 % € 17,48
+Gesamt € 104,88
+Vielen Dank für Ihren Auftrag!`;
+
+  test("item lines adding up to the net total → net", () => {
+    expect(basis(PAPIERWERK)).toMatchObject({ value: "net", confidence: 0.85 });
+    expect(basis(SERVICE_AT)).toMatchObject({ value: "net", confidence: 0.85 });
+  });
+
+  test("item lines adding up to the gross total → gross", () => {
+    expect(basis(SUPERMARKET)).toMatchObject({ value: "gross", confidence: 0.85 });
+    expect(basis(RESTAURANT)).toMatchObject({ value: "gross", confidence: 0.85 });
+  });
+
+  test("without item amounts the wording decides", () => {
+    const fields = extractWithRules(SERVICE_AT, OWN).fields;
+    expect(detectAmountBasis("Beratung laut Angebot\nzzgl. 20 % USt", fields)?.value).toBe("net");
+    expect(detectAmountBasis("Beratung laut Angebot\nBetrag inkl. 20 % USt", fields)?.value).toBe("gross");
+    expect(detectAmountBasis("Beratung laut Angebot\nBankomat", fields)).toMatchObject({ value: "gross", confidence: 0.55 });
+    expect(detectAmountBasis("Beratung laut Angebot", fields)).toBeUndefined();
+  });
+
+  test("no VAT, no difference: reverse charge gets no basis", () => {
+    expect(basis(SAAS_IE)).toBeUndefined();
   });
 });

@@ -19,7 +19,7 @@ import { observationsToText } from "../lib/ocr/layout";
 import { AbortedError, runCommand } from "../lib/ocr/run";
 import { tesseractImage, tesseractStatus } from "../lib/ocr/tesseract";
 import { supplierSuggestions } from "./expenses";
-import { extractWithRules, type RulesContext } from "./receipt-heuristics";
+import { detectAmountBasis, extractWithRules, type RulesContext } from "./receipt-heuristics";
 import { modelAlias } from "../lib/llama/paths";
 import type { LlamaLease } from "../lib/llama/lease";
 import { getLlamaLease, llamaConfigFor, toLlmError } from "./receipt-llama";
@@ -168,7 +168,8 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
         model: "",
         error: "",
         result: {
-          fields: v.fields,
+          // e-invoice line amounts are always net (EN 16931)
+          fields: v.fields.taxLines ? { ...v.fields, amountBasis: { value: "net", confidence: 0.9, source: "xml" } } : v.fields,
           warnings: [...parsed.warnings, ...v.warnings],
           matchedSupplier: history.matched,
           pageCount: layer?.pageCount,
@@ -247,6 +248,7 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
   // 5. supplier history + validation
   const history = supplierHistory(input.db, fields);
   const v = validateFields(history.fields, input.today);
+  const amountBasis = detectAmountBasis(text, v.fields);
   timings.total = elapsed(started);
   return {
     status: error ? "failed" : "done",
@@ -255,7 +257,7 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
     model: settings.llmEnabled ? step.model : "",
     error,
     result: {
-      fields: v.fields,
+      fields: amountBasis ? { ...v.fields, amountBasis } : v.fields,
       warnings: [...warnings, ...v.warnings],
       matchedSupplier: history.matched,
       pageCount,
