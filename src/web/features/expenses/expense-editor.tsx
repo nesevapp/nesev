@@ -438,6 +438,7 @@ export function ExpenseEditor({
 
         <Form {...form}>
           <form
+            id="expense-form"
             onSubmit={(e) => {
               e.preventDefault();
               void onSave();
@@ -622,37 +623,38 @@ export function ExpenseEditor({
                 )}
               />
             </section>
-
-            <ActionBar
-              left={
-                expense && (
-                  <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmDelete(true)}>
-                    <Trash2 />
-                    Löschen
-                  </Button>
-                )
-              }
-            >
-              <span className="mr-2 text-xs text-muted-foreground">
-                {dirty ? "Ungespeicherte Änderungen" : expense ? "Gespeichert" : ""}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => void onSaveNext()}
-                title="⌘/Strg + Enter"
-              >
-                Speichern & nächster
-              </Button>
-              <Button type="submit" size="sm" disabled={busy} title="⌘/Strg + S">
-                Speichern
-              </Button>
-            </ActionBar>
           </form>
         </Form>
       </div>
+
+      {/* outside the two columns: spans the page like on the other editors */}
+      <ActionBar
+        left={
+          expense && (
+            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmDelete(true)}>
+              <Trash2 />
+              Löschen
+            </Button>
+          )
+        }
+      >
+        <span className="mr-2 text-xs text-muted-foreground">
+          {dirty ? "Ungespeicherte Änderungen" : expense ? "Gespeichert" : ""}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => void onSaveNext()}
+          title="⌘/Strg + Enter"
+        >
+          Speichern & nächster
+        </Button>
+        <Button type="submit" form="expense-form" size="sm" disabled={busy} title="⌘/Strg + S">
+          Speichern
+        </Button>
+      </ActionBar>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

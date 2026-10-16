@@ -336,7 +336,7 @@ function SaveBar({
   onDiscard: () => void;
 }) {
   return (
-    <div className="sticky bottom-0 -mx-8 flex items-center justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
+    <div className="sticky bottom-0 -mx-8 -mb-8 flex items-center justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
       {dirty && (
         <span className="mr-auto text-xs text-muted-foreground">
           Ungespeicherte Änderungen
