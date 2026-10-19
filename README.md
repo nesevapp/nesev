@@ -118,9 +118,69 @@ another port.
 
 ## Installation
 
-<!-- filled in by the release work: one-line installer, binaries, from source -->
+### One-line installer (macOS, Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nesevapp/nesev/main/install.sh | sh
+```
+
+The installer downloads the latest release for your computer (macOS on Apple silicon or Intel, Linux x64 or arm64) and
+checks its SHA-256 checksum. It installs a single program to `~/.local/bin/nesev` (no admin rights needed) and sets up
+a background service that starts nesev when you log in. Then it opens <http://localhost:3998>, where nesev asks where
+to keep your data (see [Where your data lives](#where-your-data-lives)). Before writing the first invoice, fill in
+Einstellungen → Unternehmen (company, UID, Steuernummer, IBAN).
+
+You don't need Bun or Node.js. Everything is in that one file, including the Apple Vision helper for receipt OCR on
+macOS. The optional extras (llama.cpp, whisper.cpp, Tesseract) are installed separately, see
+[Requirements](#requirements). Settings for the installer: `NESEV_PORT` (default `3998`), `NESEV_INSTALL_DIR`
+(default `~/.local/bin`), `NESEV_SKIP_SERVICE=1` (no background service).
+
+### Manual download
+
+Download `nesev-<os>-<arch>.tar.gz` and `SHA256SUMS` from
+[Releases](https://github.com/nesevapp/nesev/releases/latest), then:
+
+```bash
+shasum -a 256 -c SHA256SUMS --ignore-missing    # Linux: sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf nesev-darwin-arm64.tar.gz
+mkdir -p ~/.local/bin && mv nesev ~/.local/bin/
+~/.local/bin/nesev                              # starts nesev and opens it in the browser
+~/.local/bin/nesev service install              # optional: keep it running in the background
+```
+
+On macOS, a file downloaded in the browser is blocked by Gatekeeper, because the binaries aren't notarized yet. Allow
+it with `xattr -d com.apple.quarantine ~/.local/bin/nesev`. The one-line installer doesn't need this step.
+
+There are no Windows binaries yet. On Windows, run nesev from source (untested).
+
+### The `nesev` command
+
+| | |
+|---|---|
+| `nesev` | starts nesev and opens it in the browser (if it's already running, only opens the browser) |
+| `nesev start` | starts only the server (that's what the background service runs) |
+| `nesev service install` / `uninstall` / `status` | background service: launchd agent on macOS (logs in `~/Library/Logs/nesev/`), systemd user unit on Linux (`journalctl --user -u nesev`) |
+| `nesev update` | installs the latest release (`--check` only looks) |
+| `nesev restore <backup.zip>` | restores a backup ZIP or `.db`, also into a new folder on a new computer (`--data-dir`) |
+| `nesev mcp` | the [MCP server](#mcp-server) (stdio) |
+| `nesev uninstall` | removes the service and the program; your data stays |
+| `nesev --version`, `nesev help` | |
+
+`--port N` picks another port.
+
+### Updating and uninstalling
+
+Back up first (Einstellungen → Export & Backup). Then run `nesev update`, or run the one-line installer again. Either
+way, nesev checks the download's checksum, replaces the program and restarts the background service. The database is
+updated on the next start, after nesev has taken a snapshot of it.
+
+`nesev uninstall` (or `curl -fsSL https://raw.githubusercontent.com/nesevapp/nesev/main/install.sh | sh -s -- --uninstall`)
+removes the background service, the program and its cache. It never deletes your data, and it prints where the data
+folder is. If you want everything gone, delete that folder yourself, after you've kept a backup.
 
 ### From source
+
+For development, or on platforms without a release binary. Requires [Bun](https://bun.sh) 1.3.13 or newer.
 
 ```bash
 git clone https://github.com/nesevapp/nesev.git && cd nesev
@@ -128,12 +188,12 @@ bun install
 bun run build && bun start      # one process serves the web app and the API on http://localhost:3998
 ```
 
-Open <http://localhost:3998>. On the first start nesev asks where to keep your data (see
-[Where your data lives](#where-your-data-lives)). Then fill in Einstellungen → Unternehmen (company, UID,
-Steuernummer, IBAN) before writing the first invoice.
+Open <http://localhost:3998>. On the first start nesev asks where to keep your data.
 
-On macOS, `bun run service:install` installs a launchd agent that keeps nesev running in the background
-(`service:status`, `service:uninstall`).
+`bun run service:install` keeps nesev running in the background from the checkout (launchd on macOS, systemd user unit
+on Linux; also `service:status`, `service:uninstall`). It uses the same service name as the binary, so installing one
+replaces the other. To update, run `git pull && bun install && bun run build` and restart. `bun run build:binary`
+builds the single-file executable. Cutting a release is described in [docs/releasing.md](docs/releasing.md).
 
 > [!WARNING]
 > nesev has **no authentication** by design. It listens on `127.0.0.1` only. Don't set `NESEV_HOST=0.0.0.0` or put it
