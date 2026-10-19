@@ -2,6 +2,7 @@ import { app } from "./app";
 import { db } from "./db";
 import { DB_PATH, WEB_DIST_DIR } from "./lib/paths";
 import { startBackupScheduler } from "./services/backup";
+import { startPdfRefreeze } from "./services/pdf-refreeze";
 import { startReceiptInbox } from "./services/receipt-inbox";
 import { getLlamaServer } from "./services/receipt-llama";
 import { initReceiptQueue } from "./services/receipt-queue";
@@ -27,6 +28,8 @@ if (isProd) {
 // Daily local DB snapshots to data/backups (guarded against double start under bun --hot).
 if (DB_PATH !== ":memory:") startBackupScheduler(db);
 if (DB_PATH !== ":memory:") startRecurringScheduler(db);
+// finalized documents/reminders whose PDF freeze failed: freeze them now (background, logs what it fixed)
+if (DB_PATH !== ":memory:") startPdfRefreeze(db);
 // Belege-Eingang: poll the inbox folder (copies new files, never analyses them)
 if (DB_PATH !== ":memory:") startReceiptInbox(db);
 if (DB_PATH !== ":memory:") {
