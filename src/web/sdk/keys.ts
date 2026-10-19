@@ -9,6 +9,9 @@ export const keys = {
   settings: {
     all: ["settings"] as const,
   },
+  setup: {
+    status: ["setup", "status"] as const,
+  },
   taxStatus: {
     all: ["tax-status"] as const,
   },

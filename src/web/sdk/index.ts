@@ -7,6 +7,7 @@ export { useInvalidate, type Change } from "./invalidate";
 export * from "./files";
 export * from "./pdf";
 export * from "./settings";
+export * from "./setup";
 export * from "./units";
 export * from "./clients";
 export * from "./articles";

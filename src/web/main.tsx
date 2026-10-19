@@ -6,13 +6,16 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/query-client";
 import { AppToaster } from "@/app/app-toaster";
 import { router } from "@/app/router";
+import { SetupGate } from "@/features/setup/setup-gate";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <RouterProvider router={router} />
+        <SetupGate>
+          <RouterProvider router={router} />
+        </SetupGate>
         <AppToaster />
       </TooltipProvider>
     </QueryClientProvider>
