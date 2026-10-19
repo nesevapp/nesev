@@ -17,10 +17,25 @@ export function looksLikeGeorgeJson(text: string): boolean {
   return (t.startsWith("[") || t.startsWith("{")) && /"(booking|bookingDate)"\s*:/.test(text.slice(0, 20000));
 }
 
+// Bookings are Austrian calendar days: an instant (epoch millis, or a timestamp in UTC / another offset) is
+// converted in Europe/Vienna, so midnight 01.01. in Vienna (= 31.12. 23:00 UTC) stays 01.01.
+const viennaDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Vienna", year: "numeric", month: "2-digit", day: "2-digit" });
+
+function viennaDate(ms: number): string | null {
+  return Number.isFinite(ms) ? viennaDay.format(new Date(ms)) : null;
+}
+
 function dateOf(v: unknown): string | null {
-  if (typeof v === "number") return new Date(v).toISOString().slice(0, 10);
-  const s = str(v);
-  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
+  if (typeof v === "number") return viennaDate(v);
+  const s = str(v).trim();
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  // "2026-01-02T00:00:00.000+0100" / "…Z": an instant; a bare date or local time is taken as written
+  const zoned = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)\s*(Z|[+-]\d{2}:?\d{2})$/i.exec(s);
+  if (zoned) {
+    const offset = zoned[3]!.toUpperCase() === "Z" ? "Z" : zoned[3]!.replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
+    return viennaDate(Date.parse(`${zoned[1]}T${zoned[2]}${offset}`)) ?? s.slice(0, 10);
+  }
+  return s.slice(0, 10);
 }
 
 function amountOf(v: unknown): { cents: number; currency: string } | null {
