@@ -35,6 +35,7 @@ import { primeCache, repetitionCut, samplingTemperature } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
 import { ASSISTANT_CONFIRM_TOOLS, type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
+import { uploadsHint } from "./chat-uploads";
 import { createDraftsFromFiles } from "./expenses";
 
 // The agent loop against a fake OpenAI-compatible streaming server (Bun.serve emitting SSE chunks like
@@ -751,6 +752,7 @@ describe("receipts uploaded in the chat", () => {
     expect(req.messages.map((m: any) => m.role)).toEqual(["system", "user"]);
     const user = req.messages[1].content as string;
     expect(user.startsWith(`Hochgeladener Beleg: Ausgabe ${a!.number} (id ${a!.id}), Entwurf ohne Lieferant und Positionen, Datei „bewirtung.pdf“.`)).toBe(true);
+    expect(user.split("\n")[1]).toBe(uploadsHint(1));
     expect(user).toContain("(Kontext: Der Nutzer sieht gerade das Dashboard.");
     expect(user.endsWith("\nBewirtung mit Kunde Huber, bar bezahlt")).toBe(true);
     expect(req.tools.map((t: any) => t.function.name)).toContain("update_expense");
@@ -761,6 +763,21 @@ describe("receipts uploaded in the chat", () => {
     expect(calls.filter((x) => x.name === "update_expense")).toHaveLength(0);
     // the title comes from the first real question, not from the upload
     expect(listConversations(db).find((x) => x.id === c.id)!.title).toBe("Bewirtung mit Kunde Huber, bar bezahlt");
+  });
+
+  test("a guessed amount on the uploaded draft is not run (no confirm card); the model is told to ask", async () => {
+    deps.host = async () => expenseTools;
+    const c = createConversation(db);
+    const [a] = await drafts("billa.png");
+    recordUploads(db, c.id, { expenseIds: [a!.id] });
+    scripts.push(toolCall("update_expense", `{"id":${a!.id},"category":"bewirtung","lines":[{"category":"bewirtung","gross":54.6}]}`), text("Wie hoch war der Betrag?"));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Bewirtung mit Kunde Huber, bar bezahlt" }, emit));
+    expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "tool_result", "assistant_start", "done"]);
+    const row = conversationDetail(db, c.id).messages.find((m) => m.role === "tool")!;
+    expect(row.status).toBe("error");
+    expect(row.content).toContain("nicht raten");
+    expect(requests[1].messages.at(-1).content).toContain("get_receipt_analysis");
+    expect(calls.filter((x) => x.name === "update_expense")).toHaveLength(0);
   });
 
   test("routing: expense tools stay offered for follow-ups without an expense word; later uploads join the next message", async () => {

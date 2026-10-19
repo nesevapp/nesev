@@ -26,7 +26,7 @@ import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
 import { nudgeUiCall } from "./chat-ui-tools";
-import { hasRecentUploads, isTextUser, isUploadRow, uploadsContent, uploadsPreview } from "./chat-uploads";
+import { guessedAmountError, hasRecentUploads, isTextUser, isUploadRow, uploadsContent, uploadsHint, uploadsPreview } from "./chat-uploads";
 import { getExpense } from "./expenses";
 import { getSettings } from "./settings";
 
@@ -341,16 +341,16 @@ export function buildHistory(rows: ChatMessage[], budget: number, currentTitle?:
   const turns: LlmMessage[][] = [];
   const lastUser = rows.findLast(isTextUser);
   const issued = new Set<string>();
-  /** receipts uploaded since the last user message: their lines go in front of the next one (chat-uploads.ts) */
+  /** receipts uploaded since the last user message: their lines (+ hint) go in front of the next one (chat-uploads.ts) */
   let uploaded: string[] = [];
   for (const r of rows) {
     if (isUploadRow(r)) {
-      uploaded.push(r.content);
+      uploaded.push(...r.content.split("\n").filter(Boolean));
       continue;
     }
     if (r.role === "user") {
       const content = userContent(r, r === lastUser ? currentTitle : undefined);
-      turns.push([{ role: "user", content: uploaded.length ? `${uploaded.join("\n")}\n${content}` : content }]);
+      turns.push([{ role: "user", content: uploaded.length ? `${uploaded.join("\n")}\n${uploadsHint(uploaded.length)}\n${content}` : content }]);
       uploaded = [];
       continue;
     }
@@ -755,6 +755,14 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
         state.malformed++;
         deps.log?.(`[chat] conv ${state.conversationId}: ${call.name} with ids not looked up – rejected`);
         const row = insertMessage(db, { ...base, content: provenanceError, status: "error", toolResult: { ok: false, summary: "Id nicht nachgeschlagen – zuerst suchen", links: [] } satisfies ChatToolResult });
+        await emit({ type: "tool_result", message: messageView(row) });
+        continue;
+      }
+      const amountError = guessedAmountError(call, messages(db, state.conversationId));
+      if (amountError) {
+        state.malformed++;
+        deps.log?.(`[chat] conv ${state.conversationId}: ${call.name} with a guessed amount on an uploaded receipt – rejected`);
+        const row = insertMessage(db, { ...base, content: amountError, status: "error", toolResult: { ok: false, summary: "Betrag geraten – nicht ausgeführt", links: [] } satisfies ChatToolResult });
         await emit({ type: "tool_result", message: messageView(row) });
         continue;
       }

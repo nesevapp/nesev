@@ -358,9 +358,18 @@ describe("record tools: confirmation summaries", () => {
   });
 
   test("update_expense: fields with German labels, category and lines", async () => {
-    expect(await summary("update_expense", { id: 2, issueDate: "2026-10-05", vatTreatment: "reverse_charge", category: "telefon_internet", lines: [{}, {}] })).toBe(
+    expect(
+      await summary("update_expense", {
+        id: 2,
+        issueDate: "2026-10-05",
+        vatTreatment: "reverse_charge",
+        category: "telefon_internet",
+        lines: [{ category: "telefon_internet", gross: 25 }, { category: "bewirtung", net: "12,50" }, {}],
+      }),
+    ).toBe(
       "Ausgabe ER-2026-0002 A1 Telekom ändern: Datum: 04.10.2026 → 05.10.2026; USt-Behandlung: Inland → Reverse Charge; " +
-        "Kategorie aller Positionen: Telefon und Internet → Telefon & Internet; Positionen ersetzen: 1 Position(en), brutto € 60,00 → 2 neue Position(en)",
+        "Kategorie aller Positionen: Telefon und Internet → Telefon & Internet; Positionen ersetzen: 1 Position(en), brutto € 60,00 → 3 neue Position(en) " +
+        "(Telefon & Internet € 25,00 brutto, Bewirtung (50 %) € 12,50 netto, ? ohne Betrag)",
     );
   });
 

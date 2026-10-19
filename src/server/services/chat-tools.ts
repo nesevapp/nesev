@@ -655,7 +655,13 @@ async function recordSummary(name: string, args: Record<string, unknown>, read: 
       if (typeof args.category === "string") diffs.push(`Kategorie aller Positionen: ${beforeCats ? `${beforeCats} → ` : ""}${categoryLabel(args.category)}`);
       if (Array.isArray(args.lines)) {
         const before = e && Array.isArray(e.lines) ? `${e.lines.length} Position(en), brutto ${e.gross?.formatted ?? "?"}` : null;
-        diffs.push(`Positionen ersetzen: ${before ? `${before} → ` : ""}${args.lines.length} neue Position(en)`);
+        // the new amounts, so a guessed amount is visible before the click
+        const items = (args.lines as Record<string, unknown>[]).slice(0, MAX_ITEMS_SHOWN).map((l) => {
+          const amount = l.gross !== undefined ? `${euroInput(l.gross)} brutto` : l.net !== undefined ? `${euroInput(l.net)} netto` : "ohne Betrag";
+          return `${typeof l.category === "string" ? categoryLabel(l.category) : "?"} ${amount}`;
+        });
+        const more = args.lines.length > MAX_ITEMS_SHOWN ? `, … (+${args.lines.length - MAX_ITEMS_SHOWN})` : "";
+        diffs.push(`Positionen ersetzen: ${before ? `${before} → ` : ""}${args.lines.length} neue Position(en) (${items.join(", ")}${more})`);
       }
       return `${expenseName(e, id)} ändern: ${diffText(diffs)}`;
     }
