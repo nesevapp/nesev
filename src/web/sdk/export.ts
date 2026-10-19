@@ -23,12 +23,20 @@ export const exportApi = {
   accountingSettings: () => parseResponse(exports["accounting-settings"].$get()),
   updateAccountingSettings: (json: AccountingExportSettings) => parseResponse(exports["accounting-settings"].$put({ json })),
   accountingSummary: (p: AccountingExportParams) => parseResponse(exports.accounting.summary.$get({ query: accountingQueryParams(p) })),
+  /** "Backup einspielen": the staged restore (applied on the next start) and whether nesev can restart itself */
+  restoreStatus: () => parseResponse(exports.restore.$get()),
+  stageRestore: (file: File) => parseResponse(exports.restore.$post({ form: { file } })),
+  confirmRestore: () => parseResponse(exports.restore.confirm.$post()),
+  discardRestore: () => parseResponse(exports.restore.$delete()),
+  restart: () => parseResponse(exports.restart.$post()),
 };
 
 export type ExportSummary = Awaited<ReturnType<typeof exportApi.summary>>;
 export type AccountingExportSummary = Awaited<ReturnType<typeof exportApi.accountingSummary>>;
 export type { AccountingExportSettings };
 export type LocalBackup = Awaited<ReturnType<typeof exportApi.backups>>[number];
+export type RestoreStatus = Awaited<ReturnType<typeof exportApi.restoreStatus>>;
+export type BackupSummary = Awaited<ReturnType<typeof exportApi.stageRestore>>["summary"];
 
 export const exportSummaryQuery = (range: ExportRange) =>
   queryOptions({
@@ -69,6 +77,55 @@ export function useCreateLocalBackup() {
   return useMutation({
     mutationFn: exportApi.createBackup,
     onSuccess: () => invalidate("backups"),
+  });
+}
+
+export const restoreStatusQuery = queryOptions({
+  queryKey: keys.export.restore,
+  queryFn: exportApi.restoreStatus,
+});
+
+/** Uploads and validates a backup (staged, not yet confirmed): answers with its summary for the confirm dialog. */
+export function useStageRestore() {
+  return useMutation({ mutationFn: exportApi.stageRestore });
+}
+
+/** Confirms the staged backup: nesev applies it on the next start. */
+export function useConfirmRestore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: exportApi.confirmRestore,
+    onSuccess: (data) => queryClient.setQueryData(keys.export.restore, data),
+  });
+}
+
+export function useDiscardRestore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: exportApi.discardRestore,
+    onSuccess: (data) => queryClient.setQueryData(keys.export.restore, data),
+  });
+}
+
+/**
+ * Only when restoreStatus says canRestart (nesev runs as a service that starts it again). Resolves once the restarted
+ * server answers again (up to a minute).
+ */
+export function useRestartNesev() {
+  return useMutation({
+    mutationFn: async () => {
+      await exportApi.restart();
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      await sleep(1500);
+      for (let i = 0; i < 60; i++) {
+        try {
+          return await exportApi.restoreStatus();
+        } catch {
+          await sleep(1000);
+        }
+      }
+      throw new Error("nesev ist nach dem Neustart nicht erreichbar. Bitte nesev manuell starten.");
+    },
   });
 }
 

@@ -48,11 +48,21 @@ Inhalt:
   receipts/  Belege der Ausgaben (inkl. Originalfotos zugeschnittener Belege)
 
 Wiederherstellen:
-  1. nesev-Server beenden.
-  2. Im Datenordner (standardmäßig data/) nesev.db, nesev.db-wal und nesev.db-shm
-     beiseite legen bzw. löschen.
+  In nesev unter Einstellungen → Export → „Backup einspielen“ dieses ZIP auswählen
+  (unverändert, nicht entpacken). Die aktuellen Daten werden dabei nicht gelöscht,
+  sondern im Datenordner unter backups/before-restore-<Datum>/ aufbewahrt.
+  Das Backup wird beim nächsten Start von nesev übernommen.
+
+  Bei einer neuen Installation kann das ZIP auch in der Ersteinrichtung
+  eingespielt werden.
+
+Manuell (nur falls nesev nicht startet):
+  1. nesev beenden.
+  2. Im Datenordner (Pfad unter Einstellungen angezeigt) nesev.db, nesev.db-wal,
+     nesev.db-shm sowie die Ordner assets/, pdfs/ und receipts/ in einen anderen
+     Ordner verschieben.
   3. nesev.db, assets/, pdfs/ und receipts/ aus diesem Archiv in den Datenordner kopieren.
-  4. Server wieder starten.
+  4. nesev wieder starten.
 `;
 
 /**

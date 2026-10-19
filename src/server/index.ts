@@ -1,6 +1,7 @@
 import type { Server } from "bun";
 import { DEFAULT_PORT } from "./lib/app-files";
 import { resolveDataDir } from "./lib/data-location";
+import { applyPendingRestore } from "./services/restore";
 import { createSetupApp } from "./setup";
 
 export type { AppType } from "./app";
@@ -17,6 +18,10 @@ const hostname = process.env.NESEV_HOST ?? "127.0.0.1";
 type Fetch = (req: Request, server: Server<undefined>) => Response | Promise<Response>;
 
 async function loadApp(): Promise<Fetch> {
+  // "Backup einspielen" staged a restore: swap it in before main.ts opens the DB (services/restore.ts)
+  const dataDir = resolveDataDir();
+  const restored = dataDir && applyPendingRestore(dataDir.dir);
+  if (restored) console.log(`nesev: backup restored, the previous data is in ${restored.previousDataDir ?? "(nothing replaced)"}`);
   const main = await import("./main");
   return main.fetch;
 }

@@ -1,18 +1,35 @@
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { Download, FileArchive, FileSpreadsheet, HardDriveDownload, Loader2 } from "lucide-react";
+import { Download, FileArchive, FileSpreadsheet, HardDriveDownload, Loader2, RotateCcw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
 import { FormSection } from "@/components/form-fields";
 import { SettingsAreaPage, SettingsTabs } from "@/features/settings/settings-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   apiErrorMessage,
+  type BackupSummary,
   exportSummaryQuery,
   exportUrls,
   localBackupsQuery,
+  restoreStatusQuery,
+  useConfirmRestore,
   useCreateLocalBackup,
+  useDiscardRestore,
+  useRestartNesev,
+  useStageRestore,
 } from "@/sdk";
 import { AccountantExport } from "./accountant-export";
 import { DownloadButton } from "./download-button";
@@ -143,7 +160,7 @@ function BackupSection() {
       </FormSection>
       <FormSection
         title="Automatische Backups"
-        description="Beim Serverstart und einmal täglich wird nur die Datenbank nach data/backups gesichert, ohne Logo, PDFs und Belegdateien. Die letzten 14 bleiben erhalten. Für eine vollständige Sicherung „Backup herunterladen“ verwenden."
+        description="Beim Serverstart und einmal täglich wird nur die Datenbank in den Ordner backups im Datenordner gesichert, ohne Logo, PDFs und Belegdateien. Die letzten 14 bleiben erhalten, dazu eine Sicherung vor jedem Datenbank-Update (pre-migration-…). Für eine vollständige Sicherung „Backup herunterladen“ verwenden."
       >
         <div className="overflow-hidden rounded-lg border">
           <Table>
@@ -210,26 +227,170 @@ function BackupSection() {
 }
 
 function RestoreSection() {
+  const { data: status } = useQuery(restoreStatusQuery);
+  const stage = useStageRestore();
+  const confirm = useConfirmRestore();
+  const discard = useDiscardRestore();
+  const restart = useRestartNesev();
+  /** the uploaded backup's summary; kept while the dialog animates out */
+  const [staged, setStaged] = useState<BackupSummary | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const pending = status?.pending;
+
+  const onFile = (file: File | undefined) => {
+    if (!file) return;
+    stage.mutate(file, {
+      onSuccess: ({ summary }) => {
+        setStaged(summary);
+        setDialogOpen(true);
+      },
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  };
+  /** dialog closed without confirming: drop the staged upload */
+  const onCancel = () => {
+    setDialogOpen(false);
+    discard.mutate(undefined, { onError: (err) => toast.error(apiErrorMessage(err)) });
+  };
+  const onConfirm = () =>
+    confirm.mutate(undefined, {
+      onSuccess: () => {
+        setDialogOpen(false);
+        toast.success("Backup wird beim nächsten Start eingespielt");
+      },
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+  const onRestart = () =>
+    restart.mutate(undefined, {
+      onSuccess: () => window.location.reload(),
+      onError: (err) => toast.error(apiErrorMessage(err)),
+    });
+
   return (
     <FormSection
-      title="Wiederherstellen"
-      description="Bewusst kein automatischer Import in der App, damit nichts versehentlich überschrieben wird."
+      title="Backup einspielen"
+      description="Stellt alle Daten aus einer ZIP-Datei von „Backup herunterladen“ wieder her. Eine Datenbank-Sicherung (.db) aus „Automatische Backups“ geht auch; dann wird nur die Datenbank ersetzt."
     >
-      <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed">
-        <li>nesev-Server beenden.</li>
-        <li>
-          Im Datenordner (standardmäßig <Code>data/</Code> im Projektordner bzw. <Code>NESEV_DATA_DIR</Code>) die
-          aktuelle Datenbank sichern und entfernen: <Code>nesev.db</Code>, <Code>nesev.db-wal</Code>,{" "}
-          <Code>nesev.db-shm</Code>.
-        </li>
-        <li>
-          Aus dem Backup-ZIP <Code>nesev.db</Code>, <Code>assets/</Code>, <Code>pdfs/</Code> und <Code>receipts/</Code> in den Datenordner
-          kopieren. Bei einem automatischen Backup die Datei <Code>backups/nesev-JJJJ-MM-TT.db</Code> als{" "}
-          <Code>nesev.db</Code> in den Datenordner kopieren.
-        </li>
-        <li>Server wieder starten.</li>
-      </ol>
+      {pending ? (
+        <div className="grid gap-3 rounded-lg border border-info-border bg-info-muted px-4 py-3 text-sm" role="status">
+          <p className="font-medium text-info">
+            Backup vorgemerkt{pending.summary.companyName && ` (${pending.summary.companyName})`}: Es wird beim nächsten Start
+            von nesev eingespielt.
+          </p>
+          <p className="text-muted-foreground">
+            Änderungen bis zum Neustart sind danach nur noch in der Sicherung der aktuellen Daten
+            (<Code>backups/before-restore-…</Code> im Datenordner) enthalten.
+            {!status.canRestart && " Bitte nesev jetzt beenden und wieder starten."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {status.canRestart && (
+              <Button size="sm" disabled={restart.isPending} onClick={onRestart}>
+                {restart.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+                {restart.isPending ? "nesev startet neu …" : "Jetzt neu starten"}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={discard.isPending || restart.isPending}
+              onClick={() =>
+                discard.mutate(undefined, {
+                  onSuccess: () => toast.success("Vorgemerktes Backup verworfen"),
+                  onError: (err) => toast.error(apiErrorMessage(err)),
+                })
+              }
+            >
+              Verwerfen
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <input
+            ref={input}
+            type="file"
+            accept=".zip,.db,application/zip"
+            className="hidden"
+            onChange={(e) => {
+              onFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <Button variant="outline" disabled={stage.isPending} onClick={() => input.current?.click()}>
+            {stage.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+            {stage.isPending ? "Backup wird geprüft …" : "Backup einspielen …"}
+          </Button>
+        </div>
+      )}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Startet nesev nicht mehr, steht die Anleitung zum manuellen Wiederherstellen in der Datei <Code>LIESMICH.txt</Code> im
+        Backup-ZIP.
+      </p>
+
+      <AlertDialog open={dialogOpen} onOpenChange={(open) => !open && onCancel()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Backup einspielen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {staged?.kind === "zip"
+                ? "Ersetzt die aktuelle Datenbank, Logo und Briefpapier, alle gespeicherten PDFs und die Ausgabenbelege durch den Stand des Backups."
+                : "Ersetzt nur die Datenbank. Logo, gespeicherte PDFs und Belegdateien bleiben, wie sie sind."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {staged && <BackupSummaryView summary={staged} />}
+          <p className="text-sm text-muted-foreground">
+            Die aktuellen Daten werden nicht gelöscht: Sie bleiben im Datenordner unter{" "}
+            <Code>backups/before-restore-…</Code>. Eingespielt wird beim nächsten Start von nesev.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirm.isPending}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={confirm.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                onConfirm();
+              }}
+            >
+              Einspielen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </FormSection>
+  );
+}
+
+function BackupSummaryView({ summary: s }: { summary: BackupSummary }) {
+  const rows: [string, string][] = [
+    ["Unternehmen", s.companyName || "–"],
+    ["Kunden", String(s.clients)],
+    [
+      "Belege",
+      `${s.invoices} Rechnungen · ${s.creditNotes} Gutschriften · ${s.offers} Angebote${s.drafts ? ` · ${s.drafts} Entwürfe` : ""}`,
+    ],
+    ["Letzter Beleg", s.latestDocumentDate ? formatDate(s.latestDocumentDate) : "–"],
+    ["Ausgaben", `${s.expenses}${s.latestExpenseDate ? `, letzte vom ${formatDate(s.latestExpenseDate)}` : ""}`],
+  ];
+  if (s.kind === "zip") rows.push(["Dateien", `${s.files.pdfs} PDFs · ${s.files.receipts} Belegdateien · ${s.files.assets} Logo/Briefpapier`]);
+  rows.push(["Größe", formatBytes(s.totalBytes)]);
+  return (
+    <div className="grid gap-2">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+        {rows.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="tabular">{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      {s.pendingMigrations > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Das Backup stammt von einer älteren nesev-Version; die Datenbank wird beim Start automatisch aktualisiert.
+        </p>
+      )}
+    </div>
   );
 }
 
