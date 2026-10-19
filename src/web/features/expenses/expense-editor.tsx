@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { CircleCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { COUNTRY_OPTIONS } from "@shared/countries";
@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -194,10 +195,6 @@ export function ExpenseEditor({
 
   const leaving = useRef(false);
   const dirty = formState.isDirty || !!pendingFile;
-  useBlocker({
-    shouldBlockFn: () => !leaving.current && dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => !leaving.current && dirty,
-  });
 
   const busy = create.isPending || update.isPending || remove.isPending || upload.isPending;
 
@@ -673,6 +670,7 @@ export function ExpenseEditor({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UnsavedChangesGuard when={dirty} shouldBlock={() => !leaving.current} />
     </Page>
   );
 }

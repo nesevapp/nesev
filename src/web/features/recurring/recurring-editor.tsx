@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { type Control, useForm, useFormContext, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, FilePlus2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate, todayIso } from "@shared/dates";
@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -91,11 +92,6 @@ export function RecurringEditor({ recurring, initialValues }: { recurring?: Recu
   const client = useQuery({ ...clientQuery(values.clientId), enabled: values.clientId > 0 });
 
   const leaving = useRef(false);
-  useBlocker({
-    shouldBlockFn: () =>
-      !leaving.current && formState.isDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => !leaving.current && formState.isDirty,
-  });
 
   const busy = create.isPending || update.isPending || remove.isPending || generate.isPending;
 
@@ -416,6 +412,7 @@ export function RecurringEditor({ recurring, initialValues }: { recurring?: Recu
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UnsavedChangesGuard when={formState.isDirty} shouldBlock={() => !leaving.current} />
     </Page>
   );
 }

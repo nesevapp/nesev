@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useBlocker, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Calculator, CheckCircle2, Download, Eye, Lock, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { addDays, formatDate } from "@shared/dates";
@@ -30,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -265,10 +266,6 @@ function ReminderEditor({ reminder }: { reminder: Reminder }) {
   const [feeCents, interestCents, issueDate] = useWatch({ control, name: ["feeCents", "interestCents", "issueDate"] });
 
   const leaving = useRef(false);
-  useBlocker({
-    shouldBlockFn: () => !leaving.current && formState.isDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => !leaving.current && formState.isDirty,
-  });
 
   const busy = update.isPending || finalize.isPending || remove.isPending;
 
@@ -564,6 +561,7 @@ function ReminderEditor({ reminder }: { reminder: Reminder }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UnsavedChangesGuard when={formState.isDirty} shouldBlock={() => !leaving.current} />
     </Page>
   );
 }
