@@ -120,8 +120,12 @@ export function parseInline(text: string): Inline[] {
     else if (m[2] !== undefined || m[3] !== undefined) out.push({ type: "strong", children: parseInline(m[2] ?? m[3]) });
     else if (m[4] !== undefined) {
       const href = safeHref(m[5]);
-      if (href) out.push({ type: "link", href, children: parseInline(m[4]) });
-      else pushText(m[4]);
+      if (href) {
+        out.push({ type: "link", href, children: parseInline(m[4]) });
+        // external link: the target domain stays visible next to a label that may say anything
+        const host = externalHost(href);
+        if (host && !m[4].toLowerCase().includes(host)) pushText(` (${host})`);
+      } else pushText(m[4]);
     } else out.push({ type: "em", children: parseInline(m[6] ?? m[7]) });
   }
   pushText(text.slice(last));
@@ -157,6 +161,19 @@ export function safeHref(href: string): string | null {
   if (/^\/(?!\/)/.test(href)) return isAppPath(href) ? href : null;
   if (/^https?:\/\//i.test(href)) return href;
   return null;
+}
+
+/**
+ * Host (and port) of an http(s) link that leaves nesev (anything but an app path); punycode for IDNs, so look-alike
+ * domains show as "xn--…". null for app links.
+ */
+export function externalHost(href: string): string | null {
+  if (!/^https?:\/\//i.test(href) || appPath(href)) return null;
+  try {
+    return new URL(href).host.toLowerCase(); // with the port: "localhost:8080" is another local app
+  } catch {
+    return null;
+  }
 }
 
 /** An app path, or an http(s) link pointing at a local nesev instance (the MCP tools link to http://localhost:<port>/…), as a path. */

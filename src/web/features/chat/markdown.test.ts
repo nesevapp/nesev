@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { appPath, parseInline, parseMarkdown, safeHref } from "./markdown";
+import { appPath, externalHost, parseInline, parseMarkdown, safeHref } from "./markdown";
 import { MarkdownView } from "./markdown-view";
 
 const html = (source: string) => renderToStaticMarkup(createElement(MarkdownView, { source }));
@@ -23,6 +23,21 @@ describe("markdown renderer escaping", () => {
       expect(out).not.toContain("<a");
       expect(out).toContain("klick");
     }
+  });
+
+  test("external links show their target domain; app and localhost links don't", () => {
+    expect(parseInline("[Ihre Rechnung](https://evil.example/pay)")).toEqual([
+      { type: "link", href: "https://evil.example/pay", children: [{ type: "text", text: "Ihre Rechnung" }] },
+      { type: "text", text: " (evil.example)" },
+    ]);
+    expect(html("[Bank](https://bänk.example/x) danach")).toContain("</a> (xn--bnk-qla.example) danach");
+    // the label already names the domain
+    expect(parseInline("[finanzonline.bmf.gv.at](https://finanzonline.bmf.gv.at/)")).toHaveLength(1);
+    expect(parseInline("[RE-1](/invoices/1)")).toHaveLength(1);
+    expect(parseInline("[RE-1](http://localhost:5174/invoices/1)")).toHaveLength(1);
+    expect(externalHost("http://127.0.0.1:3998/invoices/1")).toBeNull();
+    expect(externalHost("https://WWW.Example.com/a")).toBe("www.example.com");
+    expect(externalHost("http://localhost:8080/admin")).toBe("localhost:8080");
   });
 
   test("code spans and blocks are escaped, not interpreted", () => {
