@@ -15,7 +15,8 @@ import type {
   DocumentUpdate,
 } from "../../shared/schemas/document";
 import { formatCents } from "../../shared/money";
-import { defaultTaxMode, requiresClientUid, TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
+import { countryName } from "../../shared/countries";
+import { defaultTaxMode, isEuCountry, requiresClientUid, TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
 import { calcTotals } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { type Client, type Document, type DocumentItem, clients, documentItems, documents } from "../db/schema";
@@ -356,19 +357,49 @@ function checkCreditNote(tx: DbOrTx, doc: Document, grossCents: number): void {
 export const UID_REQUIRED_ABOVE_CENTS = 1_000_000;
 
 /**
- * Non-blocking hints before finalizing a draft (finalizeDocument doesn't use them; a UI can show them in the
- * finalize dialog): an Austrian invoice to a business above € 10.000 gross without the recipient's UID.
+ * Non-blocking hints before finalizing a draft (finalizeDocument doesn't use them; the editor shows them in the
+ * finalize dialog, GET /api/documents/:id/finalize-warnings):
+ * - an Austrian invoice to a business above € 10.000 gross without the recipient's UID;
+ * - reverse charge without our own UID (§ 11 Abs. 1a UStG: the invoice names both UIDs);
+ * - Kleinunternehmer invoicing a foreign business: for services the place of supply is abroad (§ 3a Abs. 6 UStG),
+ *   so the exemption doesn't cover them (see defaultTaxMode in shared/tax.ts).
+ * Credit notes inherit their invoice's tax mode (checkCreditNote) and get no tax-mode hints.
  */
 export function finalizeWarnings(db: DbOrTx, id: number): string[] {
   const doc = getRow(db, id);
   const warnings: string[] = [];
-  if (doc.type !== "invoice" || doc.status !== "draft" || doc.taxMode !== "AT_DOMESTIC") return warnings;
+  if (doc.status !== "draft" || doc.type === "credit_note") return warnings;
   const client = getClient(db, doc.clientId);
-  const gross = cachedTotals(getItems(db, id), doc.taxMode).grossCents;
-  if (client && client.type === "company" && !client.uid.trim() && gross > UID_REQUIRED_ABOVE_CENTS) {
+  if (!client) return warnings;
+  const s = getSettings(db);
+  const ownUid = !!s.uid.trim();
+  const country = client.country.toUpperCase();
+  const business = client.type === "company" || !!client.uid.trim();
+
+  if (doc.type === "invoice" && doc.taxMode === "AT_DOMESTIC") {
+    const gross = cachedTotals(getItems(db, id), doc.taxMode).grossCents;
+    if (client.type === "company" && !client.uid.trim() && gross > UID_REQUIRED_ABOVE_CENTS) {
+      warnings.push(
+        `Rechnungsbetrag über ${formatCents(UID_REQUIRED_ABOVE_CENTS)} brutto: Die UID-Nummer des Kunden muss auf der Rechnung stehen (§ 11 Abs. 1 Z 3 lit. i UStG) — beim Kunden hinterlegen.`,
+      );
+    }
+  }
+  if (doc.taxMode === "EU_REVERSE_CHARGE" && !ownUid) {
     warnings.push(
-      `Rechnungsbetrag über ${formatCents(UID_REQUIRED_ABOVE_CENTS)} brutto: Die UID-Nummer des Kunden muss auf der Rechnung stehen (§ 11 Abs. 1 Z 3 lit. i UStG) — beim Kunden hinterlegen.`,
+      "Reverse Charge ohne eigene UID-Nummer: Die Rechnung muss Ihre UID und die des Kunden enthalten (§ 11 Abs. 1a UStG). UID beim Finanzamt beantragen und unter Einstellungen → Unternehmen hinterlegen.",
     );
+  }
+  if (doc.taxMode === "SMALL_BUSINESS" && country !== "AT" && business) {
+    const where = countryName(country);
+    if (isEuCountry(country)) {
+      warnings.push(
+        `Kunde ist ein Unternehmen in ${where}: Bei Dienstleistungen liegt der Leistungsort dort (§ 3a Abs. 6 UStG), die Kleinunternehmerbefreiung gilt dafür nicht. Richtig ist „${TAX_MODE_LABELS.EU_REVERSE_CHARGE}“ mit der UID des Kunden${ownUid ? "" : " und Ihrer eigenen UID-Nummer (beim Finanzamt beantragen, unter Einstellungen → Unternehmen hinterlegen)"}; die Leistung gehört in die Zusammenfassende Meldung. Für Warenlieferungen bleibt es bei der Kleinunternehmerregelung.`,
+      );
+    } else {
+      warnings.push(
+        `Kunde ist ein Unternehmen in ${where}: Bei Dienstleistungen liegt der Leistungsort dort (§ 3a Abs. 6 UStG), nicht in Österreich. Richtig ist „${TAX_MODE_LABELS.THIRD_COUNTRY}“ (nicht steuerbar), die Kleinunternehmerbefreiung gilt dafür nicht.`,
+      );
+    }
   }
   return warnings;
 }

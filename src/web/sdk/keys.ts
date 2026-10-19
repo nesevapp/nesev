@@ -33,6 +33,7 @@ export const keys = {
     defaults: (type: DocumentType, clientId: number | null) => ["documents", "defaults", type, clientId] as const,
     /** e-invoice formats and missing data of a finalized invoice / credit note */
     einvoice: (id: number) => ["documents", "einvoice", id] as const,
+    finalizeWarnings: (id: number) => ["documents", "finalize-warnings", id] as const,
   },
   /** Defaults for the "new document" page: deliberately outside `documents.all`, so saving the new
    *  draft doesn't refetch them while the page is still mounted. */

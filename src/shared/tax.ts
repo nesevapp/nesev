@@ -34,25 +34,44 @@ export function requiresClientUid(mode: TaxMode): boolean {
 export interface TaxModeClientInput {
   country: string;
   uid?: string | null;
+  /** "company" marks a business recipient outside the EU (no UID to go by) */
+  type?: "company" | "person";
   defaultTaxMode?: TaxMode | null;
 }
 
 export interface TaxModeSettingsInput {
   smallBusiness: boolean;
+  /** our own UID: a Kleinunternehmer needs one for reverse-charge invoices (§ 11 Abs. 1a UStG) */
+  uid?: string | null;
 }
 
+/** Modes for supplies whose place of supply is abroad: the Kleinunternehmer exemption doesn't apply to them. */
+const FOREIGN_MODES: readonly TaxMode[] = ["EU_REVERSE_CHARGE", "THIRD_COUNTRY"];
+
 /**
- * Default tax mode for a new document.
- * Small business overrides everything; then an explicit client default; then:
- * AT → AT_DOMESTIC, EU + UID → EU_REVERSE_CHARGE, EU without UID (B2C) → AT_DOMESTIC,
- * non-EU (e.g. CH) → THIRD_COUNTRY.
+ * Default tax mode for a new document. The app treats documents as services (see small-business.ts).
+ *
+ * Regular: explicit client default; then AT → AT_DOMESTIC, EU + UID → EU_REVERSE_CHARGE,
+ * EU without UID (B2C) → AT_DOMESTIC, non-EU (e.g. CH) → THIRD_COUNTRY.
+ *
+ * Kleinunternehmer: § 6 Abs. 1 Z 27 UStG only exempts supplies taxable in Austria. A B2B service to a foreign
+ * business is taxable where the recipient is (§ 3a Abs. 6 UStG), so it is invoiced like for anyone else:
+ * EU business (UID) → EU_REVERSE_CHARGE, but only once we have our own UID (the invoice must show both);
+ * non-EU business → THIRD_COUNTRY. Everything else (AT, private persons) → SMALL_BUSINESS. A client default
+ * is honoured only for those two foreign modes, so an old "Inland" default can't charge VAT by mistake.
  */
 export function defaultTaxMode(client: TaxModeClientInput, settings: TaxModeSettingsInput): TaxMode {
-  if (settings.smallBusiness) return "SMALL_BUSINESS";
-  if (client.defaultTaxMode) return client.defaultTaxMode;
   const country = client.country.toUpperCase();
+  const clientUid = !!client.uid?.trim();
+  if (settings.smallBusiness) {
+    if (client.defaultTaxMode && FOREIGN_MODES.includes(client.defaultTaxMode)) return client.defaultTaxMode;
+    if (country === "AT") return "SMALL_BUSINESS";
+    if (isEuCountry(country)) return clientUid && settings.uid?.trim() ? "EU_REVERSE_CHARGE" : "SMALL_BUSINESS";
+    return clientUid || client.type === "company" ? "THIRD_COUNTRY" : "SMALL_BUSINESS";
+  }
+  if (client.defaultTaxMode) return client.defaultTaxMode;
   if (country === "AT") return "AT_DOMESTIC";
-  if (isEuCountry(country)) return client.uid?.trim() ? "EU_REVERSE_CHARGE" : "AT_DOMESTIC";
+  if (isEuCountry(country)) return clientUid ? "EU_REVERSE_CHARGE" : "AT_DOMESTIC";
   return "THIRD_COUNTRY";
 }
 

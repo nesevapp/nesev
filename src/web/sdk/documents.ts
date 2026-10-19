@@ -31,6 +31,8 @@ export const documentsApi = {
   update: (id: number, json: DocumentUpdateInput) => parseResponse(documents[":id"].$put({ param: idParam(id), json })),
   remove: (id: number) => parseResponse(documents[":id"].$delete({ param: idParam(id) })),
   finalize: (id: number) => parseResponse(documents[":id"].finalize.$post({ param: idParam(id) })),
+  /** Non-blocking hints for the finalize dialog of a saved draft (missing UIDs, Kleinunternehmer abroad, …). */
+  finalizeWarnings: (id: number) => parseResponse(documents[":id"]["finalize-warnings"].$get({ param: idParam(id) })),
   changeStatus: (id: number, json: DocumentStatusInput) =>
     parseResponse(documents[":id"].status.$post({ param: idParam(id), json })),
   /** Offer → invoice, invoice → credit note, duplicate: each returns the new draft. */
@@ -66,6 +68,14 @@ export const documentQuery = (id: number) =>
   queryOptions({
     queryKey: keys.documents.detail(id),
     queryFn: () => documentsApi.get(id),
+  });
+
+/** Finalize hints of a saved draft: always fetched fresh (they depend on the client and settings too). */
+export const documentFinalizeWarningsQuery = (id: number) =>
+  queryOptions({
+    queryKey: keys.documents.finalizeWarnings(id),
+    queryFn: () => documentsApi.finalizeWarnings(id),
+    staleTime: 0,
   });
 
 /** Defaults for the "new document" page: always fetched fresh, never kept. */

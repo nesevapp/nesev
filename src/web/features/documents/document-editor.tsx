@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { type Control as RhfControl, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Copy, Download, Eye, Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DOCUMENT_TYPE_LABELS, type DocumentType } from "@shared/documents";
 import { type DocumentFormData, type DocumentFormValues, documentFormSchema } from "@shared/schemas/document";
 import { requiresClientUid, TAX_MODE_LABELS, TAX_MODES, type TaxMode, taxNoteFor } from "@shared/tax";
 import { Page } from "@/components/page";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,7 @@ import {
   apiErrorMessage,
   clientQuery,
   type Document,
+  documentFinalizeWarningsQuery,
   documentPdfUrl,
   documentsApi,
   settingsQuery,
@@ -96,7 +98,12 @@ export function DocumentEditor({
   const { data: settings } = useQuery(settingsQuery);
   const { data: allTemplates } = useQuery(templatesQuery);
   const templates = (allTemplates ?? []).filter((t) => t.docType === type);
+  const queryClient = useQueryClient();
   const [confirmFinalize, setConfirmFinalize] = useState(false);
+  /** the draft as saved for the finalize dialog, plus the server's non-blocking hints for it */
+  const [finalizing, setFinalizing] = useState<{ saved: Document; warnings: string[] } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const finalizeStarted = useRef(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const form = useForm<DocumentFormValues, unknown, DocumentFormData>({
@@ -107,15 +114,10 @@ export function DocumentEditor({
   const [clientId, taxMode, items] = useWatch({ control, name: ["clientId", "taxMode", "items"] });
   const client = useQuery({ ...clientQuery(clientId), enabled: clientId > 0 });
 
-  // Leaving with unsaved changes asks first; set before navigating away on purpose.
+  // Leaving with unsaved changes asks first (<UnsavedChangesGuard> below); set before navigating away on purpose.
   const leaving = useRef(false);
-  useBlocker({
-    shouldBlockFn: () =>
-      !leaving.current && formState.isDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => !leaving.current && formState.isDirty,
-  });
 
-  const busy = create.isPending || update.isPending || finalize.isPending || remove.isPending;
+  const busy = create.isPending || update.isPending || finalize.isPending || remove.isPending || checking;
 
   /** Save if new or dirty. Resolves to the saved document, or null on validation/API error. */
   const save = (): Promise<Document | null> => {
@@ -158,6 +160,7 @@ export function DocumentEditor({
   /**
    * Validate before asking the irreversible question: the form schema plus the server's finalize checks
    * (client, at least one line, line titles, UID for reverse charge, service period). Errors show on the fields.
+   * Then the draft is saved and the server's non-blocking hints (finalize-warnings) go into the dialog.
    */
   const requestFinalize = async () => {
     const valid = await form.trigger(undefined, { shouldFocus: true });
@@ -172,7 +175,27 @@ export function DocumentEditor({
       toast.error(issues.find((i) => !i.name)?.message ?? "Bitte Eingaben prüfen");
       return;
     }
-    setConfirmFinalize(true);
+    setChecking(true);
+    try {
+      const saved = await save();
+      if (!saved) return;
+      // the hints are advice only: if they can't be loaded, finalizing is still possible
+      const warnings = await queryClient
+        .fetchQuery(documentFinalizeWarningsQuery(saved.id))
+        .then((r) => r.warnings)
+        .catch(() => []);
+      finalizeStarted.current = false;
+      setFinalizing({ saved, warnings });
+      setConfirmFinalize(true);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  /** Dialog closed without finalizing: a new draft was saved meanwhile, so continue on its own page. */
+  const onFinalizeDialogChange = (open: boolean) => {
+    setConfirmFinalize(open);
+    if (!open && finalizing && !finalizeStarted.current) openDetail(finalizing.saved);
   };
 
   // finalize errors (set by hand above) disappear as soon as their cause is fixed
@@ -192,8 +215,10 @@ export function DocumentEditor({
   }, [form]);
 
   const onFinalize = async () => {
+    finalizeStarted.current = true;
     setConfirmFinalize(false);
-    const saved = await save();
+    const saved = finalizing && !formState.isDirty ? finalizing.saved : await save();
+    setFinalizing(null);
     if (!saved) return;
     finalize.mutate(saved.id, {
       onSuccess: (final) => {
@@ -272,6 +297,7 @@ export function DocumentEditor({
       }
       description={doc && <DocumentRelations doc={doc} />}
     >
+      <UnsavedChangesGuard when={formState.isDirty} shouldBlock={() => !leaving.current} />
       <Form {...form}>
         <form
           onSubmit={(e) => {
@@ -471,7 +497,7 @@ export function DocumentEditor({
         </form>
       </Form>
 
-      <AlertDialog open={confirmFinalize} onOpenChange={setConfirmFinalize}>
+      <AlertDialog open={confirmFinalize} onOpenChange={onFinalizeDialogChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{DOCUMENT_TYPE_LABELS[type]} finalisieren?</AlertDialogTitle>
@@ -480,6 +506,22 @@ export function DocumentEditor({
               {type === "invoice" && " Korrekturen sind nur noch über eine Gutschrift möglich."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {finalizing && finalizing.warnings.length > 0 && (
+            <div className="grid gap-2 rounded-md border border-warning-border bg-warning-muted p-3 text-sm text-warning" role="note">
+              <p className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="size-4 shrink-0" />
+                Bitte vor dem Finalisieren prüfen
+              </p>
+              <ul className="grid gap-1.5 pl-6">
+                {finalizing.warnings.map((w) => (
+                  <li key={w} className="list-disc">
+                    {w}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs">Sie können trotzdem finalisieren.</p>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction onClick={() => void onFinalize()}>Finalisieren</AlertDialogAction>

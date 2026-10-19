@@ -219,6 +219,40 @@ describe("finalize", () => {
     expect(finalizeDocument(db, big.id).status).toBe("final");
   });
 
+  test("finalize warnings: reverse charge without own UID; Kleinunternehmer invoicing a foreign business", () => {
+    const { db } = setup();
+    const de = addClient(db, { country: "DE", uid: "DE123456789" });
+    const ch = addClient(db, { country: "CH", type: "company" });
+    const chPerson = addClient(db, { country: "CH", type: "person" });
+    const draft = (clientId: number, taxMode?: "SMALL_BUSINESS" | "EU_REVERSE_CHARGE") =>
+      createDocument(db, { type: "invoice", clientId, items: [item()], ...(taxMode ? { taxMode } : {}) }).id;
+
+    updateSettings(db, { uid: "" });
+    expect(finalizeWarnings(db, draft(de.id, "EU_REVERSE_CHARGE"))).toEqual([expect.stringContaining("§ 11 Abs. 1a")]);
+
+    updateSettings(db, { smallBusiness: true });
+    // without own UID the default stays Kleinunternehmer, and the dialog explains why that's wrong for services
+    const kuDe = draft(de.id);
+    expect(getDocument(db, kuDe).taxMode).toBe("SMALL_BUSINESS");
+    const [hint] = finalizeWarnings(db, kuDe);
+    expect(hint).toContain("Deutschland");
+    expect(hint).toContain("§ 3a Abs. 6");
+    expect(hint).toContain("eigenen UID-Nummer");
+    // non-EU business: the default is already Drittland; an explicit KU mode gets the hint
+    expect(getDocument(db, draft(ch.id)).taxMode).toBe("THIRD_COUNTRY");
+    expect(finalizeWarnings(db, draft(ch.id, "SMALL_BUSINESS"))).toEqual([expect.stringContaining("Drittland")]);
+    expect(finalizeWarnings(db, draft(chPerson.id))).toEqual([]);
+
+    // with own UID: reverse charge by default, no hint
+    updateSettings(db, { uid: "ATU12345678" });
+    const rc = draft(de.id);
+    expect(getDocument(db, rc).taxMode).toBe("EU_REVERSE_CHARGE");
+    expect(finalizeWarnings(db, rc)).toEqual([]);
+    const [explicitKu] = finalizeWarnings(db, draft(de.id, "SMALL_BUSINESS"));
+    expect(explicitKu).toContain("EU Reverse Charge");
+    expect(explicitKu).not.toContain("eigenen UID-Nummer");
+  });
+
   test("fills a missing due date", () => {
     const { db, client } = setup();
     const doc = createDocument(db, { type: "invoice", clientId: client.id, issueDate: "2026-02-01", dueDate: null, items: [item()] });

@@ -18,6 +18,7 @@ import {
   documentDefaults,
   duplicateDocument,
   finalizeDocument,
+  finalizeWarnings,
   getDocument,
   listDocuments,
   setPdfPath,
@@ -44,6 +45,8 @@ const app = new Hono()
     deleteDocument(db, c.req.valid("param").id);
     return c.json({ ok: true });
   })
+  /** Non-blocking hints for the finalize dialog (e.g. missing UIDs, Kleinunternehmer and foreign businesses). */
+  .get("/:id/finalize-warnings", idParam, (c) => c.json({ warnings: finalizeWarnings(db, c.req.valid("param").id) }))
   .post("/:id/finalize", idParam, async (c) => {
     const { id } = c.req.valid("param");
     const doc = finalizeDocument(db, id);
