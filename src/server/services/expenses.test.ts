@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -26,6 +26,7 @@ import {
   supplierSuggestions,
   updateExpense,
 } from "./expenses";
+import { applyMatch } from "./bank-matching";
 
 const dataDir = mkdtempSync(join(tmpdir(), "nesev-expenses-test-"));
 afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
@@ -227,6 +228,53 @@ describe("expenses service", () => {
     await deleteExpense(db, e.id, dataDir);
     expect(db.select().from(bankMatches).all()).toEqual([]);
     expect(db.select().from(expenses).all()).toEqual([]);
+  });
+
+  test("deleting a matched expense reopens its bank transaction", async () => {
+    const db = createTestDb();
+    const e = createExpense(db, { supplierName: "X", lines: [line()] }); // 12,00 gross
+    const acc = db.insert(bankAccounts).values({ name: "Giro" }).returning().get();
+    const tx = db
+      .insert(bankTransactions)
+      .values({ accountId: acc.id, bookingDate: "2026-01-01", amountCents: -1200, importHash: "h1" })
+      .returning()
+      .get();
+    applyMatch(db, tx.id, { allocations: [{ expenseId: e.id, amountCents: 1200 }] });
+    expect(db.select().from(bankTransactions).get()!.status).toBe("matched");
+    await deleteExpense(db, e.id, dataDir);
+    expect(db.select().from(bankMatches).all()).toEqual([]);
+    expect(db.select().from(bankTransactions).get()!.status).toBe("open");
+  });
+
+  test("concurrent receipt uploads leave exactly the stored file on disk", async () => {
+    const db = createTestDb();
+    const dir = mkdtempSync(join(tmpdir(), "nesev-expenses-race-"));
+    const e = createExpense(db, { supplierName: "X", issueDate: "2026-04-01", lines: [line()] });
+    await setExpenseAttachment(db, e.id, pdf("alt.pdf"), dir);
+    await Promise.all([1, 2, 3].map((i) => setExpenseAttachment(db, e.id, pdf(`neu-${i}.pdf`), dir)));
+    const row = getExpense(db, e.id)!;
+    expect(readdirSync(join(dir, "receipts", "2026")).map((f) => `receipts/2026/${f}`)).toEqual([row.attachmentPath!]);
+    // removed meanwhile: the new file is dropped and the upload fails with 404
+    const pending = setExpenseAttachment(db, e.id, pdf("spät.pdf"), dir);
+    await deleteExpense(db, e.id, dir);
+    await expect(pending).rejects.toThrow("Ausgabe nicht gefunden");
+    expect(readdirSync(join(dir, "receipts", "2026"))).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("drafts from files: a failing file write leaves no empty draft behind", async () => {
+    const db = createTestDb();
+    const dir = mkdtempSync(join(tmpdir(), "nesev-expenses-ro-"));
+    const yearDir = join(dir, "receipts", new Date().toISOString().slice(0, 4));
+    mkdirSync(yearDir, { recursive: true });
+    chmodSync(yearDir, 0o500);
+    try {
+      await expect(createDraftsFromFiles(db, [pdf("a.pdf"), pdf("b.pdf")], dir)).rejects.toThrow();
+      expect(listExpenses(db)).toEqual([]);
+    } finally {
+      chmodSync(yearDir, 0o700);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("drafts from files: one incomplete expense per receipt, today's date", async () => {

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import type { AnalysisQueueItem, AnalysisStatus, ReceiptExtraction, TextSource } from "../../shared/receipts";
 import type { DbOrTx } from "../db/client";
@@ -151,6 +151,26 @@ export function cancelAnalysis(db: DbOrTx, id: number): ReceiptAnalysis {
     .get();
 }
 
+/**
+ * Cancels the queued/running analyses of an expense (before its receipt is replaced/removed or it is deleted) and
+ * aborts the one this process' worker is running. Returns the cancelled ids.
+ */
+export function cancelExpenseAnalyses(
+  db: DbOrTx,
+  expenseId: number,
+  worker: Pick<ReceiptWorker, "cancel"> | undefined = (globalThis as { [WORKER_KEY]?: ReceiptWorker })[WORKER_KEY],
+): number[] {
+  const ids = db
+    .update(receiptAnalyses)
+    .set({ status: "cancelled", finishedAt: now(), error: "Abgebrochen" })
+    .where(and(eq(receiptAnalyses.expenseId, expenseId), inArray(receiptAnalyses.status, ["queued", "running"])))
+    .returning({ id: receiptAnalyses.id })
+    .all()
+    .map((r) => r.id);
+  for (const id of ids) worker?.cancel(id);
+  return ids;
+}
+
 /** Called after the user saved the expense with applied suggestions. */
 export function markApplied(db: DbOrTx, id: number): ReceiptAnalysis {
   const row = getAnalysis(db, id);
@@ -158,14 +178,28 @@ export function markApplied(db: DbOrTx, id: number): ReceiptAnalysis {
   return db.update(receiptAnalyses).set({ appliedAt: now() }).where(eq(receiptAnalyses.id, id)).returning().get();
 }
 
-/** Server start: runs interrupted by a restart go back to the queue. Returns the number reset. */
+/** A run is claimed at most this often; one interrupted again (e.g. it crashes the server) fails instead. */
+export const MAX_ANALYSIS_ATTEMPTS = 2;
+export const INTERRUPTED_ERROR = "Analyse wurde wiederholt durch einen Neustart unterbrochen – bitte erneut starten";
+
+/**
+ * Server start: runs interrupted by a restart go back to the queue, unless they were already claimed
+ * MAX_ANALYSIS_ATTEMPTS times (then they fail, so a run that brings the server down doesn't loop forever).
+ * Returns the number requeued.
+ */
 export function recoverStaleRuns(db: DbOrTx): number {
-  return db
-    .update(receiptAnalyses)
-    .set({ status: "queued", startedAt: null })
-    .where(eq(receiptAnalyses.status, "running"))
-    .returning({ id: receiptAnalyses.id })
-    .all().length;
+  return db.transaction((tx) => {
+    tx.update(receiptAnalyses)
+      .set({ status: "failed", error: INTERRUPTED_ERROR, finishedAt: now() })
+      .where(and(eq(receiptAnalyses.status, "running"), gte(receiptAnalyses.attempts, MAX_ANALYSIS_ATTEMPTS)))
+      .run();
+    return tx
+      .update(receiptAnalyses)
+      .set({ status: "queued", startedAt: null })
+      .where(eq(receiptAnalyses.status, "running"))
+      .returning({ id: receiptAnalyses.id })
+      .all().length;
+  });
 }
 
 /** Oldest queued run → running (with the expense's current receipt). */
@@ -182,7 +216,13 @@ export function claimNext(db: DbOrTx): ReceiptAnalysis | undefined {
     if (!next) return undefined;
     return tx
       .update(receiptAnalyses)
-      .set({ status: "running", startedAt: now(), attachmentPath: next.current, error: "" })
+      .set({
+        status: "running",
+        startedAt: now(),
+        attachmentPath: next.current,
+        error: "",
+        attempts: sql`${receiptAnalyses.attempts} + 1`,
+      })
       .where(eq(receiptAnalyses.id, next.id))
       .returning()
       .get();

@@ -422,6 +422,8 @@ export const receiptAnalyses = sqliteTable(
     appliedAt: text("applied_at"),
     startedAt: text("started_at"),
     finishedAt: text("finished_at"),
+    /** times the worker claimed this run; a run interrupted by restarts fails after 2 instead of looping */
+    attempts: integer("attempts").notNull().default(0),
     ...timestamps,
   },
   (t) => [index("receipt_analyses_expense_idx").on(t.expenseId), index("receipt_analyses_status_idx").on(t.status)],
@@ -645,8 +647,8 @@ export const receiptInboxItems = sqliteTable(
     /** sha256 of the file, for de-duplication */
     sha256: text("sha256").notNull(),
     sizeBytes: integer("size_bytes").notNull().default(0),
-    /** "new" | "converted" | "dismissed" */
-    status: text("status").$type<"new" | "converted" | "dismissed">().notNull().default("new"),
+    /** "new" | "converting" (claimed by a running convert) | "converted" | "dismissed" */
+    status: text("status").$type<"new" | "converting" | "converted" | "dismissed">().notNull().default("new"),
     expenseId: integer("expense_id").references(() => expenses.id, { onDelete: "set null" }),
     ...timestamps,
   },

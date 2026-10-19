@@ -78,6 +78,13 @@
       "when": 1792056736053,
       "tag": "0010_chunky_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792400402616,
+      "tag": "0011_uneven_katie_power",
+      "breakpoints": true
     }
   ]
 }

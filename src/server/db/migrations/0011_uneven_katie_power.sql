@@ -1,0 +1,1 @@
+ALTER TABLE `receipt_analyses` ADD `attempts` integer DEFAULT 0 NOT NULL;

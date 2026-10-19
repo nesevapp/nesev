@@ -20,11 +20,12 @@ import type {
   ExpenseUpdate,
 } from "../../shared/schemas/expense";
 import type { DbOrTx } from "../db/client";
-import { type Expense, type ExpenseLine, expenseLines, expenses } from "../db/schema";
+import { bankMatches, type Expense, type ExpenseLine, expenseLines, expenses } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
 import { runHelper } from "../lib/ocr/helper";
 import { CommandError } from "../lib/ocr/run";
 import { DATA_DIR } from "../lib/paths";
+import { unmatch } from "./bank-matching";
 
 // Expenses (Ausgaben / Belege). Semantics of the tables and totals: see src/shared/expenses.ts.
 // Receipts live under <DATA_DIR>/receipts/<year>/ and are stored as "receipts/<year>/<file>".
@@ -204,10 +205,18 @@ export function setExpensePaid(db: DbOrTx, id: number, paidAt: string | null): E
   return requireExpense(db, id);
 }
 
-/** Deletes the expense (lines and bank matches cascade) and its receipt file. */
+/**
+ * Deletes the expense (lines cascade) and its receipt file. Its bank allocations are removed via `unmatch` first,
+ * so the transactions go back to "open" instead of staying "matched" with nothing allocated.
+ */
 export async function deleteExpense(db: DbOrTx, id: number, dataDir = DATA_DIR): Promise<void> {
-  const expense = requireExpense(db, id);
-  db.delete(expenses).where(eq(expenses.id, id)).run();
+  const expense = db.transaction((tx) => {
+    const row = requireExpense(tx, id);
+    const matches = tx.select({ id: bankMatches.id }).from(bankMatches).where(eq(bankMatches.expenseId, id)).all();
+    for (const m of matches) unmatch(tx, { matchId: m.id });
+    tx.delete(expenses).where(eq(expenses.id, id)).run();
+    return row;
+  });
   await removeReceiptFiles(expense, dataDir);
 }
 
@@ -239,6 +248,13 @@ function extFromName(name: string): string | undefined {
   return ext && Object.values(RECEIPT_MIME_TYPES).includes(ext) ? ext : undefined;
 }
 
+/** Date.now(), but strictly increasing within the process (two uploads in the same ms get distinct file names). */
+let lastStamp = 0;
+function fileStamp(): number {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return lastStamp;
+}
+
 /** Stores (or replaces) the receipt of an expense. */
 export async function setExpenseAttachment(
   db: DbOrTx,
@@ -250,23 +266,46 @@ export async function setExpenseAttachment(
   const ext = receiptExtension(file);
   const year = expense.issueDate.slice(0, 4);
   const base = (expense.number ?? `ausgabe-${id}`).replace(/[^A-Za-z0-9-]/g, "");
-  const relPath = `receipts/${year}/${base}-${Date.now()}.${ext}`;
+  const relPath = `receipts/${year}/${base}-${fileStamp()}.${ext}`;
   mkdirSync(join(dataDir, "receipts", year), { recursive: true });
-  await Bun.write(join(dataDir, relPath), file);
-  db.update(expenses)
-    .set({ attachmentPath: relPath, attachmentName: file.name.slice(0, 255), attachmentOriginalPath: null })
-    .where(eq(expenses.id, id))
-    .run();
-  await removeReceiptFiles(expense, dataDir);
+  try {
+    await Bun.write(join(dataDir, relPath), file);
+  } catch (err) {
+    await removeReceiptFile(relPath, dataDir);
+    throw err;
+  }
+  // Re-read after the await: a concurrent upload/removal may have changed the row meanwhile. The files to drop are
+  // the ones the row points to right before this update, not the ones read above (else they'd be orphaned).
+  const previous = db.transaction((tx) => {
+    const current = tx
+      .select({ attachmentPath: expenses.attachmentPath, attachmentOriginalPath: expenses.attachmentOriginalPath })
+      .from(expenses)
+      .where(eq(expenses.id, id))
+      .get();
+    if (!current) return null;
+    tx.update(expenses)
+      .set({ attachmentPath: relPath, attachmentName: file.name.slice(0, 255), attachmentOriginalPath: null })
+      .where(eq(expenses.id, id))
+      .run();
+    return current;
+  });
+  if (!previous) {
+    await removeReceiptFile(relPath, dataDir);
+    throw new HTTPException(404, { message: "Ausgabe nicht gefunden" });
+  }
+  await removeReceiptFiles(previous, dataDir);
   return requireExpense(db, id);
 }
 
 export async function removeExpenseAttachment(db: DbOrTx, id: number, dataDir = DATA_DIR): Promise<ExpenseWithLines> {
-  const expense = requireExpense(db, id);
-  db.update(expenses)
-    .set({ attachmentPath: null, attachmentName: "", attachmentOriginalPath: null })
-    .where(eq(expenses.id, id))
-    .run();
+  const expense = db.transaction((tx) => {
+    const row = requireExpense(tx, id);
+    tx.update(expenses)
+      .set({ attachmentPath: null, attachmentName: "", attachmentOriginalPath: null })
+      .where(eq(expenses.id, id))
+      .run();
+    return row;
+  });
   await removeReceiptFiles(expense, dataDir);
   return requireExpense(db, id);
 }
@@ -380,13 +419,25 @@ export async function restoreExpenseReceipt(db: DbOrTx, id: number, dataDir = DA
   return requireExpense(db, id);
 }
 
-/** Quick capture: one draft expense (no supplier, no lines, issue date today) per dropped receipt. */
+/**
+ * Quick capture: one draft expense (no supplier, no lines, issue date today) per dropped receipt. If storing a file
+ * fails, its draft is deleted again (no empty drafts left behind) and the error says how many were created.
+ */
 export async function createDraftsFromFiles(db: DbOrTx, files: File[], dataDir = DATA_DIR): Promise<ExpenseWithLines[]> {
   for (const f of files) receiptExtension(f); // validate all before creating anything
   const created: ExpenseWithLines[] = [];
   for (const file of files) {
     const draft = createExpense(db, {});
-    created.push(await setExpenseAttachment(db, draft.id, file, dataDir));
+    try {
+      created.push(await setExpenseAttachment(db, draft.id, file, dataDir));
+    } catch (err) {
+      await deleteExpense(db, draft.id, dataDir).catch(() => {});
+      if (!created.length) throw err;
+      const reason = err instanceof HTTPException ? err.message : "Datei konnte nicht gespeichert werden";
+      throw new HTTPException(err instanceof HTTPException ? err.status : 500, {
+        message: `${created.length} von ${files.length} Belegen angelegt; „${file.name}“ und folgende nicht: ${reason}`,
+      });
+    }
   }
   return created;
 }

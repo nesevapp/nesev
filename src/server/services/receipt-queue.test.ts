@@ -11,7 +11,10 @@ import { createDraftsFromFiles, createExpense, setExpenseAttachment } from "./ex
 import type { AnalyzeOutput } from "./receipt-pipeline";
 import {
   cancelAnalysis,
+  cancelExpenseAnalyses,
+  claimNext,
   enqueueAnalyses,
+  INTERRUPTED_ERROR,
   latestAnalysis,
   markApplied,
   queueOverview,
@@ -128,6 +131,30 @@ describe("receipt analysis queue", () => {
     expect(latestAnalysis(db, ids[2]!)!.status).toBe("cancelled");
   });
 
+  test("replacing/removing the receipt or deleting the expense cancels its runs (running one aborted)", async () => {
+    const { db, ids } = await setup();
+    enqueueAnalyses(db, [ids[0]!, ids[1]!]);
+    let worker!: ReceiptWorker;
+    let aborted = false;
+    const run: RunFn = (_db, row, { signal }) =>
+      new Promise((resolve, reject) => {
+        if (row.expenseId !== ids[0]) return resolve(output());
+        signal.addEventListener("abort", () => {
+          aborted = true;
+          reject(new AbortedError());
+        });
+        queueMicrotask(() => expect(cancelExpenseAnalyses(db, ids[0]!, worker)).toEqual([row.id]));
+      });
+    worker = new ReceiptWorker(db, run);
+    worker.kick();
+    await worker.idle();
+    expect(aborted).toBe(true);
+    expect(latestAnalysis(db, ids[0]!)!.status).toBe("cancelled");
+    expect(latestAnalysis(db, ids[1]!)!.status).toBe("done");
+    // nothing active: no-op
+    expect(cancelExpenseAnalyses(db, ids[1]!, worker)).toEqual([]);
+  });
+
   test("a result arriving after cancel is discarded", async () => {
     const { db, ids } = await setup();
     enqueueAnalyses(db, [ids[0]!]);
@@ -161,6 +188,21 @@ describe("receipt analysis queue", () => {
     const a = latestAnalysis(db, ids[0]!)!;
     expect(a.status).toBe("queued");
     expect(a.startedAt).toBeNull();
+  });
+
+  test("a run interrupted by restarts is claimed at most twice, then fails", async () => {
+    const { db, ids } = await setup();
+    enqueueAnalyses(db, [ids[0]!]);
+    // claim → "crash" → recover, twice
+    expect(claimNext(db)!.attempts).toBe(1);
+    expect(recoverStaleRuns(db)).toBe(1);
+    expect(claimNext(db)!.attempts).toBe(2);
+    expect(recoverStaleRuns(db)).toBe(0);
+    const a = latestAnalysis(db, ids[0]!)!;
+    expect(a.status).toBe("failed");
+    expect(a.error).toBe(INTERRUPTED_ERROR);
+    expect(a.finishedAt).not.toBeNull();
+    expect(claimNext(db)).toBeUndefined();
   });
 
   test("replaced receipt invalidates the result; applied; re-analysis allowed", async () => {
