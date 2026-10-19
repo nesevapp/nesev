@@ -432,7 +432,7 @@ describe("EAR", () => {
     pay({ documentId: cn.id }, "2027-01-05", 24000); // refunded again (by mistake) next year
     expect(computeEar(db, 2026).unpaid).toEqual([]);
     pay({ documentId: cn.id }, "2026-12-20", 24000); // … and in December: the client owes 240 at year end
-    expect(computeEar(db, 2026).unpaid.map((u) => [u.number, u.openCents])).toEqual([[inv.number, 24000]]);
+    expect(computeEar(db, 2026).unpaid.map((u) => [u.number, u.openCents])).toEqual([[inv.number ?? "", 24000]]);
   });
 
   test("Kleinunternehmer: expenses gross", () => {
