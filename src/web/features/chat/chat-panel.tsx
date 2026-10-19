@@ -137,7 +137,12 @@ function ChatPanelBody({ open }: { open: boolean }) {
           chatUi.setOpen(false);
         }
       }}
-      className={cn("relative flex w-[420px] shrink-0 flex-col border-l bg-background", !open && "hidden")}
+      className={cn(
+        "relative flex w-[420px] shrink-0 flex-col border-l bg-background",
+        // below lg the panel overlays the page from the right instead of squeezing it (full width on phones)
+        "max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:max-w-full max-lg:shadow-xl",
+        !open && "hidden",
+      )}
     >
       <ChatHeader conversation={detail} status={status.data} busyText={session.streaming ? session.live.statusText : null} />
       <div

@@ -8,14 +8,18 @@ import { SIDEBAR_OPEN_EVENT, tour, tourSeen, useTourOpen } from "./tour-store";
 
 // Guided tour for first-time users: a dimmed overlay with a cut-out around one part of the shell (elements marked
 // with data-tour="…") and a card that explains it. Steps without a target (welcome, finish) show the card centred.
-// A step whose target isn't on screen (e.g. the assistant button while the assistant is off) is skipped.
-// Keys: → / Enter next, ← back, Esc ends. It never navigates; it only opens the sidebar group it points at.
+// A step whose target isn't on screen (e.g. the assistant button while the assistant is off) is skipped. On small
+// screens the sidebar sits in a sheet behind the menu button: its steps then point at that button instead.
+// Keys: → / Enter next, ← back, Esc ends; Tab stays inside the card (aria-modal). It never navigates; it only opens
+// the sidebar group it points at.
 
 interface Step {
   /** data-tour value of the element to highlight; none → centred card. */
   target?: string;
   /** Sidebar group to open before measuring. */
   group?: string;
+  /** Part of the sidebar: highlight the menu button when the sidebar is collapsed into it (small screens). */
+  sidebar?: boolean;
   title: string;
   body: ReactNode;
 }
@@ -24,7 +28,7 @@ function Where({ items }: { items: [string, string][] }) {
   return (
     <dl className="mt-3 space-y-1.5 text-xs">
       {items.map(([name, text]) => (
-        <div key={name} className="grid grid-cols-[6.5rem_1fr] gap-2">
+        <div key={name} className="grid grid-cols-[7.5rem_1fr] gap-2">
           <dt className="font-medium text-foreground">{name}</dt>
           <dd className="text-muted-foreground">{text}</dd>
         </div>
@@ -48,6 +52,7 @@ const STEPS: Step[] = [
   },
   {
     target: "overview",
+    sidebar: true,
     title: "Überblick",
     body: (
       <Where
@@ -60,6 +65,7 @@ const STEPS: Step[] = [
   },
   {
     target: "group-Belege",
+    sidebar: true,
     group: "Belege",
     title: "Belege schreiben",
     body: (
@@ -70,7 +76,7 @@ const STEPS: Step[] = [
             ["Rechnungen", "Beim Abschließen fortlaufend nummeriert und als PDF festgeschrieben, auch als E-Rechnung."],
             ["Gutschriften", "Korrigieren abgeschlossene Rechnungen, die selbst nicht mehr änderbar sind."],
             ["Mahnungen", "Zahlungserinnerungen und Mahnstufen für überfällige Rechnungen."],
-            ["Serien", "Wiederkehrende Rechnungen, die nesev zum Termin erstellt."],
+            ["Serienrechnungen", "Wiederkehrende Rechnungen, die nesev zum Termin erstellt."],
           ]}
         />
       </>
@@ -78,6 +84,7 @@ const STEPS: Step[] = [
   },
   {
     target: "group-Finanzen",
+    sidebar: true,
     group: "Finanzen",
     title: "Ausgaben, Bank und Steuern",
     body: (
@@ -94,12 +101,13 @@ const STEPS: Step[] = [
   },
   {
     target: "group-Stammdaten",
+    sidebar: true,
     group: "Stammdaten",
     title: "Kunden und Artikel",
     body: (
       <Where
         items={[
-          ["Kunden", "Aus Österreich, der EU oder dem Drittland; die Steuerbehandlung ergibt sich daraus."],
+          ["Kunden", "Aus Österreich, der EU oder einem Drittland; die Steuerbehandlung ergibt sich daraus."],
           ["Artikel", "Leistungen und Produkte, die Sie oft verrechnen, mit Preis und Einheit."],
         ]}
       />
@@ -117,6 +125,7 @@ const STEPS: Step[] = [
   },
   {
     target: "settings",
+    sidebar: true,
     title: "Einstellungen",
     body: (
       <>
@@ -161,14 +170,24 @@ const PAD = 6;
 
 type Rect = { top: number; left: number; width: number; height: number };
 
+const MENU_TARGET = "menu";
+
 const findTarget = (target: string) => {
-  const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
   // hidden (display:none / the `hidden` attribute) elements have no box
-  return el && el.getClientRects().length > 0 ? el : null;
+  const all = document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`);
+  return [...all].find((el) => el.getClientRects().length > 0) ?? null;
 };
 
-function measure(target: string | undefined): Rect | null {
-  const el = target ? findTarget(target) : null;
+/** The element a step highlights right now: its own target, or the menu button for sidebar steps on small screens. */
+const stepTarget = (step: Step) => {
+  if (!step.target) return null;
+  return findTarget(step.target) ?? (step.sidebar ? findTarget(MENU_TARGET) : null);
+};
+
+const cardWidth = () => Math.min(CARD_WIDTH, window.innerWidth - 2 * MARGIN);
+
+function measure(step: Step): Rect | null {
+  const el = stepTarget(step);
   if (!el) return null;
   const r = el.getBoundingClientRect();
   // keep the ring on screen for targets at the window edge (the settings bar, the assistant button)
@@ -183,12 +202,15 @@ function measure(target: string | undefined): Rect | null {
 function place(rect: Rect, cardHeight: number) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  const width = cardWidth();
   const clampTop = (t: number) => Math.max(MARGIN, Math.min(t, vh - cardHeight - MARGIN));
-  if (rect.left + rect.width + GAP + CARD_WIDTH + MARGIN <= vw) {
+  if (rect.left + rect.width + GAP + width + MARGIN <= vw) {
     return { top: clampTop(rect.top), left: rect.left + rect.width + GAP };
   }
-  const left = Math.max(MARGIN, Math.min(rect.left + rect.width - CARD_WIDTH, vw - CARD_WIDTH - MARGIN));
-  return { top: clampTop(rect.top - GAP - cardHeight), left };
+  const left = Math.max(MARGIN, Math.min(rect.left + rect.width - width, vw - width - MARGIN));
+  // above the target, or below it when there's no room above (the menu button in the top bar)
+  const above = rect.top - GAP - cardHeight;
+  return { top: clampTop(above >= MARGIN ? above : rect.top + rect.height + GAP), left };
 }
 
 /** Starts the tour once per browser, outside the full-screen template designer. */
@@ -210,13 +232,14 @@ export function Tour() {
 
 function TourOverlay() {
   // only steps whose target exists right now; welcome/finish always
-  const [steps] = useState(() => STEPS.filter((s) => !s.target || s.group || findTarget(s.target)));
+  const [steps] = useState(() => STEPS.filter((s) => !s.target || s.group || stepTarget(s)));
   const [index, setIndex] = useState(0);
   const step = steps[index];
   const last = index === steps.length - 1;
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardHeight, setCardHeight] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
+  const primaryRef = useRef<HTMLButtonElement>(null);
 
   const next = () => (last ? tour.close() : setIndex((i) => i + 1));
   const back = () => setIndex((i) => Math.max(0, i - 1));
@@ -227,11 +250,11 @@ function TourOverlay() {
     let frame = 0;
     const started = performance.now();
     const follow = () => {
-      setRect(measure(step.target));
+      setRect(measure(step));
       if (performance.now() - started < 400) frame = requestAnimationFrame(follow);
     };
     follow();
-    const onResize = () => setRect(measure(step.target));
+    const onResize = () => setRect(measure(step));
     window.addEventListener("resize", onResize);
     return () => {
       cancelAnimationFrame(frame);
@@ -243,21 +266,51 @@ function TourOverlay() {
     const el = cardRef.current;
     if (!el) return;
     setCardHeight(el.offsetHeight);
-    el.focus();
+    (primaryRef.current ?? el).focus();
   }, [step]);
 
   useEffect(() => {
+    const card = cardRef.current;
+    const focusables = () => [...(card?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? [])];
     const onKey = (e: KeyboardEvent) => {
+      const inCard = !!card && e.target instanceof Node && card.contains(e.target);
       if (e.key === "Escape") tour.close();
       else if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") back();
-      else return;
+      else if (e.key === "Tab") {
+        // focus trap: cycle through the card's buttons
+        const items = focusables();
+        if (!items.length) return;
+        const i = items.indexOf(document.activeElement as HTMLElement);
+        const to = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : i === -1 || i === items.length - 1 ? 0 : i + 1;
+        items[to]!.focus();
+      } else if (e.key === "Enter") {
+        // a focused card button handles Enter itself (Zurück, Überspringen); anywhere else Enter means "next"
+        if (inCard && e.target instanceof HTMLButtonElement) {
+          e.stopPropagation();
+          return;
+        }
+        next();
+      } else {
+        // nothing else reaches the page (global shortcuts like g d would navigate under the overlay); default actions
+        // such as Space on a focused card button still happen
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
     };
+    // focus that lands outside the card (a click on the backdrop, a programmatic focus) goes back to it
+    const onFocusIn = (e: FocusEvent) => {
+      if (card && e.target instanceof Node && !card.contains(e.target)) (primaryRef.current ?? card).focus();
+    };
     // capture: before the global shortcuts and Radix layers see the key
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", onFocusIn);
+    };
   });
 
   const centred = !rect;
@@ -287,7 +340,7 @@ function TourOverlay() {
           "transition-[top,left] duration-200 ease-out motion-reduce:transition-none",
           centred && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
         )}
-        style={{ width: CARD_WIDTH, ...(pos ?? {}) }}
+        style={{ width: `min(${CARD_WIDTH}px, calc(100vw - ${2 * MARGIN}px))`, ...(pos ?? {}) }}
       >
         {index === 0 && <Logo className="mb-4 h-6 text-foreground" aria-hidden />}
         <h2 id={titleId} className="text-base font-semibold">
@@ -313,7 +366,7 @@ function TourOverlay() {
               Zurück
             </Button>
           )}
-          <Button size="sm" onClick={next}>
+          <Button ref={primaryRef} size="sm" onClick={next}>
             {index === 0 ? "Rundgang starten" : last ? "Fertig" : "Weiter"}
           </Button>
         </div>

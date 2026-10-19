@@ -145,7 +145,7 @@ export function FormSection({
     // label column beside the fields only when the section itself is wide enough (a container query, not the
     // viewport: the content area gets narrow next to the assistant panel)
     <div className="@container border-b py-8 first:pt-0 last:border-b-0">
-      <section className="grid gap-x-10 gap-y-4 @min-[40rem]:grid-cols-[220px_1fr]">
+      <section className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-4 @min-[40rem]:grid-cols-[220px_minmax(0,1fr)]">
         <div>
           <h2 className="text-sm font-medium">{title}</h2>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
