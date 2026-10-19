@@ -7,6 +7,7 @@ import {
   configFile,
   documentsDataDir,
   inspectDataDir,
+  missingDataDir,
   resolveDataDir,
   writeConfig,
 } from "../lib/data-location";
@@ -51,6 +52,8 @@ const app = new Hono()
     return c.json({
       configured: resolved !== null,
       dataDir: resolved?.dir ?? null,
+      /** configured folder without its database (moved, drive not connected) */
+      missingDataDir: resolved ? null : missingDataDir(),
       source: resolved?.source ?? null,
       configFile: configFile(),
       platform: process.platform,

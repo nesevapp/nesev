@@ -75,10 +75,27 @@ export function resolveDataDir(
   }: { env?: Env; file?: string; checkoutDir?: string | null } = {},
 ): ResolvedDataDir | null {
   if (env.NESEV_DATA_DIR) return { dir: resolve(env.NESEV_DATA_DIR), source: "env" };
-  const configured = readConfig(file).dataDir;
-  if (configured && isAbsolute(configured)) return { dir: resolve(configured), source: "config" };
+  const configured = configuredDataDir(file);
+  // a configured folder without its database (moved, external drive not connected) must not silently get a fresh one:
+  // the server goes back to the setup, which names the missing folder (missingDataDir)
+  if (configured) return existsSync(join(configured, "nesev.db")) ? { dir: configured, source: "config" } : null;
   if (checkoutDir && existsSync(join(checkoutDir, "nesev.db"))) return { dir: checkoutDir, source: "checkout" };
   return null;
+}
+
+function configuredDataDir(file: string): string | null {
+  const dir = readConfig(file).dataDir;
+  return dir && isAbsolute(dir) ? resolve(dir) : null;
+}
+
+/**
+ * The configured data dir if it has no database (anymore): set when the folder was moved or lives on a drive that
+ * isn't connected. Not set for a fresh setup (the config is written right before the app creates the database).
+ */
+export function missingDataDir(env: Env = process.env, file = configFile(env)): string | null {
+  if (env.NESEV_DATA_DIR) return null;
+  const dir = configuredDataDir(file);
+  return dir && !existsSync(join(dir, "nesev.db")) ? dir : null;
 }
 
 /** "~/x" → absolute; relative paths are refused by the caller (they'd depend on the server's cwd). */

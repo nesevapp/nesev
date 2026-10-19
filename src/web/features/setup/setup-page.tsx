@@ -18,8 +18,11 @@ type Choice = { kind: "suggestion"; id: string } | { kind: "custom" };
 
 /** First start: where nesev keeps the books (database, PDFs, receipts, backups). */
 export function SetupPage({ status }: { status: SetupStatus }) {
-  const [choice, setChoice] = useState<Choice>({ kind: "suggestion", id: status.suggestions[0]?.id ?? "app" });
-  const [custom, setCustom] = useState("");
+  const missing = status.missingDataDir;
+  const [choice, setChoice] = useState<Choice>(
+    missing ? { kind: "custom" } : { kind: "suggestion", id: status.suggestions[0]?.id ?? "app" },
+  );
+  const [custom, setCustom] = useState(missing ?? "");
   const debounced = useDebounced(custom, 300);
   const browse = useBrowseFolder();
   const complete = useCompleteSetup();
@@ -48,13 +51,24 @@ export function SetupPage({ status }: { status: SetupStatus }) {
     <div className="min-h-svh bg-muted/40 px-4 py-10 sm:py-16">
       <div className="mx-auto flex max-w-xl flex-col gap-8">
         <Logo className="h-7 self-start" />
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Willkommen bei nesev</h1>
-          <p className="text-muted-foreground">
-            nesev speichert alles auf diesem Computer: Datenbank, Rechnungs-PDFs, Belege und Backups. Wählen Sie dafür
-            einen Ordner. Sie finden ihn später unter Einstellungen → Export &amp; Backup.
-          </p>
-        </div>
+        {missing ? (
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Datenordner nicht gefunden</h1>
+            <p className="text-muted-foreground">
+              Im bisherigen Datenordner <code className="break-all text-foreground">{missing}</code> liegen keine
+              nesev-Daten (mehr). Wurde er verschoben oder ist das Laufwerk nicht verbunden? Verbinden Sie es und prüfen
+              Sie erneut, oder wählen Sie den neuen Ort des Ordners.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Willkommen bei nesev</h1>
+            <p className="text-muted-foreground">
+              nesev speichert alles auf diesem Computer: Datenbank, Rechnungs-PDFs, Belege und Backups. Wählen Sie
+              dafür einen Ordner. Sie finden ihn später unter Einstellungen → Export &amp; Backup.
+            </p>
+          </div>
+        )}
 
         <div role="radiogroup" aria-label="Datenordner" className="flex flex-col gap-3">
           {status.suggestions.map((s) => (
@@ -98,15 +112,32 @@ export function SetupPage({ status }: { status: SetupStatus }) {
         </div>
 
         <CheckResult check={pending ? undefined : check.data} loading={pending || check.isFetching} />
+        {missing && check.data?.ok && !check.data.hasData && !pending && (
+          <Note tone="warning" icon={AlertTriangle}>
+            Hier liegen keine nesev-Daten. Fortfahren beginnt mit leeren Daten; Ihre bisherigen Rechnungen und Belege
+            sehen Sie erst wieder, wenn Sie den Ordner mit ihnen wählen.
+          </Note>
+        )}
 
         {complete.error && <p className="text-sm text-destructive">{apiErrorMessage(complete.error)}</p>}
         {browse.error && <p className="text-sm text-destructive">{apiErrorMessage(browse.error)}</p>}
 
         <div className="flex flex-col gap-3">
-          <Button size="lg" onClick={submit} disabled={!ready || complete.isPending}>
-            {complete.isPending && <Loader2 className="animate-spin" />}
-            {check.data?.hasData ? "Bestehende Daten öffnen" : "Ordner verwenden und loslegen"}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button size="lg" className="sm:flex-1" onClick={submit} disabled={!ready || complete.isPending}>
+              {complete.isPending && <Loader2 className="animate-spin" />}
+              {check.data?.hasData
+                ? "Bestehende Daten öffnen"
+                : missing
+                  ? "Mit leeren Daten beginnen"
+                  : "Ordner verwenden und loslegen"}
+            </Button>
+            {missing && (
+              <Button size="lg" variant="outline" onClick={() => void check.refetch()} disabled={check.isFetching}>
+                Erneut prüfen
+              </Button>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             Wichtig: Kein Ordner, der von iCloud, OneDrive oder Dropbox synchronisiert wird – die laufende Datenbank kann
             dabei beschädigt werden. Sichern Sie stattdessen die Backups (Einstellungen → Export &amp; Backup).

@@ -7,6 +7,7 @@ import {
   cloudSyncWarning,
   configDir,
   inspectDataDir,
+  missingDataDir,
   readConfig,
   resolveDataDir,
   writeConfig,
@@ -43,6 +44,12 @@ describe("resolveDataDir", () => {
     writeFileSync(join(checkout, "nesev.db"), "");
     expect(resolveDataDir({ env: {}, file, checkoutDir: checkout })).toEqual({ dir: checkout, source: "checkout" });
     writeConfig({ dataDir: join(root, "books") }, file);
+    // configured, but the folder has no database (moved / drive not connected): back to the setup
+    expect(resolveDataDir({ env: {}, file, checkoutDir: checkout })).toBeNull();
+    expect(missingDataDir({}, file)).toBe(join(root, "books"));
+    mkdirSync(join(root, "books"));
+    writeFileSync(join(root, "books", "nesev.db"), "");
+    expect(missingDataDir({}, file)).toBeNull();
     expect(resolveDataDir({ env: {}, file, checkoutDir: checkout })).toEqual({ dir: join(root, "books"), source: "config" });
     expect(resolveDataDir({ env: { NESEV_DATA_DIR: join(root, "env") }, file, checkoutDir: checkout })).toEqual({
       dir: join(root, "env"),
