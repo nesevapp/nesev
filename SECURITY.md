@@ -15,8 +15,13 @@ To keep that safe:
 - Your data lives in `data/` (or `NESEV_DATA_DIR`). Protect it like any other financial records: disk encryption,
   backups, file permissions.
 
-Other software running on your machine (including browser pages, via DNS rebinding or CSRF-style requests to
-`localhost`) is the main remaining risk. Reports in that area are especially welcome.
+- Against browser pages (DNS rebinding, CSRF-style requests to `localhost`) every request must carry a loopback
+  `Host` (`localhost`, `127.0.0.1`, `[::1]`, any port), and writes with a foreign `Origin` or
+  `Sec-Fetch-Site: cross-site` are refused (403). Extra hostnames go into `NESEV_ALLOWED_HOSTS` (comma-separated);
+  a specific `NESEV_HOST` address is allowed automatically.
+
+Other software running on your machine (including other local web apps on `localhost`) is the main remaining risk.
+Reports in that area are especially welcome.
 
 ## Supported versions
 

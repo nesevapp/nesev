@@ -24,6 +24,7 @@ import transcribe from "./routes/transcribe";
 import tax from "./routes/tax";
 import templates from "./routes/templates";
 import units from "./routes/units";
+import { originGuard } from "./lib/origin-guard";
 
 const base = new Hono();
 
@@ -32,6 +33,10 @@ base.onError((err, c) => {
   console.error(err);
   return c.json({ error: "Interner Serverfehler" }, 500);
 });
+
+// DNS rebinding / cross-site guard for everything served (API, files, PDFs, SPA in production): loopback Host only
+// (plus NESEV_ALLOWED_HOSTS), and no foreign Origin on writes. See lib/origin-guard.ts.
+base.use("*", originGuard());
 
 // Mount points. Feature agents implement the route files; this list should not need changes.
 export const app = base

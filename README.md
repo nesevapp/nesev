@@ -116,6 +116,7 @@ running in the background.
 | `PORT` | `3001` | API / server port |
 | `NESEV_DATA_DIR` | `<repo>/data` | where the database, PDFs and receipts live |
 | `NESEV_HOST` | `127.0.0.1` | interface to listen on |
+| `NESEV_ALLOWED_HOSTS` | – | extra hostnames (comma-separated) accepted in the `Host`/`Origin` header besides `localhost`, `127.0.0.1`, `[::1]` and a specific `NESEV_HOST` |
 
 > [!WARNING]
 > nesev has **no authentication** by design. It listens on `127.0.0.1` only. Don't set `NESEV_HOST=0.0.0.0` or put it

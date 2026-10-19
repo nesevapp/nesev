@@ -23,7 +23,8 @@ import type unitsApp from "../server/routes/units";
 // Business logic, validation and error messages stay in the routes/services; the MCP layer only formats.
 // Like src/web/sdk/client.ts, each client is typed against its route module only, not the merged AppType.
 
-const BASE = "http://nesev.local/api";
+// Host must be loopback: the app's origin guard (src/server/lib/origin-guard.ts) rejects anything else.
+const BASE = "http://localhost/api";
 
 /**
  * Receipt analysis must never run in the MCP process: POST /api/receipts/analyze kicks the in-process worker (OCR,
