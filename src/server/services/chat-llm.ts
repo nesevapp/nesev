@@ -35,7 +35,14 @@ export interface StreamOptions {
   /** first reasoning token of this response */
   onThinking?: () => void;
   fetchFn?: (url: string, init: RequestInit) => Promise<Response>;
+  /** abort when no bytes arrive for this long (a stalled llama-server would hold the lease forever); default 120 s */
+  idleTimeoutMs?: number;
+  /** the same until the first bytes (prompt processing of a long context can take a while); default 300 s */
+  firstByteTimeoutMs?: number;
 }
+
+export const IDLE_TIMEOUT_MS = 120_000;
+export const FIRST_BYTE_TIMEOUT_MS = 300_000;
 
 export interface StreamResult {
   content: string;
@@ -109,9 +116,19 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
   };
   // stops a degenerate loop (small models sometimes repeat the closing paragraphs until max_tokens)
   const loopStop = new AbortController();
-  const signal = o.signal ? AbortSignal.any([o.signal, loopStop.signal]) : loopStop.signal;
+  // inactivity watchdog: re-armed on every chunk, aborts the request when the server goes silent
+  const idleStop = new AbortController();
+  const idleMs = o.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => idleStop.abort(), ms);
+  };
+  const stalled = () => new ChatLlmError(`Der Modellserver hat ${Math.round(idleMs / 1000)} s lang nichts geliefert – abgebrochen. Bitte erneut versuchen.`);
+  const signal = AbortSignal.any([...(o.signal ? [o.signal] : []), loopStop.signal, idleStop.signal]);
   let checkedAt = 0;
   let res: Response;
+  arm(o.firstByteTimeoutMs ?? FIRST_BYTE_TIMEOUT_MS);
   try {
     res = await fetchFn(`${o.baseUrl}/chat/completions`, {
       method: "POST",
@@ -120,11 +137,19 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
       signal,
     });
   } catch (err) {
+    clearTimeout(timer);
     if (o.signal?.aborted) return { ...result, aborted: true, totalMs: performance.now() - t0 };
+    if (idleStop.signal.aborted) throw stalled();
     throw new ChatLlmError(`Modellserver nicht erreichbar: ${(err as Error).message}`);
   }
-  if (!res.ok) throw new ChatLlmError(httpErrorMessage(res.status, await res.text().catch(() => "")));
-  if (!res.body) throw new ChatLlmError("Modellserver lieferte keine Antwort");
+  if (!res.ok) {
+    clearTimeout(timer);
+    throw new ChatLlmError(httpErrorMessage(res.status, await res.text().catch(() => "")));
+  }
+  if (!res.body) {
+    clearTimeout(timer);
+    throw new ChatLlmError("Modellserver lieferte keine Antwort");
+  }
 
   const calls = new Map<number, { id: string; name: string; arguments: string }>();
   let thinking = false;
@@ -177,6 +202,7 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
   };
   try {
     for await (const bytes of res.body as unknown as AsyncIterable<Uint8Array>) {
+      arm(idleMs);
       buffer += decoder.decode(bytes, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
@@ -184,12 +210,18 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
     }
     if (buffer.startsWith("data:")) handle(buffer.slice(5).trim());
   } catch (err) {
-    if (loopStop.signal.aborted && !o.signal?.aborted) {
+    if (o.signal?.aborted) {
+      result.aborted = true;
+    } else if (idleStop.signal.aborted && !loopStop.signal.aborted) {
+      throw stalled();
+    } else if (loopStop.signal.aborted) {
       // stopped by the loop guard: a normal end
-    } else if (!o.signal?.aborted) {
+    } else {
       if (err instanceof ChatLlmError) throw err;
       throw new ChatLlmError(`Verbindung zum Modellserver abgebrochen: ${(err as Error).message}`);
-    } else result.aborted = true;
+    }
+  } finally {
+    clearTimeout(timer);
   }
   if (o.signal?.aborted) result.aborted = true;
   result.toolCalls = [...calls.entries()].sort(([a], [b]) => a - b).map(([, c]) => c).filter((c) => c.name);
