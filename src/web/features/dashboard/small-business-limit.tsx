@@ -22,7 +22,7 @@ const FRAME: Record<SmallBusinessLevel, string> = {
 
 const pct = (part: number, whole: number) => Math.round((part / whole) * 100);
 
-/** Kleinunternehmer: gross turnover of the year vs. the € 55.000 limit (shown only when the setting is on). */
+/** Kleinunternehmer: gross turnover of the year vs. the € 55.000 limit (shown when the Steuerstatus is Kleinunternehmer on some day of the year). */
 export function SmallBusinessLimitCard({ limit, isCurrentYear }: { limit: Limit; isCurrentYear: boolean }) {
   const { year, turnoverCents, projectedCents, limitCents, toleranceCents } = limit;
   const level: SmallBusinessLevel = limit.previousYearExceeded ? "exceeded" : limit.level;
@@ -113,6 +113,12 @@ function Message({ limit, level, showProjection }: { limit: Limit; level: SmallB
           ? " – damit würde die Grenze von € 55.000 überschritten"
           : "";
     lines.push(`Mit Entwürfen und Serienrechnungen bis 31.12. voraussichtlich ${formatCents(projectedCents)}${outlook}.`);
+  }
+
+  if (limit.statusEndsOn) {
+    lines.push(
+      `Ihr Steuerstatus sagt am ${formatDate(limit.statusEndsOn)} noch „Kleinunternehmer“: Unter Einstellungen → Belege → Umsatzsteuer → Steuerstatus einen Eintrag ab diesem Tag ohne Kleinunternehmerregelung anlegen, damit Belege und UVA stimmen.`,
+    );
   }
 
   if (lines.length === 0) return null;

@@ -15,7 +15,11 @@ import { EarChart, EarLegend } from "./ear-chart";
 export function EarSection({ year, setYear }: { year?: number; setYear: (y: number) => void }) {
   const { data, isFetching } = useQuery(earQuery(year));
   if (!data) return null;
-  const amountHint = data.gross ? "Beträge brutto (Kleinunternehmer)" : "Beträge netto (Nettomethode)";
+  const amountHint = data.gross
+    ? "Beträge brutto (Kleinunternehmer)"
+    : data.mixed
+      ? "Beträge netto (Nettomethode), aus der Zeit als Kleinunternehmer brutto (laut Steuerstatus)"
+      : "Beträge netto (Nettomethode)";
 
   return (
     <div className={cn("space-y-8 transition-opacity", isFetching && "opacity-70")}>

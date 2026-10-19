@@ -23,6 +23,7 @@ export * from "./receipts";
 export * from "./receipt-inbox";
 export * from "./bank";
 export * from "./tax";
+export * from "./tax-status";
 export * from "./recurring-expenses";
 export * from "./assets";
 export * from "./search";

@@ -7,6 +7,7 @@ import { AlertTriangle, Copy, Download, Eye, Lock, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DOCUMENT_TYPE_LABELS, type DocumentType } from "@shared/documents";
 import { type DocumentFormData, type DocumentFormValues, documentFormSchema } from "@shared/schemas/document";
+import { formatDate } from "@shared/dates";
 import { requiresClientUid, TAX_MODE_LABELS, TAX_MODES, type TaxMode, taxNoteFor } from "@shared/tax";
 import { Page } from "@/components/page";
 import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
@@ -271,11 +272,18 @@ export function DocumentEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  /** Re-derive tax mode (on client change) and due/valid-until dates from client + settings. */
+  /** Re-derive tax mode (on client change, or when a new date has another Kleinunternehmer status) and
+   *  due/valid-until dates from client + settings. */
   const applyDefaults = async (opts: { clientId: number; issueDate: string; taxMode: boolean }) => {
     try {
       const d = await documentsApi.defaults(type, opts.clientId || undefined, opts.issueDate);
-      if (opts.taxMode) form.setValue("taxMode", d.taxMode, { shouldDirty: true });
+      const current = form.getValues("taxMode");
+      // Steuerstatus at the new date doesn't fit the mode (e.g. Kleinunternehmer mode, but regular from that day)
+      const statusMismatch = (current === "SMALL_BUSINESS" && !d.smallBusiness) || (current === "AT_DOMESTIC" && d.smallBusiness);
+      if (opts.taxMode || (statusMismatch && d.taxMode !== current)) form.setValue("taxMode", d.taxMode, { shouldDirty: true });
+      if (!opts.taxMode && statusMismatch && d.taxMode !== current) {
+        toast.info(`Steuermodus an den Steuerstatus am ${formatDate(opts.issueDate)} angepasst: ${TAX_MODE_LABELS[d.taxMode]}`);
+      }
       if (type === "invoice") form.setValue("dueDate", d.dueDate, { shouldDirty: true });
       if (type === "offer") form.setValue("validUntil", d.validUntil, { shouldDirty: true });
     } catch (err) {

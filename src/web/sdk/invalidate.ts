@@ -71,6 +71,19 @@ const affects = {
   recurringExpenseLinks: [keys.recurringExpenses.all, keys.forecast.all, keys.expenses.lists],
   /** Start balance / income tax prepayment: forecast only. */
   forecastSettings: [keys.forecast.all],
+  /** Steuerstatus history (Kleinunternehmer, Soll/Ist by date): the settings' derived status and every figure that
+   *  depends on it (UVA/EAR, dashboard expenses + limit card, forecast VAT, document defaults/finalize hints, the
+   *  accountant export's Vorsteuer, asset cost prefill). */
+  taxStatus: [
+    keys.taxStatus.all,
+    keys.settings.all,
+    keys.tax.all,
+    keys.dashboard.all,
+    keys.forecast.all,
+    keys.documents.all,
+    keys.export.accounting,
+    keys.assets.all,
+  ],
   /** Anlagen: AfA changes the EAR, the dashboard result and the expense hints. */
   assets: [keys.assets.all, keys.tax.all, keys.dashboard.all, keys.expenses.lists],
 } satisfies Record<string, readonly QueryKey[]>;

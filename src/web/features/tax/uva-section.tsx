@@ -46,7 +46,7 @@ export function UvaSection({
         <div className="flex gap-3 rounded-lg border bg-muted/30 p-5 text-sm">
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="space-y-2">
-            <p className="font-medium">Kleinunternehmerregelung aktiv — in der Regel keine UVA erforderlich.</p>
+            <p className="font-medium">In diesem Zeitraum gilt laut Steuerstatus die Kleinunternehmerregelung — in der Regel keine UVA erforderlich.</p>
             <p className="text-muted-foreground">
               Kleinunternehmer (§ 6 Abs. 1 Z 27 UStG) sind von der Abgabe der Umsatzsteuervoranmeldung befreit, solange keine
               Vorauszahlung entsteht. Eine Steuerschuld kann trotzdem entstehen, z.B. bei Reverse-Charge-Leistungen aus dem

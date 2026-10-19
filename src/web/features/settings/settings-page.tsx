@@ -33,10 +33,12 @@ import { FORM_TABS, HASH_TABS, SETTINGS_TAB_LABELS, type SettingsTab, tabsOfFiel
 import { SettingsAreaPage, SettingsTabs } from "./settings-area";
 import { UnitSettingsSection } from "./unit-settings";
 import { AppearanceSettingsSection } from "./appearance-settings";
+import { TaxStatusSettings } from "./tax-status-settings";
 
 function toFormValues(s: Settings): SettingsFormValues {
   // receiptInboxPath is saved by its own block (ReceiptInboxSettings), not by this form
-  const { id: _id, logoPath: _logo, createdAt: _c, updatedAt: _u, receiptInboxPath: _inbox, ...values } = s;
+  // smallBusiness / vatBasis: dated, edited in the Steuerstatus list (TaxStatusSettings), not by this form
+  const { id: _id, logoPath: _logo, createdAt: _c, updatedAt: _u, receiptInboxPath: _inbox, smallBusiness: _sb, vatBasis: _vb, ...values } = s;
   return values;
 }
 
@@ -55,6 +57,8 @@ export function SettingsPage() {
     defaultValues: toFormValues(data),
   });
   const { control, formState } = form;
+  // the saved UVA period (Soll/Ist changes are checked against it on the server)
+  const vatPeriod = data.vatPeriod;
   // tab switches stay on /settings and keep the edits; leaving (also via the PDF-Vorlagen / Export tabs) asks first
   const dirtyTabs = tabsOfFields(Object.keys(formState.dirtyFields));
   const errorTabs = tabsOfFields(Object.keys(formState.errors));
@@ -197,40 +201,10 @@ export function SettingsPage() {
 
               <FormSection
                 title="Umsatzsteuer"
-                description="Hinweistexte werden je nach Steuermodus auf den Beleg gedruckt. Formulierung mit Steuerberatung abstimmen."
+                description="Steuerstatus mit Gültigkeitsdatum, UVA-Zeitraum und die Hinweistexte, die je nach Steuermodus auf den Beleg gedruckt werden. Formulierung mit Steuerberatung abstimmen."
               >
-                <SwitchField
-                  control={control}
-                  name="smallBusiness"
-                  label="Kleinunternehmerregelung"
-                  description="Alle neuen Belege ohne Umsatzsteuer (§ 6 Abs. 1 Z 27 UStG)."
-                />
+                <TaxStatusSettings vatPeriod={vatPeriod} />
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={control}
-                    name="vatBasis"
-                    render={({ field }) => (
-                      <FormItem className="min-w-0 content-start">
-                        <FormLabel>Besteuerungsart</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger className="w-full min-w-0">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="accrual">Soll (nach Rechnungsdatum)</SelectItem>
-                            <SelectItem value="cash">Ist (nach Zahlungseingang)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Wer sonstige Leistungen erbringt (z.B. Freiberufler, Dienstleister), ist in Österreich meist Ist-besteuert, sofern
-                          nicht zur Sollbesteuerung optiert wurde. Bestimmt, welches Datum in der UVA zählt.
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                   <FormField
                     control={control}
                     name="vatPeriod"

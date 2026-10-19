@@ -32,6 +32,7 @@ export const settingsSearch = z.object({ tab: z.enum(SETTINGS_TABS).optional().c
 /** Old section anchors (`/settings#assistent`) → the tab that now holds the section. */
 export const HASH_TABS: Record<string, SettingsTab> = {
   einheiten: "belege",
+  steuerstatus: "belege",
   mahnwesen: "mahnwesen",
   prognose: "finanzen",
   belegerkennung: "belegerkennung",
@@ -44,8 +45,6 @@ export const FORM_TABS: SettingsTab[] = ["unternehmen", "belege"];
 const BELEGE_FIELDS = new Set<keyof SettingsFormValues>([
   "paymentTermsDays",
   "offerValidityDays",
-  "smallBusiness",
-  "vatBasis",
   "vatPeriod",
   "taxNoteReverseCharge",
   "taxNoteThirdCountry",
