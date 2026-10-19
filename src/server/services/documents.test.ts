@@ -14,6 +14,7 @@ import {
   documentDefaults,
   duplicateDocument,
   finalizeDocument,
+  finalizeWarnings,
   getDocument,
   listDocuments,
   updateDocument,
@@ -156,6 +157,43 @@ describe("finalize", () => {
     expectHttp(() => finalizeDocument(db, doc.id), 422, "UID");
     db.update(clients).set({ uid: "DE123456789" }).where(eq(clients.id, noUid.id)).run();
     expect(finalizeDocument(db, doc.id).status).toBe("final");
+  });
+
+  test("credit notes: invoice's tax mode required, cumulative total capped at the invoice gross", () => {
+    const { db, client } = setup();
+    const inv = finalizeDocument(db, createDocument(db, { type: "invoice", clientId: client.id, items: [item()] }).id); // 240,00
+    const wrongMode = createCreditNote(db, inv.id);
+    updateDocument(db, wrongMode.id, { taxMode: "SMALL_BUSINESS" });
+    expectHttp(() => finalizeDocument(db, wrongMode.id), 422, "Steuerart");
+    expect(getDocument(db, wrongMode.id).number).toBeNull(); // no number consumed
+    deleteDocument(db, wrongMode.id);
+
+    const first = createCreditNote(db, inv.id);
+    updateDocument(db, first.id, { items: [item({ quantity: 1500 })] }); // 180,00
+    finalizeDocument(db, first.id);
+    const second = createCreditNote(db, inv.id); // another 240,00 → 420,00 > 240,00
+    expectHttp(() => finalizeDocument(db, second.id), 422, "übersteigen");
+    updateDocument(db, second.id, { items: [item({ quantity: 500 })] }); // 60,00 → exactly 240,00
+    expect(finalizeDocument(db, second.id).status).toBe("final");
+    expect(getDocument(db, inv.id).status).toBe("paid");
+    const third = createCreditNote(db, inv.id);
+    updateDocument(db, third.id, { items: [item({ quantity: 1, unitPriceCents: 1000 })] }); // 0,01 € too much
+    expectHttp(() => finalizeDocument(db, third.id), 422, "noch offen für Gutschriften");
+  });
+
+  test("finalize warnings: AT invoice to a business above € 10.000 gross needs the client's UID", () => {
+    const { db, client } = setup();
+    const big = createDocument(db, { type: "invoice", clientId: client.id, items: [item({ quantity: 1000, unitPriceCents: 833334 })] }); // 10.000,01 gross
+    expect(finalizeWarnings(db, big.id)).toEqual([expect.stringContaining("§ 11 Abs. 1 Z 3 lit. i")]);
+    const exact = createDocument(db, { type: "invoice", clientId: client.id, items: [item({ quantity: 1000, unitPriceCents: 833333 })] }); // 9.999,99... ≤ 10.000
+    expect(finalizeWarnings(db, exact.id)).toEqual([]);
+    const person = addClient(db, { type: "person" });
+    expect(finalizeWarnings(db, createDocument(db, { type: "invoice", clientId: person.id, items: [item({ unitPriceCents: 900000 })] }).id)).toEqual([]);
+    db.update(clients).set({ uid: "ATU12345678" }).where(eq(clients.id, client.id)).run();
+    expect(finalizeWarnings(db, big.id)).toEqual([]);
+    // a warning only: finalizing still works
+    db.update(clients).set({ uid: "" }).where(eq(clients.id, client.id)).run();
+    expect(finalizeDocument(db, big.id).status).toBe("final");
   });
 
   test("fills a missing due date", () => {

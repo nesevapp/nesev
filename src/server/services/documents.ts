@@ -14,7 +14,8 @@ import type {
   DocumentStatusInput,
   DocumentUpdate,
 } from "../../shared/schemas/document";
-import { defaultTaxMode, requiresClientUid, type TaxMode } from "../../shared/tax";
+import { formatCents } from "../../shared/money";
+import { defaultTaxMode, requiresClientUid, TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
 import { calcTotals } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { type Client, type Document, type DocumentItem, clients, documentItems, documents } from "../db/schema";
@@ -28,7 +29,8 @@ import { getSettings, sellerSnapshot } from "./settings";
 // - Drafts are freely editable; finalize assigns the gapless number, freezes client + seller snapshots
 //   and locks the document (edits → 409). Corrections to invoices only via credit note.
 // - Credit notes store POSITIVE amounts (items copied 1:1 from the invoice). Their meaning
-//   (amount owed to the client) comes from type = "credit_note"; reports must subtract them.
+//   (amount owed to the client) comes from type = "credit_note"; reports must subtract them. On finalize a credit
+//   note must keep its invoice's tax mode, and the invoice's finalized credit notes may not exceed its gross.
 // - Totals are cached on the document (net/tax/gross) whenever items or the tax mode change.
 // - An invoice is "paid" once finalized credit notes plus bank allocations cover its gross (settleInvoice);
 //   the user can also mark it paid by hand. Resetting a payment that bank allocations cover is refused (409)
@@ -301,6 +303,7 @@ export function finalizeDocument(db: DbOrTx, id: number): DocumentDetail {
     if (doc.servicePeriodStart && doc.servicePeriodEnd && doc.servicePeriodEnd < doc.servicePeriodStart) {
       throw unprocessable("Leistungszeitraum: Ende liegt vor dem Beginn");
     }
+    if (doc.type === "credit_note" && doc.parentId) checkCreditNote(tx, doc, cachedTotals(items, doc.taxMode).grossCents);
 
     const settings = getSettings(tx);
     const d = documentDefaults(tx, doc.type, doc.clientId, doc.issueDate);
@@ -324,6 +327,50 @@ export function finalizeDocument(db: DbOrTx, id: number): DocumentDetail {
     else if (doc.parentId) settleInvoice(tx, doc.parentId);
   });
   return getDocument(db, id);
+}
+
+/**
+ * A credit note corrects its invoice (§ 11 Abs. 1, § 16 UStG): it must use the invoice's tax mode, and all
+ * finalized credit notes together (this one included) can't exceed the invoice's gross.
+ */
+function checkCreditNote(tx: DbOrTx, doc: Document, grossCents: number): void {
+  const parent = tx.select().from(documents).where(eq(documents.id, doc.parentId!)).get();
+  if (!parent || parent.type !== "invoice" || parent.status === "draft") {
+    throw unprocessable("Die Gutschrift gehört zu keiner finalisierten Rechnung");
+  }
+  if (doc.taxMode !== parent.taxMode) {
+    throw unprocessable(
+      `Die Gutschrift muss die Steuerart der Rechnung ${parent.number} übernehmen (${TAX_MODE_LABELS[parent.taxMode]} statt ${TAX_MODE_LABELS[doc.taxMode]})`,
+    );
+  }
+  const credited = creditedCentsByInvoice(tx, [parent.id]).get(parent.id) ?? 0;
+  if (credited + grossCents > parent.grossCents) {
+    const left = Math.max(0, parent.grossCents - credited);
+    throw unprocessable(
+      `Gutschriften übersteigen die Rechnung ${parent.number}: ${formatCents(credited + grossCents)} gutgeschrieben, Rechnungsbetrag ${formatCents(parent.grossCents)} (noch offen für Gutschriften: ${formatCents(left)})`,
+    );
+  }
+}
+
+/** Gross amount above which an invoice to a business must name the recipient's UID (§ 11 Abs. 1 Z 3 lit. i UStG). */
+export const UID_REQUIRED_ABOVE_CENTS = 1_000_000;
+
+/**
+ * Non-blocking hints before finalizing a draft (finalizeDocument doesn't use them; a UI can show them in the
+ * finalize dialog): an Austrian invoice to a business above € 10.000 gross without the recipient's UID.
+ */
+export function finalizeWarnings(db: DbOrTx, id: number): string[] {
+  const doc = getRow(db, id);
+  const warnings: string[] = [];
+  if (doc.type !== "invoice" || doc.status !== "draft" || doc.taxMode !== "AT_DOMESTIC") return warnings;
+  const client = getClient(db, doc.clientId);
+  const gross = cachedTotals(getItems(db, id), doc.taxMode).grossCents;
+  if (client && client.type === "company" && !client.uid.trim() && gross > UID_REQUIRED_ABOVE_CENTS) {
+    warnings.push(
+      `Rechnungsbetrag über ${formatCents(UID_REQUIRED_ABOVE_CENTS)} brutto: Die UID-Nummer des Kunden muss auf der Rechnung stehen (§ 11 Abs. 1 Z 3 lit. i UStG) — beim Kunden hinterlegen.`,
+    );
+  }
+  return warnings;
 }
 
 export function setPdfPath(db: DbOrTx, id: number, pdfPath: string | null): void {
