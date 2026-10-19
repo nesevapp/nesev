@@ -8,8 +8,11 @@ import type {
   ChatStreamEvent,
   ChatToolCall,
   ChatToolResult,
+  ChatUpload,
+  ChatUploadsInput,
+  ChatUploadsResult,
 } from "../../shared/chat";
-import { resultCards } from "../../shared/chat";
+import { chatUploadsSchema, messageUploads, resultCards } from "../../shared/chat";
 import type { DbOrTx } from "../db/client";
 import { type ChatConversation, type ChatMessage, chatConversations, chatMessages } from "../db/schema";
 import { type LlamaEndpoint, LlamaServerError } from "../lib/llama/server";
@@ -23,6 +26,8 @@ import { checkProvenance } from "./chat-provenance";
 import { ChatModelError } from "./chat-settings";
 import { confirmLookups, confirmSummary, estimateTokens, needsConfirm, selectToolsDetailed, type ToolHost, toChatToolResult, toLlmTool, toolContent, toolTokens } from "./chat-tools";
 import { nudgeUiCall } from "./chat-ui-tools";
+import { hasRecentUploads, isTextUser, isUploadRow, uploadsContent, uploadsPreview } from "./chat-uploads";
+import { getExpense } from "./expenses";
 import { getSettings } from "./settings";
 
 // In-app assistant: conversations (CRUD) and the agent loop. A turn: user message → model call (streamed) → tool
@@ -100,6 +105,7 @@ export interface ChatDeps {
 // --- views ------------------------------------------------------------------------------------------------------
 
 export function messageView(m: ChatMessage): ChatMessageView {
+  const uploads = messageUploads(m.role, m.toolResult);
   return {
     id: m.id,
     role: m.role,
@@ -107,22 +113,24 @@ export function messageView(m: ChatMessage): ChatMessageView {
     toolCalls: Array.isArray(m.toolCalls) ? (m.toolCalls as ChatToolCall[]) : null,
     toolCallId: m.toolCallId,
     toolName: m.toolName,
-    toolResult: (m.toolResult as ChatToolResult | null) ?? null,
+    toolResult: uploads ? null : ((m.toolResult as ChatToolResult | null) ?? null),
     status: m.status,
     contextPath: m.contextPath,
+    uploads,
     createdAt: m.createdAt,
   };
 }
 
 function lastPreview(db: DbOrTx, conversationId: number): string {
   const rows = db
-    .select({ content: chatMessages.content })
+    .select({ role: chatMessages.role, content: chatMessages.content, toolResult: chatMessages.toolResult })
     .from(chatMessages)
     .where(and(eq(chatMessages.conversationId, conversationId), ne(chatMessages.role, "tool"), ne(chatMessages.content, "")))
     .orderBy(desc(chatMessages.id))
     .limit(1)
     .all();
-  const text = rows[0]?.content ?? "";
+  const uploads = rows[0] ? messageUploads(rows[0].role, rows[0].toolResult) : null;
+  const text = uploads ? uploadsPreview(uploads) : (rows[0]?.content ?? "");
   // plain text: no Markdown emphasis, list markers, headings, code ticks; links keep their label
   const flat = text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -331,11 +339,19 @@ function userContent(m: ChatMessage, title?: string): string {
 export function buildHistory(rows: ChatMessage[], budget: number, currentTitle?: string): LlmMessage[] {
   const answered = new Set(rows.filter((r) => r.role === "tool" && r.status !== "pending").map((r) => r.toolCallId));
   const turns: LlmMessage[][] = [];
-  const lastUser = rows.findLast((r) => r.role === "user");
+  const lastUser = rows.findLast(isTextUser);
   const issued = new Set<string>();
+  /** receipts uploaded since the last user message: their lines go in front of the next one (chat-uploads.ts) */
+  let uploaded: string[] = [];
   for (const r of rows) {
+    if (isUploadRow(r)) {
+      uploaded.push(r.content);
+      continue;
+    }
     if (r.role === "user") {
-      turns.push([{ role: "user", content: userContent(r, r === lastUser ? currentTitle : undefined) }]);
+      const content = userContent(r, r === lastUser ? currentTitle : undefined);
+      turns.push([{ role: "user", content: uploaded.length ? `${uploaded.join("\n")}\n${content}` : content }]);
+      uploaded = [];
       continue;
     }
     if (!turns.length) turns.push([]);
@@ -450,6 +466,25 @@ export async function confirmToolCall(deps: ChatDeps, conversationId: number, me
   });
 }
 
+/**
+ * Records receipts uploaded in the chat (the drafts were created by POST /api/expenses/drafts): one user message with
+ * the uploads as structured data and, as content, the lines the model reads with the next message (chat-uploads.ts).
+ * Like a message, not while a reply runs or a confirmation waits (ChatConflictError). Unknown expense ids → 404.
+ */
+export function recordUploads(db: DbOrTx, conversationId: number, input: ChatUploadsInput): ChatUploadsResult {
+  const { expenseIds, failures } = chatUploadsSchema.parse(input);
+  assertCanSend(db, conversationId);
+  const found = [...new Set(expenseIds)].map((id) => {
+    const e = getExpense(db, id);
+    if (!e) throw new ChatNotFoundError(`Ausgabe id ${id} nicht gefunden`);
+    return e;
+  });
+  const uploads: ChatUpload[] = found.map((e) => ({ expenseId: e.id, number: e.number, fileName: e.attachmentName || "Beleg", attachmentPath: e.attachmentPath }));
+  const content = uploadsContent(found.map((e, i) => ({ ...uploads[i]!, incomplete: e.incomplete })));
+  const row = insertMessage(db, { conversationId, role: "user", content, toolResult: { kind: "uploads", uploads, failures } });
+  return { message: messageView(row), conversation: summary(db, touch(db, conversationId)) };
+}
+
 async function exclusive(conversationId: number, emit: Emit, fn: () => Promise<void>) {
   if (active().has(conversationId)) {
     await emit({ type: "error", message: "Der Assistent antwortet in dieser Unterhaltung gerade noch" });
@@ -531,13 +566,19 @@ async function runLoop(deps: ChatDeps, state: TurnState, emit: Emit, signal?: Ab
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal?.aborted) return;
     const rows = messages(db, state.conversationId);
-    const userTexts = rows.filter((r) => r.role === "user").map((r) => r.content).reverse();
-    const lastUser = rows.findLast((r) => r.role === "user");
+    const userTexts = rows.filter(isTextUser).map((r) => r.content).reverse();
+    const lastUser = rows.findLast(isTextUser);
     const recentTools = rows.slice(-12).filter((r) => r.role === "tool" && r.toolName).map((r) => r.toolName!);
     const reserve = reasoning ? 8192 : ANSWER_RESERVE;
     const available = settings.contextSize - estimateTokens(system) - reserve - SAFETY;
     // tools may take up to 60 % of what is left
-    const selection = selectToolsDetailed(host.tools, { userTexts, contextPath: lastUser?.contextPath, recentTools, budgetTokens: Math.floor(available * 0.6) });
+    const selection = selectToolsDetailed(host.tools, {
+      userTexts,
+      contextPath: lastUser?.contextPath,
+      recentTools,
+      uploads: hasRecentUploads(rows),
+      budgetTokens: Math.floor(available * 0.6),
+    });
     const tools = selection.tools;
     const history = buildHistory(rows, available - toolTokens(tools), state.contextTitle);
     const turnRows = lastUser ? rows.slice(rows.indexOf(lastUser) + 1) : [];

@@ -20,6 +20,8 @@ import { z } from "./schemas/zod";
 //   GET    /conversations/:id/feedback    → ChatFeedback[] ("Antwort war falsch" flags of the conversation)
 //   POST   /conversations/:id/feedback    ChatFeedbackInput → ChatFeedback (flag an answer; again = edit the note)
 //   DELETE /conversations/:id/feedback/:messageId → { ok: true }
+//   POST   /conversations/:id/uploads     ChatUploadsInput → ChatUploadsResult (records receipts uploaded in the chat;
+//          the drafts themselves come from POST /api/expenses/drafts, nothing is analysed)
 // Aborting the fetch (client disconnect) stops generation; the partial assistant text is kept.
 
 /** Tools whose execution needs an explicit click in the UI (the MCP's destructiveHint tools). */
@@ -199,9 +201,50 @@ export function resultCards(result: Pick<ChatToolResult, "cards" | "card"> | nul
 
 export type ChatMessageStatus = "done" | "pending" | "cancelled" | "error";
 
+/** One receipt uploaded in the chat: the draft expense POST /api/expenses/drafts created for the file. */
+export interface ChatUpload {
+  expenseId: number;
+  /** running receipt number ("ER-2026-0005"), assigned when the draft is created */
+  number: string | null;
+  /** original file name */
+  fileName: string;
+  /** receipt relative to the data dir ("receipts/2026/…"), for the thumbnail */
+  attachmentPath: string | null;
+}
+
+/**
+ * Receipts uploaded in the chat, stored as a user message (`tool_result` JSON column, `kind: "uploads"`; its content
+ * is the German line per receipt the model reads with the next user message, see services/chat-uploads.ts).
+ */
+export interface ChatUploads {
+  kind: "uploads";
+  uploads: ChatUpload[];
+  /** German message of a partial failure ("2 von 3 Belegen angelegt; …") */
+  failures: string[];
+}
+
+export const chatUploadsSchema = z.object({
+  expenseIds: z.array(z.number().int().positive()).min(1).max(50),
+  failures: z.array(z.string().trim().max(500)).max(10).default([]),
+});
+export type ChatUploadsInput = z.input<typeof chatUploadsSchema>;
+
+export interface ChatUploadsResult {
+  message: ChatMessageView;
+  conversation: ChatConversationSummary;
+}
+
+/** the uploads of a stored message (null for every other message) */
+export function messageUploads(role: string, stored: unknown): ChatUploads | null {
+  if (role !== "user" || !stored || typeof stored !== "object") return null;
+  const u = stored as Partial<ChatUploads>;
+  return u.kind === "uploads" && Array.isArray(u.uploads) ? { kind: "uploads", uploads: u.uploads, failures: Array.isArray(u.failures) ? u.failures : [] } : null;
+}
+
 export interface ChatMessageView {
   id: number;
   role: "user" | "assistant" | "tool";
+  /** user messages with `uploads`: the line(s) the model reads, not shown as a bubble */
   content: string;
   toolCalls: ChatToolCall[] | null;
   toolCallId: string | null;
@@ -209,6 +252,8 @@ export interface ChatMessageView {
   toolResult: ChatToolResult | null;
   status: ChatMessageStatus;
   contextPath: string | null;
+  /** receipts uploaded in the chat (user messages only) */
+  uploads?: ChatUploads | null;
   createdAt: string;
 }
 

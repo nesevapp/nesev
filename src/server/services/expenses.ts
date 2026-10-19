@@ -419,9 +419,21 @@ export async function restoreExpenseReceipt(db: DbOrTx, id: number, dataDir = DA
   return requireExpense(db, id);
 }
 
+/** A batch upload stopped after some drafts were created: `createdIds` are kept (the route sends them along). */
+export class DraftsPartialError extends HTTPException {
+  constructor(
+    status: ConstructorParameters<typeof HTTPException>[0],
+    message: string,
+    readonly createdIds: number[],
+  ) {
+    super(status, { message });
+  }
+}
+
 /**
  * Quick capture: one draft expense (no supplier, no lines, issue date today) per dropped receipt. If storing a file
- * fails, its draft is deleted again (no empty drafts left behind) and the error says how many were created.
+ * fails, its draft is deleted again (no empty drafts left behind) and the error (DraftsPartialError) says how many
+ * were created.
  */
 export async function createDraftsFromFiles(db: DbOrTx, files: File[], dataDir = DATA_DIR): Promise<ExpenseWithLines[]> {
   for (const f of files) receiptExtension(f); // validate all before creating anything
@@ -434,9 +446,11 @@ export async function createDraftsFromFiles(db: DbOrTx, files: File[], dataDir =
       await deleteExpense(db, draft.id, dataDir).catch(() => {});
       if (!created.length) throw err;
       const reason = err instanceof HTTPException ? err.message : "Datei konnte nicht gespeichert werden";
-      throw new HTTPException(err instanceof HTTPException ? err.status : 500, {
-        message: `${created.length} von ${files.length} Belegen angelegt; „${file.name}“ und folgende nicht: ${reason}`,
-      });
+      throw new DraftsPartialError(
+        err instanceof HTTPException ? err.status : 500,
+        `${created.length} von ${files.length} Belegen angelegt; „${file.name}“ und folgende nicht: ${reason}`,
+        created.map((e) => e.id),
+      );
     }
   }
   return created;

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { type ChatStreamEvent, chatConfirmSchema, chatFeedbackSchema, chatSendSchema, chatSettingsSchema } from "../../shared/chat";
+import { type ChatStreamEvent, chatConfirmSchema, chatFeedbackSchema, chatSendSchema, chatSettingsSchema, chatUploadsSchema } from "../../shared/chat";
 import { db } from "../db";
 import { validate } from "../lib/validate";
 import {
@@ -15,6 +15,7 @@ import {
   createConversation,
   deleteConversation,
   listConversations,
+  recordUploads,
   renameConversation,
   sendMessage,
   warmupPrompt,
@@ -161,6 +162,15 @@ const app = new Hono()
       return c.json({ error: e.error }, e.status);
     }
     return sse(c, (emit, signal) => confirmToolCall(deps, id, messageId, approve, emit, signal));
+  })
+  /** receipts uploaded in the chat (drafts already created via POST /api/expenses/drafts): recorded as a message */
+  .post("/conversations/:id/uploads", idParam, validate("json", chatUploadsSchema), (c) => {
+    try {
+      return c.json(recordUploads(db, c.req.valid("param").id, c.req.valid("json")), 201);
+    } catch (err) {
+      const e = guardError(err);
+      return c.json({ error: e.error }, e.status);
+    }
   })
   .get("/conversations/:id/feedback", idParam, (c) => {
     try {

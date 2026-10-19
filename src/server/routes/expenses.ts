@@ -13,6 +13,7 @@ import { db } from "../db";
 import { validate } from "../lib/validate";
 import {
   createDraftsFromFiles,
+  DraftsPartialError,
   createExpense,
   cropExpenseReceipt,
   deleteExpense,
@@ -62,9 +63,15 @@ const app = new Hono()
   .get("/:id", idParam, (c) => c.json(requireExpense(db, c.req.valid("param").id)))
   .post("/", validate("json", expenseCreateSchema), (c) => c.json(createExpense(db, c.req.valid("json")), 201))
   /** Quick capture: one draft per uploaded receipt (multipart, field "files"). */
-  .post("/drafts", batchUploadLimit, filesForm, async (c) =>
-    c.json(await createDraftsFromFiles(db, c.req.valid("form").files), 201),
-  )
+  .post("/drafts", batchUploadLimit, filesForm, async (c) => {
+    try {
+      return c.json(await createDraftsFromFiles(db, c.req.valid("form").files), 201);
+    } catch (err) {
+      // partial failure: the drafts created before it stay; their ids go along (the chat records them)
+      if (err instanceof DraftsPartialError) return c.json({ error: err.message, createdIds: err.createdIds }, err.status as 400 | 409 | 500);
+      throw err;
+    }
+  })
   .put("/:id", idParam, validate("json", expenseUpdateSchema), (c) =>
     c.json(updateExpense(db, c.req.valid("param").id, c.req.valid("json"))),
   )

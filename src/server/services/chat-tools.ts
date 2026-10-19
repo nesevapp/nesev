@@ -202,6 +202,8 @@ export interface ToolSelectionInput {
   contextPath?: string | null;
   /** tools the model called in the recent history (kept, so follow-ups like "ja, finalisiere" work) */
   recentTools?: string[];
+  /** receipts were uploaded in the chat recently (chat-uploads.ts): the expense tools are offered like a keyword match */
+  uploads?: boolean;
   /** tokens available for tool definitions */
   budgetTokens: number;
 }
@@ -219,6 +221,7 @@ export function routeGroups(all: ChatTool[], input: Omit<ToolSelectionInput, "bu
   const groups = new Set<ToolGroup>(["core", "ui"]);
   if (isOpenRequest(input.userTexts[0] ?? "")) return { groups, fallback: false, generic: false };
   for (const g of textGroups(text)) groups.add(g);
+  if (input.uploads) groups.add("expenses");
   for (const [group, route] of Object.entries(GROUP_ROUTES) as [RoutedGroup, { paths: RegExp }][]) {
     if (input.contextPath && route.paths.test(input.contextPath)) groups.add(group);
   }
@@ -254,6 +257,7 @@ export function selectToolsDetailed(all: ChatTool[], input: ToolSelectionInput):
   if (toolTokens(tools) > input.budgetTokens) {
     const text = input.userTexts.slice(0, 2).join("\n").toLowerCase();
     const worded: Set<ToolGroup> = textGroups(text);
+    if (input.uploads) worded.add("expenses");
     tools = tools.filter((t) => t.readOnly || t.group === "core" || worded.has(t.group));
     if (toolTokens(tools) > input.budgetTokens) tools = tools.filter((t) => t.readOnly || t.group === "core");
   }

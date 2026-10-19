@@ -24,6 +24,7 @@ import {
   describePage,
   listConversations,
   needsData,
+  recordUploads,
   REJECTED_TEXT,
   rejectionReply,
   renameConversation,
@@ -34,6 +35,7 @@ import { primeCache, repetitionCut, samplingTemperature } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
 import { ASSISTANT_CONFIRM_TOOLS, type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
+import { createDraftsFromFiles } from "./expenses";
 
 // The agent loop against a fake OpenAI-compatible streaming server (Bun.serve emitting SSE chunks like
 // llama-server, incl. tool calls split over several deltas) and a fake tool host, on an in-memory DB.
@@ -696,6 +698,90 @@ describe("offer nudge (offered instead of acting)", () => {
     expect(deltas(question)).toEqual([OFFER]);
     expect(requests).toHaveLength(4);
     expect(logs.some((l) => l.includes("offer-nudge"))).toBe(false);
+  });
+});
+
+describe("receipts uploaded in the chat", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nesev-chat-uploads-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const drafts = (...names: string[]) => createDraftsFromFiles(db, names.map((n) => new File(["%PDF-1.4 test"], n, { type: "application/pdf" })), dir);
+  const expenseTools: ToolHost = {
+    tools: [...host.tools, tool("list_expenses", true, false, "expenses"), tool("update_expense", false, false, "expenses"), tool("mark_expense_paid", false, false, "expenses")],
+    call: host.call,
+  };
+
+  test("recorded as a user message with the uploads; preview, view and guards", async () => {
+    const c = createConversation(db);
+    const [a, b] = await drafts("rechnung.pdf", "kassenbon.pdf");
+    const res = recordUploads(db, c.id, { expenseIds: [a!.id, b!.id], failures: ["2 von 3 Belegen angelegt; „x.pdf“ und folgende nicht: Datei ist leer"] });
+    expect(res.message.role).toBe("user");
+    expect(res.message.toolResult).toBeNull();
+    expect(res.message.uploads?.uploads.map((u) => [u.expenseId, u.number, u.fileName])).toEqual([
+      [a!.id, a!.number, "rechnung.pdf"],
+      [b!.id, b!.number, "kassenbon.pdf"],
+    ]);
+    expect(res.message.uploads?.uploads[0]!.attachmentPath).toBe(a!.attachmentPath);
+    expect(res.message.uploads?.failures).toHaveLength(1);
+    expect(res.message.content.split("\n")[0]).toBe(`Hochgeladener Beleg: Ausgabe ${a!.number} (id ${a!.id}), Entwurf ohne Lieferant und Positionen, Datei „rechnung.pdf“.`);
+    expect(res.conversation.preview).toBe("2 Belege hochgeladen");
+    // survives a reload
+    expect(conversationDetail(db, c.id).messages[0]!.uploads?.uploads).toHaveLength(2);
+    expect(() => recordUploads(db, c.id, { expenseIds: [99_999] })).toThrow("nicht gefunden");
+    expect(() => recordUploads(db, 99_999, { expenseIds: [a!.id] })).toThrow("Unterhaltung nicht gefunden");
+    expect(() => recordUploads(db, c.id, { expenseIds: [] })).toThrow();
+  });
+
+  test("not while a confirmation waits", async () => {
+    const c = createConversation(db);
+    const [a] = await drafts("a.pdf");
+    scripts.push(toolCall("finalize_document", '{"id":2}'));
+    await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    expect(() => recordUploads(db, c.id, { expenseIds: [a!.id] })).toThrow(ChatConflictError);
+  });
+
+  test("the next request carries the receipt lines in front of the user's text; expense tools offered; the id is established", async () => {
+    deps.host = async () => expenseTools;
+    const c = createConversation(db);
+    const [a] = await drafts("bewirtung.pdf");
+    recordUploads(db, c.id, { expenseIds: [a!.id] });
+    scripts.push(toolCall("update_expense", `{"id":${a!.id},"description":"Bewirtung mit Kunde Huber"}`));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Bewirtung mit Kunde Huber, bar bezahlt", context: { path: "/" } }, emit));
+    const req = requests[0];
+    // system + one user message: the upload is not a message of its own
+    expect(req.messages.map((m: any) => m.role)).toEqual(["system", "user"]);
+    const user = req.messages[1].content as string;
+    expect(user.startsWith(`Hochgeladener Beleg: Ausgabe ${a!.number} (id ${a!.id}), Entwurf ohne Lieferant und Positionen, Datei „bewirtung.pdf“.`)).toBe(true);
+    expect(user).toContain("(Kontext: Der Nutzer sieht gerade das Dashboard.");
+    expect(user.endsWith("\nBewirtung mit Kunde Huber, bar bezahlt")).toBe(true);
+    expect(req.tools.map((t: any) => t.function.name)).toContain("update_expense");
+    // the update of an existing expense needs the click (provenance: the id came with the upload)
+    expect(types(events)).toEqual(["user_message", "assistant_start", "tool_call", "confirm"]);
+    expect(conversationDetail(db, c.id).pending?.toolCall.name).toBe("update_expense");
+    expect(CONFIRM_TOOLS).toContain("update_expense");
+    expect(calls.filter((x) => x.name === "update_expense")).toHaveLength(0);
+    // the title comes from the first real question, not from the upload
+    expect(listConversations(db).find((x) => x.id === c.id)!.title).toBe("Bewirtung mit Kunde Huber, bar bezahlt");
+  });
+
+  test("routing: expense tools stay offered for follow-ups without an expense word; later uploads join the next message", async () => {
+    deps.host = async () => expenseTools;
+    const c = createConversation(db);
+    const [a, b] = await drafts("a.pdf", "b.pdf");
+    recordUploads(db, c.id, { expenseIds: [a!.id] });
+    scripts.push(text("Gerne."));
+    await collect((emit) => sendMessage(deps, c.id, { text: "Hallo" }, emit));
+    expect(requests[0].tools.map((t: any) => t.function.name)).toContain("update_expense");
+    recordUploads(db, c.id, { expenseIds: [b!.id] });
+    scripts.push(text("Gut."));
+    await collect((emit) => sendMessage(deps, c.id, { text: "Danke" }, emit));
+    const msgs = requests[1].messages.filter((m: any) => m.role === "user").map((m: any) => m.content as string);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]!.startsWith(`Hochgeladener Beleg: Ausgabe ${a!.number}`)).toBe(true);
+    expect(msgs[0]!.endsWith("\nHallo")).toBe(true);
+    expect(msgs[1]!.startsWith(`Hochgeladener Beleg: Ausgabe ${b!.number}`)).toBe(true);
+    expect(msgs[1]!.endsWith("\nDanke")).toBe(true);
+    expect(selectToolsDetailed(expenseTools.tools, { userTexts: ["Danke"], budgetTokens: 100_000 }).groups).not.toContain("expenses");
+    expect(selectToolsDetailed(expenseTools.tools, { userTexts: ["Danke"], uploads: true, budgetTokens: 100_000 }).groups).toContain("expenses");
   });
 });
 
