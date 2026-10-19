@@ -156,6 +156,20 @@ export function deductibleTaxCents(line: { taxCents: number; deductibleBp: numbe
   return roundHalfAwayFromZero((line.taxCents * line.deductibleBp) / BP_SCALE);
 }
 
+/**
+ * Expense cost of a line (or a pro-rata slice of one) on the EAR basis, shared by the EAR (services/tax.ts) and the
+ * dashboard: net plus the VAT that is not deductible (e.g. KFZ); for a Kleinunternehmer (no Vorsteuer) all VAT is
+ * cost. Treatment "none" has no VAT.
+ */
+export function expenseCostCents(
+  line: { netCents: number; taxCents: number; deductibleCents: number },
+  treatment: VatTreatment,
+  smallBusiness: boolean,
+): number {
+  if (treatment === "none") return line.netCents;
+  return line.netCents + line.taxCents - (smallBusiness ? 0 : line.deductibleCents);
+}
+
 /** Back-calculate net and tax from a gross amount ("Brutto-Eingabe"): gross 1200 @ 20 % → { net 1000, tax 200 }. */
 export function netFromGross(grossCents: number, rateBp: number): { netCents: number; taxCents: number } {
   const netCents = roundHalfAwayFromZero((grossCents * BP_SCALE) / (BP_SCALE + rateBp));

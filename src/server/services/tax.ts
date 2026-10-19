@@ -7,6 +7,7 @@ import {
   deductibleTaxCents,
   EXPENSE_CATEGORIES,
   type ExpenseCategory,
+  expenseCostCents,
   getExpenseCategory,
   type VatTreatment,
 } from "../../shared/expenses";
@@ -837,7 +838,7 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     if (e.category === ASSET_CATEGORY) continue; // capitalized: counts through the AfA below
     if (e.category === GWG_CATEGORY) gwgInYear.add(e.expense.id);
     // Nettomethode: net + non-deductible tax; Kleinunternehmer: no Vorsteuer at all.
-    const amount = e.netCents + e.taxCents - (gross ? 0 : e.deductibleCents);
+    const amount = expenseCostCents(e, e.expense.vatTreatment, gross);
     catAmounts.set(e.category, (catAmounts.get(e.category) ?? 0) + amount);
     monthly[monthOf(e.date)]!.expensesCents += amount;
   }
@@ -897,7 +898,7 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     if (!gwgInYear.has(e.ref.id)) continue;
     for (const l of e.lines) {
       if (l.category !== GWG_CATEGORY) continue;
-      const cost = l.netCents + l.taxCents - (gross ? 0 : l.deductibleCents);
+      const cost = expenseCostCents(l, e.ref.vatTreatment, gross);
       if (cost <= GWG_LIMIT_CENTS) continue;
       warnings.push(
         `${e.ref.number || e.ref.supplierName}: Geringwertiges Wirtschaftsgut mit ${formatCents(cost)} ${gross ? "brutto" : "netto"} über der GWG-Grenze von ${formatCents(GWG_LIMIT_CENTS)} — voll als Ausgabe enthalten; als Anlagegut (Kategorie „Anlagegüter“) erfassen und abschreiben, sofern es kein Sammelposten mehrerer Geräte ist.`,

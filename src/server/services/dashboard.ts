@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
-import { deductibleTaxCents, type VatTreatment } from "../../shared/expenses";
+import { deductibleTaxCents, expenseCostCents, type VatTreatment } from "../../shared/expenses";
 import type { SmallBusinessLimit } from "../../shared/small-business";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, expenseLines, expenses, settings } from "../db/schema";
@@ -134,19 +134,6 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
-/**
- * Expense cost of one line, same basis as the EAR (services/tax.ts computeEar): net plus the VAT that is not
- * deductible (e.g. KFZ); for a Kleinunternehmer (no Vorsteuer) all VAT is cost. Treatment "none" has no VAT.
- */
-function lineCostCents(
-  line: { netCents: number; taxCents: number; deductibleBp: number },
-  treatment: VatTreatment,
-  smallBusiness: boolean,
-): number {
-  if (treatment === "none") return line.netCents;
-  return line.netCents + line.taxCents - (smallBusiness ? 0 : deductibleTaxCents(line));
-}
-
 /** Expense costs per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
 function monthlyExpenses(db: DbOrTx, years: number[], smallBusiness: boolean): Map<number, number[]> {
   const from = `${Math.min(...years)}-01-01`;
@@ -166,7 +153,7 @@ function monthlyExpenses(db: DbOrTx, years: number[], smallBusiness: boolean): M
   const out = new Map(years.map((y) => [y, monthlyAfa(afaEntries(db, y))]));
   for (const l of lines) {
     const bucket = out.get(Number(l.issueDate.slice(0, 4)));
-    if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += lineCostCents(l, l.treatment as VatTreatment, smallBusiness);
+    if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += expenseCostCents({ ...l, deductibleCents: deductibleTaxCents(l) }, l.treatment as VatTreatment, smallBusiness);
   }
   return out;
 }
