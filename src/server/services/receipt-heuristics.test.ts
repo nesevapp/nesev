@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { observationsToText } from "../lib/ocr/layout";
 import { shortDescription } from "../../shared/receipts";
-import { amountsIn, detectAmountBasis, extractWithRules, findCategory, repairGrossTaxLines } from "./receipt-heuristics";
+import { amountsIn, detectAmountBasis, extractWithRules, findCategory, gwgOrAsset, repairGrossTaxLines } from "./receipt-heuristics";
 import { groundIdentifiers, mapLlmOutput } from "./receipt-llm";
 import { mergeFields } from "./receipt-validate";
 import { checkUid, ibanValid, parseAmountCents, parseDate, uidCountry } from "./receipt-parse";
@@ -252,6 +252,30 @@ describe("category rules", () => {
     expect(mergeFields(sure, rules).category?.value).toBe("wareneinkauf");
     // generic keywords stay a weak hint
     expect(findCategory("Lieferung Papier und Toner")?.confidence).toBe(0.45);
+  });
+});
+
+describe("GWG limit", () => {
+  const receipt = (net: string, tax: string, gross: string) =>
+    `Apple Store Wien\nRechnung Nr. 4711\nRechnungsdatum 01.10.2026\nMacBook Pro 14\nNetto ${net} EUR\n20% USt ${tax} EUR\nGesamtbetrag ${gross} EUR`;
+
+  test("a laptop above 1.000 € net is an Anlagegut, up to the limit GWG", () => {
+    const big = extractWithRules(receipt("1.999,00", "399,80", "2.398,80")).fields;
+    expect(big.category?.value).toBe("anlagen");
+    expect(big.category?.note).toContain("GWG");
+    const small = extractWithRules(receipt("1.000,00", "200,00", "1.200,00")).fields;
+    expect(small.category?.value).toBe("hardware_gwg");
+  });
+
+  test("Kleinunternehmer compare the gross amount; other categories untouched", () => {
+    const row = [{ netCents: 90000, grossCents: 108000 }];
+    const gwg = { value: "hardware_gwg" as const, confidence: 0.45, source: "rules" as const };
+    expect(gwgOrAsset(gwg, row, 108000, false)?.value).toBe("hardware_gwg");
+    expect(gwgOrAsset(gwg, row, 108000, true)?.value).toBe("anlagen");
+    expect(gwgOrAsset(gwg, [], 150000, false)?.value).toBe("anlagen"); // no tax table: the total
+    const buero = { ...gwg, value: "buero" as const };
+    expect(gwgOrAsset(buero, row, 500000, true)).toBe(buero);
+    expect(gwgOrAsset(undefined, row, 500000, true)).toBeUndefined();
   });
 });
 

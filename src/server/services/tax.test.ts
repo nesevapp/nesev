@@ -407,6 +407,22 @@ describe("EAR", () => {
     expect(v(db, parsePeriod("2026-Q3")!)["060"]!.amount).toBe(48000 + 2000);
   });
 
+  test("GWG lines above the limit: expensed as booked, but with a warning (net; gross for Kleinunternehmer)", () => {
+    const { db, expense } = setup();
+    expense("domestic", [{ net: 150000, category: "hardware_gwg" }], { paidAt: "2026-03-01" });
+    expense("domestic", [{ net: 100000, category: "hardware_gwg" }], { paidAt: "2026-03-01" }); // exactly the limit
+    let r = computeEar(db, 2026);
+    expect(r.expensesCents).toBe(250000);
+    const gwg = r.warnings.filter((w) => w.includes("GWG-Grenze"));
+    expect(gwg).toHaveLength(1);
+    expect(gwg[0]).toStartWith("ER-");
+    expect(computeEar(db, 2027).warnings.some((w) => w.includes("GWG-Grenze"))).toBe(false); // paid in 2026
+
+    updateSettings(db, { smallBusiness: true });
+    r = computeEar(db, 2026);
+    expect(r.warnings.filter((w) => w.includes("GWG-Grenze"))).toHaveLength(2); // 1.200,00 gross
+  });
+
   test("Kleinunternehmer: expenses gross", () => {
     const { db, expense } = setup({ smallBusiness: true });
     expense("domestic", [{ net: 10000 }], { paidAt: "2026-02-01" });

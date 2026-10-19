@@ -1,6 +1,7 @@
 import { defaultVatTreatment, netFromGross, type VatTreatment } from "../../shared/expenses";
 import type { AmountBasis, FieldSuggestion, ReceiptFields, TaxLineSuggestion } from "../../shared/receipts";
 import { addDays } from "../../shared/dates";
+import { GWG_LIMIT_CENTS } from "../../shared/assets";
 import type { ExpenseCategoryKey } from "../../shared/expenses";
 import {
   checkUid,
@@ -23,6 +24,8 @@ export interface RulesContext {
   ownUid?: string;
   ownIban?: string;
   ownName?: string;
+  /** Kleinunternehmer: the GWG limit applies to the gross amount (no Vorsteuer) */
+  smallBusiness?: boolean;
 }
 
 const rules = <T>(value: T, confidence: number): FieldSuggestion<T> => ({ value, confidence, source: "rules" });
@@ -303,6 +306,23 @@ export function findCategory(text: string): FieldSuggestion<ExpenseCategoryKey> 
   return undefined;
 }
 
+/**
+ * Hardware above the GWG limit (§ 13 EStG: Anschaffungskosten > 1.000 € net, gross for Kleinunternehmer) can't be
+ * expensed at once: suggest "anlagen" (capitalized, AfA) instead of "hardware_gwg". The receipt's largest
+ * tax-table row stands in for the item (without a table: the total, which is net when there is no VAT).
+ */
+export function gwgOrAsset(
+  category: FieldSuggestion<ExpenseCategoryKey> | undefined,
+  rows: { netCents: number; grossCents: number }[],
+  grossCents: number | undefined,
+  smallBusiness: boolean,
+): FieldSuggestion<ExpenseCategoryKey> | undefined {
+  if (category?.value !== "hardware_gwg") return category;
+  const cost = rows.length ? Math.max(...rows.map((r) => (smallBusiness ? r.grossCents : r.netCents))) : (grossCents ?? 0);
+  if (cost <= GWG_LIMIT_CENTS) return category;
+  return { ...category, value: "anlagen", note: "über der GWG-Grenze (1.000 €): Anlagegut, AfA über die Nutzungsdauer" };
+}
+
 /** Rule-based extraction from receipt text. */
 export function extractWithRules(text: string, ctx: RulesContext = {}): { fields: ReceiptFields; warnings: string[] } {
   const lines = text
@@ -328,7 +348,7 @@ export function extractWithRules(text: string, ctx: RulesContext = {}): { fields
   // without an explicit total, the tax table's sum is the best guess
   if (!fields.grossCents && rows.length) fields.grossCents = rules(rows.reduce((s, r) => s + r.grossCents, 0), 0.5);
   fields.vatTreatment = findTreatment(text, fields.supplierCountry?.value, fields.supplierUid?.value, rows);
-  fields.category = findCategory(text);
+  fields.category = gwgOrAsset(findCategory(text), rows, fields.grossCents?.value, ctx.smallBusiness ?? false);
 
   for (const k of Object.keys(fields) as (keyof ReceiptFields)[]) if (!fields[k]) delete fields[k];
   return { fields, warnings };

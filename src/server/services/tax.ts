@@ -26,7 +26,7 @@ import {
 import { calcTotals, type TaxGroup } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { bankMatches, bankTransactions, clients, documentItems, documents, expenseLines, expenses } from "../db/schema";
-import { formatAssetNumber } from "../../shared/assets";
+import { formatAssetNumber, GWG_LIMIT_CENTS } from "../../shared/assets";
 import { afaEntries, ASSET_CATEGORY, expensesWithoutAsset, monthlyAfa } from "./assets";
 import { csvAmount, toCsv } from "./export";
 import { getSettings } from "./settings";
@@ -52,6 +52,7 @@ import { getSettings } from "./settings";
 //   input VAT of an asset purchase stays deductible in the UVA right away.
 
 const isoDay = (s: string) => s.slice(0, 10);
+const GWG_CATEGORY = "hardware_gwg";
 
 // ── Money allocation ────────────────────────────────────────────────────────────
 
@@ -830,9 +831,11 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
 
   const catAmounts = new Map<string, number>();
   const expenseList = loadExpenses(db);
+  const gwgInYear = new Set<number>();
   for (const e of expenseList.flatMap(expenseCashEvents)) {
     if (e.date < from || e.date > to) continue;
     if (e.category === ASSET_CATEGORY) continue; // capitalized: counts through the AfA below
+    if (e.category === GWG_CATEGORY) gwgInYear.add(e.expense.id);
     // Nettomethode: net + non-deductible tax; Kleinunternehmer: no Vorsteuer at all.
     const amount = e.netCents + e.taxCents - (gross ? 0 : e.deductibleCents);
     catAmounts.set(e.category, (catAmounts.get(e.category) ?? 0) + amount);
@@ -887,6 +890,19 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
   }
   for (const e of expensesWithoutAsset(db, from, to)) {
     warnings.push(`${e.number || e.supplierName}: Anlagegut (${formatCents(e.netCents)} netto) nicht als Ausgabe enthalten, aber noch nicht im Anlagenverzeichnis — im Anlagenverzeichnis anlegen, damit die AfA berücksichtigt wird.`);
+  }
+  // GWG lines above the limit are expensed in full like the user booked them, but they should be capitalized
+  // (§ 13 EStG: Anschaffungskosten = net + non-deductible VAT; Kleinunternehmer: gross).
+  for (const e of expenseList) {
+    if (!gwgInYear.has(e.ref.id)) continue;
+    for (const l of e.lines) {
+      if (l.category !== GWG_CATEGORY) continue;
+      const cost = l.netCents + l.taxCents - (gross ? 0 : l.deductibleCents);
+      if (cost <= GWG_LIMIT_CENTS) continue;
+      warnings.push(
+        `${e.ref.number || e.ref.supplierName}: Geringwertiges Wirtschaftsgut mit ${formatCents(cost)} ${gross ? "brutto" : "netto"} über der GWG-Grenze von ${formatCents(GWG_LIMIT_CENTS)} — voll als Ausgabe enthalten; als Anlagegut (Kategorie „Anlagegüter“) erfassen und abschreiben, sofern es kein Sammelposten mehrerer Geräte ist.`,
+      );
+    }
   }
   if (catAmounts.get("bewirtung")) warnings.push("Bewirtung ist voll enthalten — ertragsteuerlich nur zu 50 % absetzbar.");
 
