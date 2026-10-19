@@ -5,7 +5,7 @@ import type { SmallBusinessLimit } from "../../shared/small-business";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, expenseLines, expenses, settings } from "../db/schema";
 import { afaEntries, ASSET_CATEGORY, monthlyAfa } from "./assets";
-import { creditedCentsSql, invoicePaymentStates, paidCentsSql } from "./bank";
+import { creditedCentsSql, invoicePaymentStates, openCentsSql } from "./bank";
 import { getSmallBusinessLimit } from "./small-business";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
@@ -161,9 +161,6 @@ function monthlyExpenses(db: DbOrTx, years: number[]): Map<number, number[]> {
   }
   return out;
 }
-
-/** gross − credit notes − bank payments of the invoice in the current row */
-const openCentsSql = sql<number>`(${documents.grossCents} - ${creditedCentsSql} - ${paidCentsSql})`;
 
 export function getDashboard(db: DbOrTx, year: number, today = todayIso()): DashboardData {
   const yearFrom = `${year}-01-01`;

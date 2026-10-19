@@ -16,7 +16,7 @@ import {
   recurringInvoices,
   settings,
 } from "../db/schema";
-import { creditedCentsByInvoice, paidCentsByDocument, paidCentsByExpense } from "./bank";
+import { creditedCentsByInvoice, creditTotalsByInvoice, invoicePaymentStates, paidCentsByExpense } from "./bank";
 import { linkedSlotKeys } from "./recurring-expenses";
 import { getSettings, updateSettings } from "./settings";
 import { computeUva } from "./tax";
@@ -370,29 +370,18 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
         .from(documents)
         .where(and(eq(documents.type, "invoice"), eq(documents.status, "draft"), isNotNull(documents.recurringInvoiceId)))
         .all();
-  const credits = db
-    .select({ parentId: documents.parentId, grossCents: documents.grossCents, taxCents: documents.taxCents })
-    .from(documents)
-    .where(and(eq(documents.type, "credit_note"), ne(documents.status, "draft"), isNotNull(documents.parentId)))
-    .all();
-  const creditByInvoice = new Map<number, { gross: number; tax: number }>();
-  for (const c of credits) {
-    const cur = creditByInvoice.get(c.parentId!) ?? { gross: 0, tax: 0 };
-    cur.gross += c.grossCents;
-    cur.tax += c.taxCents;
-    creditByInvoice.set(c.parentId!, cur);
-  }
+  const all = [...invoices, ...recurringDrafts];
+  const states = invoicePaymentStates(db, all);
+  const creditTax = creditTotalsByInvoice(db, all.map((d) => d.id));
 
-  const paidByInvoice = paidCentsByDocument(db, invoices.map((d) => d.id));
-
-  for (const doc of [...invoices, ...recurringDrafts]) {
+  for (const doc of all) {
     const isDraft = doc.status === "draft";
     const source: ForecastSource = isDraft ? (doc.recurringInvoiceId ? "recurring" : "draft") : "invoice";
-    const credit = creditByInvoice.get(doc.id) ?? { gross: 0, tax: 0 };
-    // partial bank payments reduce what is still expected (VAT part pro rata)
-    const owed = doc.grossCents - credit.gross;
-    const paid = Math.min(paidByInvoice.get(doc.id) ?? 0, Math.max(owed, 0));
-    const owedTax = doc.taxCents - credit.tax;
+    // credit notes and partial bank payments (net of refunds) reduce what is still expected (VAT part pro rata)
+    const state = states.get(doc.id)!;
+    const owed = state.dueCents;
+    const paid = Math.min(Math.max(state.paidCents, 0), Math.max(owed, 0));
+    const owedTax = doc.taxCents - (creditTax.get(doc.id)?.taxCents ?? 0);
     const openTax = owed > 0 ? Math.round((owedTax * (owed - paid)) / owed) : owedTax;
     const delay = delayFor(doc.clientId);
     const dueDate = doc.dueDate ?? addDays(doc.issueDate, termsFor(doc.clientId));

@@ -20,7 +20,7 @@ import {
 import type { DbOrTx } from "../db/client";
 import { clients, type Document, documents, type Reminder, reminders, settings } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
-import { paidCentsForDocument } from "./bank";
+import { invoicePaymentState, invoicePaymentStates } from "./bank";
 import { clientSnapshot, getClient } from "./clients";
 import { getSettings, sellerSnapshot } from "./settings";
 
@@ -147,14 +147,9 @@ export function getReminder(db: DbOrTx, id: number): ReminderDetail {
   };
 }
 
-/** Invoice gross minus finalized credit notes issued for it minus bank payments allocated to it. */
+/** Open amount of an invoice (services/bank.ts invoicePaymentStates: gross − credit notes − net bank payments). */
 export function openAmountCents(db: DbOrTx, invoice: Pick<Document, "id" | "grossCents">): number {
-  const credited = db
-    .select({ cents: sql<number>`coalesce(sum(${documents.grossCents}), 0)` })
-    .from(documents)
-    .where(and(eq(documents.parentId, invoice.id), eq(documents.type, "credit_note"), ne(documents.status, "draft")))
-    .get();
-  return invoice.grossCents - (credited?.cents ?? 0) - paidCentsForDocument(db, invoice.id);
+  return invoicePaymentState(db, invoice).openCents;
 }
 
 export interface DueInvoiceRow {
@@ -206,10 +201,18 @@ export function listDueInvoices(db: DbOrTx, today: string = todayIso()): DueInvo
     .orderBy(asc(reminders.level), asc(reminders.id))
     .all();
 
+  const states = invoicePaymentStates(db, invoices.map((r) => r.invoice));
+  const byInvoice = new Map<number, typeof all>();
+  for (const r of all) {
+    const list = byInvoice.get(r.invoiceId);
+    if (list) list.push(r);
+    else byInvoice.set(r.invoiceId, [r]);
+  }
+
   return invoices.flatMap(({ invoice, clientName }): DueInvoiceRow[] => {
-    const openCents = openAmountCents(db, invoice);
+    const openCents = states.get(invoice.id)!.openCents;
     if (openCents <= 0) return [];
-    const own = all.filter((r) => r.invoiceId === invoice.id);
+    const own = byInvoice.get(invoice.id) ?? [];
     const issued = own.filter((r) => r.status !== "draft");
     const last = issued.at(-1) ?? null;
     const draft = own.find((r) => r.status === "draft") ?? null;

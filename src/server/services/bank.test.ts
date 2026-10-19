@@ -486,6 +486,45 @@ describe("payment status vs. allocations and credit notes", () => {
     expect(getDocument(db, inv.id)).toMatchObject({ status: "paid", paidAt: "2026-03-02" });
   });
 
+  test("a refund on the credit note lowers what was paid on the invoice", () => {
+    const { db, account, client } = setup();
+    const c = client("X");
+    /** credit note over 240,00 gross for `inv` */
+    const creditNote = (invId: number) => {
+      const cn = createCreditNote(db, invId);
+      db.update(documentItems).set({ unitPriceCents: 20000 }).where(eq(documentItems.documentId, cn.id)).run();
+      return finalizeDocument(db, cn.id);
+    };
+
+    // paid 1.200 in full, then 240 credited and refunded → settled, not overpaid
+    const inv = invoice(db, c.id, 120000);
+    applyMatch(db, tx(db, account.id, { amountCents: 120000 }).id, { allocations: [{ documentId: inv.id, amountCents: 120000 }] });
+    const cn = creditNote(inv.id);
+    expect(documentPayments(db, inv.id)).toMatchObject({ dueCents: 96000, paidCents: 120000, openCents: -24000 });
+    const refund = tx(db, account.id, { amountCents: -24000, bookingDate: "2026-03-25" });
+    applyMatch(db, refund.id, { allocations: [{ documentId: cn.id, amountCents: 24000 }] });
+    const info = documentPayments(db, inv.id);
+    expect(info).toMatchObject({ grossCents: 120000, creditedCents: 24000, dueCents: 96000, paidCents: 96000, openCents: 0, partial: false });
+    expect(info.payments.map((p) => [p.kind, p.amountCents])).toEqual([["payment", 120000], ["refund", -24000]]);
+    expect(listDocuments(db, { type: "invoice" }).find((r) => r.id === inv.id)).toMatchObject({ status: "paid", openCents: 0 });
+    expect(documentPayments(db, cn.id)).toMatchObject({ paidCents: 24000, openCents: 0 });
+
+    // still open: 600 paid, 240 credited, 120 of it refunded → open 1.200 − 240 − (600 − 120) = 480 everywhere
+    const open = invoice(db, c.id, 120000);
+    applyMatch(db, tx(db, account.id, { amountCents: 60000 }).id, { allocations: [{ documentId: open.id, amountCents: 60000 }] });
+    const cn2 = creditNote(open.id);
+    applyMatch(db, tx(db, account.id, { amountCents: -12000 }).id, { allocations: [{ documentId: cn2.id, amountCents: 12000 }] });
+    expect(getDocument(db, open.id)).toMatchObject({ status: "final", openCents: 48000, partial: true });
+    expect(listDueInvoices(db, "2026-04-01").map((d) => [d.invoiceId, d.openCents])).toEqual([[open.id, 48000]]);
+    const dash = getDashboard(db, 2026, "2026-04-01");
+    expect(dash.kpis.openInvoices).toEqual({ count: 1, cents: 48000 });
+    expect(dash.kpis.overdue).toEqual({ count: 1, cents: 48000 });
+    expect(dash.overdue.map((r) => [r.id, r.openCents])).toEqual([[open.id, 48000]]);
+    const forecast = buildForecast(db, { months: 3, includeDrafts: false, includeOffers: false, offerProbability: 50, includeOutflows: false, today: "2026-04-01" });
+    expect(forecast.entries.map((e) => [e.documentId, e.grossCents])).toEqual([[open.id, 48000]]);
+    expect(loadContext(db).invoices.map((i) => [i.id, i.openCents, i.paidCents])).toEqual([[open.id, 48000, 48000]]);
+  });
+
   test("lists and dashboard show partially paid invoices", () => {
     const { db, account, client } = setup();
     const c = client("X");

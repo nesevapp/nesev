@@ -66,6 +66,12 @@ export const paidCentsSql = sql<number>`coalesce((select sum(${bankMatches.amoun
 /** SQL expression: finalized credit notes for the invoice in the current row (for aggregate queries). */
 export const creditedCentsSql = sql<number>`coalesce((select sum(cn.gross_cents) from ${documents} cn where cn.parent_id = ${documents.id} and cn.type = 'credit_note' and cn.status <> 'draft'), 0)`;
 
+/** SQL expression: refunds (outgoing bank allocations) to the credit notes of the invoice in the current row. */
+export const refundedCentsSql = sql<number>`coalesce((select sum(m.amount_cents) from ${bankMatches} m inner join ${documents} cn on cn.id = m.document_id where cn.parent_id = ${documents.id} and cn.type = 'credit_note'), 0)`;
+
+/** SQL expression: open amount of the invoice in the current row (same as PaymentState.openCents). */
+export const openCentsSql = sql<number>`(${documents.grossCents} - ${creditedCentsSql} - ${paidCentsSql} + ${refundedCentsSql})`;
+
 /** Latest booking date of the transactions allocated to a target. */
 export function lastPaymentDate(db: DbOrTx, target: { documentId?: number; expenseId?: number }): string | null {
   return (
@@ -78,14 +84,41 @@ export function lastPaymentDate(db: DbOrTx, target: { documentId?: number; expen
   );
 }
 
-/** document gross minus finalized credit notes for it (the amount the client owes before payments). */
-export function creditedCentsByInvoice(db: DbOrTx, invoiceIds?: number[]): Map<number, number> {
+/** invoiceId → gross and tax of its finalized credit notes. Without ids: every invoice that has some. */
+export function creditTotalsByInvoice(db: DbOrTx, invoiceIds?: number[]): Map<number, { grossCents: number; taxCents: number }> {
   if (invoiceIds && invoiceIds.length === 0) return new Map();
   const conds: SQL[] = [eq(documents.type, "credit_note"), sql`${documents.status} <> 'draft'`, isNotNull(documents.parentId)];
   if (invoiceIds) conds.push(inArray(documents.parentId, invoiceIds));
   const rows = db
-    .select({ id: documents.parentId, cents: sql<number>`sum(${documents.grossCents})` })
+    .select({
+      id: documents.parentId,
+      grossCents: sql<number>`sum(${documents.grossCents})`,
+      taxCents: sql<number>`sum(${documents.taxCents})`,
+    })
     .from(documents)
+    .where(and(...conds))
+    .groupBy(documents.parentId)
+    .all();
+  return new Map(rows.map((r) => [r.id!, { grossCents: r.grossCents, taxCents: r.taxCents }]));
+}
+
+/** invoiceId → gross of its finalized credit notes (what the client no longer owes). */
+export function creditedCentsByInvoice(db: DbOrTx, invoiceIds?: number[]): Map<number, number> {
+  return new Map([...creditTotalsByInvoice(db, invoiceIds)].map(([id, t]) => [id, t.grossCents]));
+}
+
+/**
+ * invoiceId → refunds paid out on its credit notes (outgoing bank allocations to them). A refund gives back money
+ * the client paid on the invoice, so it lowers the invoice's net paid amount.
+ */
+export function refundedCentsByInvoice(db: DbOrTx, invoiceIds?: number[]): Map<number, number> {
+  if (invoiceIds && invoiceIds.length === 0) return new Map();
+  const conds: SQL[] = [eq(documents.type, "credit_note"), isNotNull(documents.parentId)];
+  if (invoiceIds) conds.push(inArray(documents.parentId, invoiceIds));
+  const rows = db
+    .select({ id: documents.parentId, cents: sql<number>`sum(${bankMatches.amountCents})` })
+    .from(bankMatches)
+    .innerJoin(documents, eq(documents.id, bankMatches.documentId))
     .where(and(...conds))
     .groupBy(documents.parentId)
     .all();
@@ -98,15 +131,18 @@ export interface PaymentRow {
   accountId: number;
   accountName: string;
   bookingDate: string;
+  /** positive = payment on the invoice, negative = refund on one of its credit notes */
   amountCents: number;
   counterpartyName: string;
   purpose: string;
   source: string;
+  kind: "payment" | "refund";
 }
 
 export interface PaymentState {
   /** what is owed before payments (gross − credited) */
   dueCents: number;
+  /** bank payments on the invoice minus refunds on its credit notes */
   paidCents: number;
   /** dueCents − paidCents; negative = overpaid */
   openCents: number;
@@ -125,15 +161,28 @@ function paymentState(grossCents: number, creditedCents: number, paidCents: numb
   return { dueCents, paidCents, openCents: dueCents - paidCents, partial: paidCents > 0 && paidCents < dueCents };
 }
 
-/** Payment state per invoice (lists, dashboard): invoiceId → due/paid/open/partial. */
+/**
+ * Payment state per invoice (lists, dashboard, reminders, forecast, matching): invoiceId → due/paid/open/partial.
+ * The one place that defines an invoice's open amount: gross − finalized credit notes − (bank payments − refunds
+ * on its credit notes).
+ */
 export function invoicePaymentStates(db: DbOrTx, invoices: { id: number; grossCents: number }[]): Map<number, PaymentState> {
   const ids = invoices.map((d) => d.id);
   const credited = creditedCentsByInvoice(db, ids);
   const paid = paidCentsByDocument(db, ids);
-  return new Map(invoices.map((d) => [d.id, paymentState(d.grossCents, credited.get(d.id) ?? 0, paid.get(d.id) ?? 0)]));
+  const refunded = refundedCentsByInvoice(db, ids);
+  return new Map(
+    invoices.map((d) => [d.id, paymentState(d.grossCents, credited.get(d.id) ?? 0, (paid.get(d.id) ?? 0) - (refunded.get(d.id) ?? 0))]),
+  );
 }
 
-function paymentRows(db: DbOrTx, where: SQL): PaymentRow[] {
+/** Payment state of one invoice (see invoicePaymentStates). */
+export function invoicePaymentState(db: DbOrTx, invoice: { id: number; grossCents: number }): PaymentState {
+  return invoicePaymentStates(db, [invoice]).get(invoice.id)!;
+}
+
+function paymentRows(db: DbOrTx, where: SQL, kind: PaymentRow["kind"] = "payment"): PaymentRow[] {
+  const sign = kind === "refund" ? -1 : 1;
   return db
     .select({
       matchId: bankMatches.id,
@@ -151,7 +200,8 @@ function paymentRows(db: DbOrTx, where: SQL): PaymentRow[] {
     .innerJoin(bankAccounts, eq(bankAccounts.id, bankTransactions.accountId))
     .where(where)
     .orderBy(asc(bankTransactions.bookingDate), asc(bankMatches.id))
-    .all();
+    .all()
+    .map((r) => ({ ...r, amountCents: sign * r.amountCents, kind }));
 }
 
 function paymentsInfo(grossCents: number, creditedCents: number, payments: PaymentRow[]): PaymentsInfo {
@@ -159,12 +209,23 @@ function paymentsInfo(grossCents: number, creditedCents: number, payments: Payme
   return { grossCents, creditedCents, ...paymentState(grossCents, creditedCents, paidCents), payments };
 }
 
-/** Payments of an invoice (document view: "Zahlungen", "teilbezahlt X von Y"). */
+/** Payments of an invoice (document view: "Zahlungen", "teilbezahlt X von Y"), refunds on its credit notes negative. */
 export function documentPayments(db: DbOrTx, documentId: number): PaymentsInfo {
   const doc = db.select({ grossCents: documents.grossCents, type: documents.type }).from(documents).where(eq(documents.id, documentId)).get();
   if (!doc) throw notFound("Beleg");
-  const credited = doc.type === "invoice" ? (creditedCentsByInvoice(db, [documentId]).get(documentId) ?? 0) : 0;
-  return paymentsInfo(doc.grossCents, credited, paymentRows(db, eq(bankMatches.documentId, documentId)));
+  if (doc.type !== "invoice") return paymentsInfo(doc.grossCents, 0, paymentRows(db, eq(bankMatches.documentId, documentId)));
+  const credited = creditedCentsByInvoice(db, [documentId]).get(documentId) ?? 0;
+  const creditNoteIds = db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.parentId, documentId), eq(documents.type, "credit_note")))
+    .all()
+    .map((c) => c.id);
+  const rows = [
+    ...paymentRows(db, eq(bankMatches.documentId, documentId)),
+    ...(creditNoteIds.length ? paymentRows(db, inArray(bankMatches.documentId, creditNoteIds), "refund") : []),
+  ].sort((a, b) => a.bookingDate.localeCompare(b.bookingDate) || a.matchId - b.matchId);
+  return paymentsInfo(doc.grossCents, credited, rows);
 }
 
 export function expensePayments(db: DbOrTx, expenseId: number): PaymentsInfo {

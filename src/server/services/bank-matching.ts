@@ -3,12 +3,12 @@ import { HTTPException } from "hono/http-exception";
 import { type AutoMatchMode, type MatchInput, normalizeIban } from "../../shared/bank";
 import type { DbOrTx } from "../db/client";
 import { bankMatches, bankTransactions, type BankTransaction, clients, documents, expenses, reminders } from "../db/schema";
-import { creditedCentsByInvoice, getTransaction, lastPaymentDate, paidCentsByDocument, paidCentsByExpense, type TransactionRow } from "./bank";
+import { getTransaction, invoicePaymentStates, lastPaymentDate, paidCentsByExpense, type TransactionRow } from "./bank";
 import { settleInvoice } from "./documents";
 
 // Payment matching: suggestions for open bank transactions, auto-apply, applying/reverting allocations.
 //
-// Incoming → open invoices (final/sent, open = gross − finalized credit notes − allocated payments).
+// Incoming → open invoices (final/sent, open amount from services/bank.ts invoicePaymentStates).
 // Outgoing → open expenses (paidAt null, open = gross − allocated).
 // Signals (points):
 //   invoice number in purpose/reference ("RE-2026-0001", "RE 2026 0001", "RE20260001")  60
@@ -153,20 +153,23 @@ export function openInvoices(db: DbOrTx, ids?: number[]): InvoiceCandidate[] {
     .all();
   if (rows.length === 0) return [];
   const docIds = rows.map((r) => r.id);
-  const credited = creditedCentsByInvoice(db, docIds);
-  const paid = paidCentsByDocument(db, docIds);
+  const states = invoicePaymentStates(db, rows);
   const rems = db
     .select()
     .from(reminders)
     .where(and(inArray(reminders.invoiceId, docIds), ne(reminders.status, "draft")))
     .orderBy(desc(reminders.level), desc(reminders.id))
     .all();
+  const remsByInvoice = new Map<number, typeof rems>();
+  for (const m of rems) {
+    const list = remsByInvoice.get(m.invoiceId);
+    if (list) list.push(m);
+    else remsByInvoice.set(m.invoiceId, [m]);
+  }
   return rows.flatMap((r): InvoiceCandidate[] => {
-    const dueCents = r.grossCents - (credited.get(r.id) ?? 0);
-    const paidCents = paid.get(r.id) ?? 0;
-    const openCents = dueCents - paidCents;
+    const { dueCents, paidCents, openCents } = states.get(r.id)!;
     if (openCents <= 0) return [];
-    const own = rems.filter((m) => m.invoiceId === r.id);
+    const own = remsByInvoice.get(r.id) ?? [];
     const latest = own[0];
     const extra = latest ? latest.feeCents + latest.interestCents : 0;
     return [
