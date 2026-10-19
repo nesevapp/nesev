@@ -108,7 +108,9 @@ function compile(target: Target, entry: string): string {
     "--outfile",
     out,
     entry,
-  ]);
+  ], { cwd: BUILD });
+  // bun leaves a .<hash>.bun-build copy of its runtime in the working directory
+  for (const f of readdirSync(BUILD)) if (f.endsWith(".bun-build")) rmSync(join(BUILD, f), { force: true });
   return out;
 }
 
