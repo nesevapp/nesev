@@ -10,6 +10,7 @@ import { Tour } from "@/features/tour/tour";
 import { useTourOpen } from "@/features/tour/tour-store";
 import { cn } from "@/lib/utils";
 import { DocumentTitle } from "./document-title";
+import { UpdateHint } from "@/features/update/update-hint";
 import { SettingsNavLink, SidebarNav, TourButton } from "./sidebar-nav";
 
 // From md up the sidebar is a fixed column; below it hides behind a menu button in a slim top bar and opens as a
@@ -42,6 +43,7 @@ function SidebarBody({ search }: { search: boolean }) {
         </div>
       )}
       <SidebarNav />
+      <UpdateHint />
       {/* outside the scrolling nav: always at the bottom, also in short windows */}
       <div className="flex shrink-0 items-center gap-1 border-t border-sidebar-border px-3 py-3" data-tour="settings">
         <div className="min-w-0 flex-1">

@@ -9,6 +9,12 @@ they are called out here, and database migrations always run automatically on st
 
 ## [0.1.1] – 2026-10-19
 
+### Added
+
+- **Update hint:** nesev checks once a day whether a newer release is out and shows it in the sidebar (security
+  updates highlighted), with the command to update. On by default; switch it off in the setup, under Einstellungen →
+  Export & Backup, or with `NESEV_UPDATE_CHECK=0`. Nothing but the request to GitHub is sent.
+
 ### Changed
 
 - The app now addresses you with „du“ everywhere (UI, tour, setup, warnings, assistant). Texts to your clients

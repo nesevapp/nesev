@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, Info, Loader2 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +25,7 @@ export function SetupPage({ status }: { status: SetupStatus }) {
     missing ? { kind: "custom" } : { kind: "suggestion", id: status.suggestions[0]?.id ?? "app" },
   );
   const [custom, setCustom] = useState(missing ?? "");
+  const [updateCheck, setUpdateCheck] = useState(true);
   const debounced = useDebounced(custom, 300);
   const browse = useBrowseFolder();
   const complete = useCompleteSetup();
@@ -47,12 +49,12 @@ export function SetupPage({ status }: { status: SetupStatus }) {
 
   const restoreBackup = (file: File) => {
     if (!check.data?.ok) return;
-    restore.mutate({ path: check.data.path, file }, { onSuccess: () => window.location.replace("/") });
+    restore.mutate({ path: check.data.path, file, updateCheck }, { onSuccess: () => window.location.replace("/") });
   };
 
   const submit = () => {
     if (!check.data?.ok) return;
-    complete.mutate(check.data.path, { onSuccess: () => window.location.replace("/") });
+    complete.mutate({ path: check.data.path, updateCheck }, { onSuccess: () => window.location.replace("/") });
   };
 
   return (
@@ -130,6 +132,17 @@ export function SetupPage({ status }: { status: SetupStatus }) {
         {complete.error && <p className="text-sm text-destructive">{apiErrorMessage(complete.error)}</p>}
         {restore.error && <p className="text-sm text-destructive">{apiErrorMessage(restore.error)}</p>}
         {browse.error && <p className="text-sm text-destructive">{apiErrorMessage(browse.error)}</p>}
+
+        <label className="flex cursor-pointer items-start gap-3 text-sm">
+          <Checkbox checked={updateCheck} onCheckedChange={(v) => setUpdateCheck(v === true)} className="mt-0.5" />
+          <span className="flex flex-col gap-0.5">
+            <span>Nach Updates suchen</span>
+            <span className="text-muted-foreground">
+              Einmal täglich fragt nesev bei GitHub nach der neuesten Version und zeigt dir, wenn es ein Update gibt. Sonst
+              wird nichts gesendet. Jederzeit unter Einstellungen → Export &amp; Backup änderbar.
+            </span>
+          </span>
+        </label>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row">

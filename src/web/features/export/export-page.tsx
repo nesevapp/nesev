@@ -35,6 +35,7 @@ import { AccountantExport } from "./accountant-export";
 import { DownloadButton } from "./download-button";
 import { useRangePicker } from "./range-picker";
 import { DataDirSection } from "@/features/setup/data-dir-section";
+import { UpdateSection } from "@/features/update/update-section";
 
 function formatBytes(n: number): string {
   const fmt = (v: number) => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(v);
@@ -62,6 +63,7 @@ export function ExportPage() {
           </div>
         </FormSection>
         <DataDirSection />
+        <UpdateSection />
         <BackupSection />
         <RestoreSection />
       </div>

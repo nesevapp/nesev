@@ -15,6 +15,8 @@ nesev is a lightweight, local alternative to hosted invoicing tools, built for a
 (Einzelunternehmer). You write offers, invoices and credit notes, record expenses, import bank statements and get UVA, ZM
 and EAR figures. Everything runs on your own machine: no cloud, no account, no telemetry. All data stays in one folder
 that you choose, and the optional AI features (receipt recognition, assistant, voice input) use local models only.
+The only request nesev makes on its own is a daily check for a newer release on GitHub (shown in the app, can be
+switched off in the setup or under Einstellungen → Export & Backup).
 
 The user interface is **German**. The code, comments and docs are in English.
 
@@ -212,6 +214,7 @@ Nothing needs to be configured. The environment variables you are most likely to
 | `PORT` | `3998` | port of the server (web app + API) |
 | `NESEV_DATA_DIR` | chosen on first start | overrides the data folder |
 | `NESEV_HOST` | `127.0.0.1` | interface to listen on |
+| `NESEV_UPDATE_CHECK` | on | `0` switches the daily update check off (and locks the setting) |
 | `NESEV_ALLOWED_HOSTS` | – | extra hostnames (comma-separated) accepted in the `Host`/`Origin` header besides `localhost`, `127.0.0.1`, `[::1]` and a specific `NESEV_HOST` |
 
 All variables, with explanations: [.env.example](.env.example).

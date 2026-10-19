@@ -8,6 +8,7 @@ export * from "./files";
 export * from "./pdf";
 export * from "./settings";
 export * from "./setup";
+export * from "./update";
 export * from "./units";
 export * from "./clients";
 export * from "./articles";
