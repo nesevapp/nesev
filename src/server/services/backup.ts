@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { zipSync, type Zippable } from "fflate";
+import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { todayIso } from "../../shared/dates";
 import type { Db } from "../db/client";
 import { ASSETS_DIR, DATA_DIR, PDFS_DIR, RECEIPTS_DIR } from "../lib/paths";
@@ -19,14 +19,24 @@ export function snapshotDatabase(db: Db, dest: string): void {
   db.$client.query("VACUUM INTO ?").run(dest);
 }
 
-/** Every file under `dir` as { "<prefix>/<relative path>": bytes }. */
-function collectDir(dir: string, prefix: string, out: Zippable, level: 0 | 6): void {
-  if (!existsSync(dir)) return;
+interface ZipSource {
+  name: string;
+  /** file to read, or the content itself */
+  path?: string;
+  bytes?: Uint8Array;
+  compress: boolean;
+}
+
+/** Every regular file under `dir` (no dotfiles, symlinks not followed) as a zip entry "<prefix>/<relative path>". */
+function collectDir(dir: string, prefix: string, compress: boolean): ZipSource[] {
+  if (!existsSync(dir)) return [];
+  const out: ZipSource[] = [];
   for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || entry.name.startsWith(".")) continue;
     const abs = join(entry.parentPath, entry.name);
-    out[`${prefix}/${relative(dir, abs).split("\\").join("/")}`] = [readFileSync(abs), { level }];
+    out.push({ name: `${prefix}/${relative(dir, abs).split("\\").join("/")}`, path: abs, compress });
   }
+  return out;
 }
 
 const RESTORE_README = `nesev – Backup
@@ -45,32 +55,85 @@ Wiederherstellen:
   4. Server wieder starten.
 `;
 
-/** ZIP of a fresh DB snapshot plus data/assets, data/pdfs and data/receipts (for "Backup herunterladen"). */
+/**
+ * ZIP of a fresh DB snapshot plus data/assets, data/pdfs and data/receipts (for "Backup herunterladen"), streamed:
+ * files are read asynchronously one at a time as the client pulls, so a large receipts folder neither sits in
+ * memory as a whole nor blocks the event loop. The snapshot is taken right away (consistent point in time); its
+ * temp file is removed when the stream ends, fails or is cancelled.
+ */
 export function createBackupZip(
   db: Db,
   dirs = { assets: ASSETS_DIR, pdfs: PDFS_DIR, receipts: RECEIPTS_DIR },
-): Uint8Array {
+): ReadableStream<Uint8Array> {
   const tmp = join(tmpdir(), `nesev-snapshot-${randomUUID()}.db`);
+  const cleanup = () => rmSync(tmp, { force: true });
+  let sources: ZipSource[];
   try {
     snapshotDatabase(db, tmp);
-    const files: Zippable = {
-      "nesev.db": [readFileSync(tmp), { level: 6 }],
-      "LIESMICH.txt": new TextEncoder().encode(RESTORE_README),
-    };
-    collectDir(dirs.assets, "assets", files, 6);
-    collectDir(dirs.pdfs, "pdfs", files, 0);
-    // photos and PDFs are already compressed
-    collectDir(dirs.receipts, "receipts", files, 0);
-    return zipSync(files);
-  } finally {
-    rmSync(tmp, { force: true });
+    sources = [
+      { name: "nesev.db", path: tmp, compress: true },
+      { name: "LIESMICH.txt", bytes: new TextEncoder().encode(RESTORE_README), compress: true },
+      ...collectDir(dirs.assets, "assets", true),
+      // photos and PDFs are already compressed
+      ...collectDir(dirs.pdfs, "pdfs", false),
+      ...collectDir(dirs.receipts, "receipts", false),
+    ];
+  } catch (err) {
+    cleanup();
+    throw err;
   }
+  let zip: Zip;
+  let next = 0;
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      zip = new Zip((err, chunk, final) => {
+        if (err) {
+          cleanup();
+          return controller.error(err);
+        }
+        controller.enqueue(chunk);
+        if (final) {
+          cleanup();
+          controller.close();
+        }
+      });
+    },
+    // one file per pull: the consumer's pace drives the reads
+    async pull(controller) {
+      try {
+        const src = sources[next++];
+        if (!src) return zip.end();
+        let bytes = src.bytes;
+        if (!bytes) {
+          try {
+            bytes = await Bun.file(src.path!).bytes();
+          } catch (err) {
+            if (src.path === tmp) throw err;
+            return; // deleted since the listing: skip it
+          }
+        }
+        const entry = src.compress ? new ZipDeflate(src.name, { level: 6 }) : new ZipPassThrough(src.name);
+        zip.add(entry);
+        entry.push(bytes, true);
+        if (src.path === tmp) cleanup();
+      } catch (err) {
+        cleanup();
+        controller.error(err);
+      }
+    },
+    cancel() {
+      zip?.terminate();
+      cleanup();
+    },
+  });
 }
 
 // ── Automatic local backups (data/backups/nesev-YYYY-MM-DD.db) ─────────────────
 
 export interface LocalBackup {
   name: string;
+  /** daily local backups are database snapshots only; assets, PDFs and receipts are only in the ZIP download */
+  contents: "database";
   date: string;
   sizeBytes: number;
   createdAt: string;
@@ -83,7 +146,7 @@ export function listLocalBackups(dir = BACKUPS_DIR): LocalBackup[] {
     .filter((e): e is { name: string; m: RegExpExecArray } => !!e.m)
     .map(({ name, m }) => {
       const st = statSync(join(dir, name));
-      return { name, date: m[1]!, sizeBytes: st.size, createdAt: st.mtime.toISOString() };
+      return { name, contents: "database" as const, date: m[1]!, sizeBytes: st.size, createdAt: st.mtime.toISOString() };
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 }

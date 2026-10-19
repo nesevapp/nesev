@@ -34,7 +34,7 @@ describe("snapshot", () => {
     expect(openAndCount(dest)).toBe(1);
   });
 
-  test("backup zip contains db, assets, pdfs and receipts", () => {
+  test("backup zip contains db, assets, pdfs and receipts", async () => {
     const { dir, db } = fileDb();
     const assets = join(dir, "assets");
     const pdfs = join(dir, "pdfs");
@@ -48,7 +48,11 @@ describe("snapshot", () => {
     writeFileSync(join(receipts, "2026", "ER-2026-0001-1.jpg"), "jpg");
     writeFileSync(join(receipts, "2026", "ER-2026-0001-1-crop-2.jpg"), "jpg");
 
-    const files = unzipSync(createBackupZip(db, { assets, pdfs, receipts }));
+    const before = readdirSync(tmpdir()).filter((f) => f.startsWith("nesev-snapshot-")).length;
+    const stream = createBackupZip(db, { assets, pdfs, receipts });
+    const files = unzipSync(new Uint8Array(await new Response(stream).arrayBuffer()));
+    // the temp snapshot is gone once the stream is done
+    expect(readdirSync(tmpdir()).filter((f) => f.startsWith("nesev-snapshot-")).length).toBe(before);
     expect(Object.keys(files).sort()).toEqual([
       "LIESMICH.txt",
       "assets/fonts/a.ttf",
@@ -64,11 +68,23 @@ describe("snapshot", () => {
   });
 });
 
+describe("backup zip stream", () => {
+  test("cancelling the download removes the temp snapshot", async () => {
+    const { dir, db } = fileDb();
+    const snapshots = () => readdirSync(tmpdir()).filter((f) => f.startsWith("nesev-snapshot-")).length;
+    const before = snapshots();
+    const stream = createBackupZip(db, { assets: join(dir, "a"), pdfs: join(dir, "p"), receipts: join(dir, "r") });
+    expect(snapshots()).toBe(before + 1);
+    await stream.cancel();
+    expect(snapshots()).toBe(before);
+  });
+});
+
 describe("local backups", () => {
   test("one per day, force overwrites", () => {
     const { dir, db } = fileDb();
     const backups = join(dir, "backups");
-    expect(writeLocalBackup(db, { dir: backups, date: "2026-10-13" })?.name).toBe("nesev-2026-10-13.db");
+    expect(writeLocalBackup(db, { dir: backups, date: "2026-10-13" })).toMatchObject({ name: "nesev-2026-10-13.db", contents: "database" });
     expect(writeLocalBackup(db, { dir: backups, date: "2026-10-13" })).toBeNull();
     db.insert(clients).values({ number: 2, name: "Zweite AG" }).run();
     writeLocalBackup(db, { dir: backups, date: "2026-10-13", force: true });
