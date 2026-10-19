@@ -156,7 +156,7 @@ src/mcp/      MCP server
 ```
 
 - [CONVENTIONS.md](CONVENTIONS.md): code layout, API and form patterns, units, colors.
-- [PLAN.md](PLAN.md): how each feature works in detail, open decisions and the roadmap.
+- [docs/architecture.md](docs/architecture.md): how each feature works in detail; [ROADMAP.md](ROADMAP.md): what's next.
 - [CONTRIBUTING.md](CONTRIBUTING.md): setup, tests and the rules for changes.
 
 ## Disclaimer

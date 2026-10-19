@@ -4,7 +4,7 @@ A lightweight local invoicing and bookkeeping app for Austrian sole traders. Sin
 
 This file guides AI coding agents and contributors. Put machine-specific notes (your ports, your own instance, where your real data lives) in a gitignored `CLAUDE.local.md` next to it; Claude Code loads it automatically.
 
-- **PLAN.md** – what exists, how each feature works, open decisions, and the ordered roadmap. Update it when a feature lands or a decision changes.
+- **docs/architecture.md** (+ `docs/assistant.md`) – how each feature works. **ROADMAP.md** – what's next. **docs/tax-notes.md** – open tax questions. **CHANGELOG.md** – user-visible changes. When a feature lands or a decision changes, update the matching file(s).
 - **CONVENTIONS.md** – detailed code reference: layout, API/route patterns, forms, units. Read it before writing code.
 
 ## Commands

@@ -1,6 +1,6 @@
 # nesev conventions
 
-Read PLAN.md first for the spec. This file covers how the code is organized.
+Read [docs/architecture.md](docs/architecture.md) first for how the features work. This file covers how the code is organized.
 
 ## Commands
 | | |

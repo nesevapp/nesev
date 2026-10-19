@@ -11,4 +11,4 @@
 
 ## Notes
 
-<!-- Schema change + migration? Updated PLAN.md? UI text in German? Screenshots for UI changes. -->
+<!-- Schema change + migration? Updated docs/architecture.md, ROADMAP.md or CHANGELOG.md? UI text in German? Screenshots for UI changes. -->

@@ -3,7 +3,7 @@
 // first entry always starts at TAX_STATUS_BEGINNING ("von Beginn an"), so every date has a status; a migrated
 // database has exactly that one entry with its former global settings.
 //
-// Which date asks for the status (see services/tax.ts and PLAN.md "Taxes"):
+// Which date asks for the status (see services/tax.ts and docs/architecture.md "Taxes"):
 // - Kleinunternehmer for revenue: the document's issue date (the exemption belongs to the supply; a credit note
 //   follows its invoice). For expenses (Vorsteuer, EAR cost basis, asset cost): the expense's Belegdatum.
 // - Soll/Ist for revenue: the status at the invoice's issue date decides whether it is taxed at issue date or at

@@ -40,7 +40,8 @@ PORT=3990 bunx vite --port 5190 --strictPort       # Vite proxies /api to the sa
   database: use `createTestDb()`, or spawn a subprocess with `NESEV_DATA_DIR` like `chat.test.ts` / `mcp.test.ts`.
 - You tried the change in the running app on a temporary data dir. For PDF changes, look at the generated PDF
   (e.g. rasterize it with `pdftoppm`).
-- [PLAN.md](PLAN.md) is updated when a feature lands or a decision changes.
+- [docs/architecture.md](docs/architecture.md) (how it works), [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md)
+  are updated when a feature lands or a decision changes.
 
 ## Code
 
@@ -90,7 +91,7 @@ Larger features are usually split so several people (or agents) can work in para
 ## Tax logic
 
 Tax output (UVA, ZM, EAR, FinanzOnline XML, BMD export) follows Austrian rules. When you change it, cite the source
-(law, BMF documentation, USP, a court decision) in the PR or in PLAN.md, and add a test with concrete figures.
+(law, BMF documentation, USP, a court decision) in the PR or in [docs/tax-notes.md](docs/tax-notes.md), and add a test with concrete figures.
 
 ## License
 
