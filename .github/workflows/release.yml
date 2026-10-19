@@ -1,0 +1,93 @@
+name: Release
+
+# Push a tag v<package.json version> (e.g. v0.2.0; v0.2.0-rc.1 makes a pre-release) → checks, single-file binaries
+# for macOS/Linux, a draft GitHub release with the assets. See docs/releasing.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: typecheck, test (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+
+      - name: Tag matches package.json version
+        run: |
+          version=$(bun -e 'console.log(require("./package.json").version)')
+          case "$GITHUB_REF_NAME" in
+            "v$version" | "v$version"-*) echo "version $version" ;;
+            *) echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1 ;;
+          esac
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install xmllint
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+
+      - name: Cache FinanzOnline XSDs
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: node_modules/.cache/nesev/finanzonline
+          key: finanzonline-xsd-${{ hashFiles('src/server/services/tax-xml.test.ts') }}
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+  release:
+    name: build binaries, draft release
+    needs: check
+    # macOS: compiles the Swift OCR helper for both Mac architectures; the Linux binaries are cross-compiled
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build SPA and binaries
+        run: bun scripts/build-binary.ts --all --package --require-helper
+
+      - name: Smoke test (darwin-arm64)
+        run: |
+          version=$(bun -e 'console.log(require("./package.json").version)')
+          test "$(NESEV_CACHE_DIR="$RUNNER_TEMP/cache" build/bin/darwin-arm64/nesev --version)" = "$version"
+          cd build/release && shasum -a 256 -c SHA256SUMS
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(bun -e 'console.log(require("./package.json").version)')
+          case "$GITHUB_REF_NAME" in *-*) prerelease=--prerelease ;; *) prerelease= ;; esac
+          gh release create "$GITHUB_REF_NAME" build/release/* --draft --generate-notes --title "nesev $version" $prerelease
