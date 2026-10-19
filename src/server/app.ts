@@ -25,6 +25,7 @@ import tax from "./routes/tax";
 import templates from "./routes/templates";
 import units from "./routes/units";
 import { originGuard } from "./lib/origin-guard";
+import { securityHeaders } from "./lib/security-headers";
 
 const base = new Hono();
 
@@ -37,6 +38,8 @@ base.onError((err, c) => {
 // DNS rebinding / cross-site guard for everything served (API, files, PDFs, SPA in production): loopback Host only
 // (plus NESEV_ALLOWED_HOSTS), and no foreign Origin on writes. See lib/origin-guard.ts.
 base.use("*", originGuard());
+// nosniff, no referrer, same-origin framing; a CSP for HTML documents (the SPA in production). See lib/security-headers.ts.
+base.use("*", securityHeaders());
 
 // Mount points. Feature agents implement the route files; this list should not need changes.
 export const app = base
