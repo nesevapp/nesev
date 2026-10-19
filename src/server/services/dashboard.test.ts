@@ -125,6 +125,9 @@ describe("getDashboard", () => {
     expect(d.years).toEqual([2026]);
 
     updateSettings(db, { companyName: "Firma", street: "Gasse 1", city: "Wien" });
+    // the PLZ is part of the mandatory address too
+    expect(getDashboard(db, 2026, TODAY).setup.companyMissing).toBe(true);
+    updateSettings(db, { zip: "1010" });
     expect(getDashboard(db, 2026, TODAY).setup.companyMissing).toBe(false);
   });
   test("expenses: net per month by issueDate with previous year; years include expense-only years", () => {

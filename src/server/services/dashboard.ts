@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
+import { missingSellerFields } from "../../shared/seller";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
 import { deductibleTaxCents, expenseCostCents, type VatTreatment } from "../../shared/expenses";
 import type { SmallBusinessLimit } from "../../shared/small-business";
@@ -225,7 +226,7 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const current = monthlyByYear.get(year)!;
   const previous = monthlyByYear.get(year - 1)!;
   const company = db
-    .select({ name: settings.companyName, street: settings.street, city: settings.city })
+    .select({ companyName: settings.companyName, ownerName: settings.ownerName, street: settings.street, zip: settings.zip, city: settings.city })
     .from(settings)
     .get();
   const status = loadTaxStatus(db);
@@ -294,7 +295,7 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
     setup: {
       hasClients: clientCount > 0,
       hasDocuments: recent.length > 0,
-      companyMissing: !company || !company.name || !company.street || !company.city,
+      companyMissing: !company || missingSellerFields(company).length > 0,
     },
     smallBusiness: status.smallBusinessSometime(`${year}-01-01`, `${year}-12-31`) ? smallBusinessCard(db, year, today, status) : null,
   };

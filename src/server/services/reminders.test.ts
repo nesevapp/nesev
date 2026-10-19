@@ -29,11 +29,13 @@ import {
   updateReminderSettings,
 } from "./reminders";
 import { updateSettings } from "./settings";
+import { seedSeller } from "./test-seller";
 
 const TODAY = "2026-10-14";
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   updateSettings(db, { companyName: "Muster GmbH", iban: "AT611904300234573201", bic: "BKAUATWW" });
   const client = db.insert(clients).values({ number: 1, name: "Beispiel AG", country: "AT" }).returning().get();
   return { db, client };
@@ -100,6 +102,13 @@ describe("settings", () => {
 });
 
 describe("reminders", () => {
+  test("finalize refuses without the seller's address", () => {
+    const { db, client } = setup();
+    const r = createReminder(db, { invoiceId: invoice(db, client.id).id }, TODAY);
+    updateSettings(db, { street: "" });
+    expectHttp(() => finalizeReminder(db, r.id), 422, "Unternehmensdaten fehlen: Straße.");
+  });
+
   test("level progression, fees and deadlines from the level settings", () => {
     const { db, client } = setup();
     const inv = invoice(db, client.id);

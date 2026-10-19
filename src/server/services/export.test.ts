@@ -5,6 +5,7 @@ import { createTestDb, type Db } from "../db/client";
 import { clients } from "../db/schema";
 import { createCreditNote, createDocument, finalizeDocument, updateDocument } from "./documents";
 import { clientsCsv, csvAmount, documentsCsv, documentsZip, exportSummary, rangeLabel, toCsv } from "./export";
+import { seedSeller } from "./test-seller";
 
 const item = (over: Partial<DocumentItemInput> = {}): DocumentItemInput => ({
   title: "Beratung",
@@ -19,6 +20,7 @@ const item = (over: Partial<DocumentItemInput> = {}): DocumentItemInput => ({
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   const client = db
     .insert(clients)
     .values({ number: 7, name: 'Muster; "Test" GmbH', country: "AT", uid: "ATU12345678" })

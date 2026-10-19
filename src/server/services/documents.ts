@@ -17,6 +17,7 @@ import type {
 import { formatCents } from "../../shared/money";
 import { countryName } from "../../shared/countries";
 import { defaultTaxMode, isEuCountry, requiresClientUid, TAX_MODE_LABELS, type TaxMode } from "../../shared/tax";
+import { missingSellerFields, sellerMissingMessage } from "../../shared/seller";
 import { calcTotals } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { type Client, type Document, type DocumentItem, clients, documentItems, documents } from "../db/schema";
@@ -311,8 +312,11 @@ export function finalizeDocument(db: DbOrTx, id: number): DocumentDetail {
       throw unprocessable("Leistungszeitraum: Ende liegt vor dem Beginn");
     }
     if (doc.type === "credit_note" && doc.parentId) checkCreditNote(tx, doc, cachedTotals(items, doc.taxMode).grossCents);
-
+    // the seller snapshot is frozen with the document: name and address can't be added later
     const settings = getSettings(tx);
+    const missingSeller = missingSellerFields(settings);
+    if (missingSeller.length > 0) throw unprocessable(sellerMissingMessage(missingSeller));
+
     const d = documentDefaults(tx, doc.type, doc.clientId, doc.issueDate);
     const { number } = nextNumber(tx, doc.type, Number(doc.issueDate.slice(0, 4)));
     tx.update(documents)
@@ -361,11 +365,15 @@ function checkCreditNote(tx: DbOrTx, doc: Document, grossCents: number): void {
 
 /** Gross amount above which an invoice to a business must name the recipient's UID (§ 11 Abs. 1 Z 3 lit. i UStG). */
 export const UID_REQUIRED_ABOVE_CENTS = 1_000_000;
+/** Kleinbetragsrechnung limit (§ 11 Abs. 6 UStG): above it, an invoice with VAT names the supplier's own UID. */
+export const SMALL_INVOICE_MAX_CENTS = 40_000;
 
 /**
  * Non-blocking hints before finalizing a draft (finalizeDocument doesn't use them; the editor shows them in the
  * finalize dialog, GET /api/documents/:id/finalize-warnings):
  * - an Austrian invoice to a business above € 10.000 gross without the recipient's UID;
+ * - an invoice with Austrian VAT above € 400 gross (no Kleinbetragsrechnung) without our own UID (§ 11 Abs. 1 Z 2
+ *   UStG; required once the Finanzamt assigned one, so a hint, not a block);
  * - reverse charge without our own UID (§ 11 Abs. 1a UStG: the invoice names both UIDs);
  * - Kleinunternehmer invoicing a foreign business: for services the place of supply is abroad (§ 3a Abs. 6 UStG),
  *   so the exemption doesn't cover them (see defaultTaxMode in shared/tax.ts);
@@ -386,6 +394,11 @@ export function finalizeWarnings(db: DbOrTx, id: number): string[] {
 
   if (doc.type === "invoice" && doc.taxMode === "AT_DOMESTIC") {
     const gross = cachedTotals(getItems(db, id), doc.taxMode).grossCents;
+    if (!ownUid && gross > SMALL_INVOICE_MAX_CENTS) {
+      warnings.push(
+        `Rechnungsbetrag über ${formatCents(SMALL_INVOICE_MAX_CENTS)} brutto ohne eigene UID-Nummer: Rechnungen mit Umsatzsteuer müssen die UID des leistenden Unternehmens enthalten (§ 11 Abs. 1 Z 2 UStG). Falls Ihnen das Finanzamt eine UID erteilt hat, unter Einstellungen → Unternehmen hinterlegen.`,
+      );
+    }
     if (client.type === "company" && !client.uid.trim() && gross > UID_REQUIRED_ABOVE_CENTS) {
       warnings.push(
         `Rechnungsbetrag über ${formatCents(UID_REQUIRED_ABOVE_CENTS)} brutto: Die UID-Nummer des Kunden muss auf der Rechnung stehen (§ 11 Abs. 1 Z 3 lit. i UStG) — beim Kunden hinterlegen.`,

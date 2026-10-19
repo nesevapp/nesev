@@ -19,6 +19,7 @@ import { createCreditNote, createDocument, finalizeDocument, getDocument } from 
 import { computeEar, computeUva, computeZm, earCsv, revenueEvents, uvaCsv, uvaValues } from "./tax";
 import { uvaXmlErrors } from "./tax-xml";
 import { setTaxStatus } from "./tax-status";
+import { seedSeller } from "./test-seller";
 
 const Q1 = parsePeriod("2026-Q1")!;
 const Q2 = parsePeriod("2026-Q2")!;
@@ -30,6 +31,7 @@ interface Line {
 
 function setup(status: Parameters<typeof setTaxStatus>[1] = {}) {
   const db = createTestDb();
+  seedSeller(db);
   if (Object.keys(status).length) setTaxStatus(db, status);
   const at = db.insert(clients).values({ number: 1, name: "Wien GmbH", country: "AT" }).returning().get();
   const de = db.insert(clients).values({ number: 2, name: "Berlin GmbH", country: "DE", uid: "DE123456789" }).returning().get();

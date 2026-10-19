@@ -23,11 +23,13 @@ import { getDashboard } from "./dashboard";
 import { buildForecast } from "./forecast";
 import { createReminder, listDueInvoices } from "./reminders";
 import { updateSettings } from "./settings";
+import { seedSeller } from "./test-seller";
 
 const fixture = (name: string) => new Uint8Array(readFileSync(join(import.meta.dir, "../lib/bank-parsers/fixtures", name)));
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   updateSettings(db, { companyName: "Muster e.U.", iban: "AT611904300234573201", bic: "GIBAATWWXXX" });
   const account = createAccount(db, { name: "Geschäftskonto", iban: "AT611904300234573201", bankName: "Erste Bank" });
   const client = (name: string) => db.insert(clients).values({ number: Math.floor(Math.random() * 1e6), name, country: "AT" }).returning().get();

@@ -17,6 +17,7 @@ import {
   updateArticle,
 } from "./articles";
 import { createCreditNote, createDocument, finalizeDocument, getDocument, updateDocument } from "./documents";
+import { seedSeller } from "./test-seller";
 
 const input = (data: Record<string, unknown>) =>
   articleCreateSchema.parse({ unitPriceCents: 10000, taxRateBp: 2000, ...data });
@@ -72,6 +73,7 @@ describe("article numbers", () => {
 
   test("auto-assigned as max + 1, explicit numbers must be free", () => {
     const db = createTestDb();
+    seedSeller(db);
     expect(nextArticleNumber(db)).toBe(1);
     const [a, b] = seed(db);
     expect([a!.number, b!.number]).toEqual([1, 2]);
@@ -92,6 +94,7 @@ describe("article numbers", () => {
 describe("CRUD", () => {
   test("create, get, update, archive, delete", () => {
     const db = createTestDb();
+    seedSeller(db);
     const [web] = seed(db);
     expect(getArticle(db, web!.id)).toMatchObject({
       title: "Webdesign",
@@ -117,6 +120,7 @@ describe("CRUD", () => {
 
   test("search matches title, description and number; % and _ are literal", () => {
     const db = createTestDb();
+    seedSeller(db);
     seed(db);
     const titles = (q: string) => listArticles(db, { q }).map((a) => a.title);
     expect(titles("host")).toEqual(["Hosting"]);
@@ -131,6 +135,7 @@ describe("CRUD", () => {
 describe("picker", () => {
   test("active only, ordered by usage desc then title, limited", () => {
     const db = createTestDb();
+    seedSeller(db);
     const [web, beratung, hosting] = seed(db);
     const archived = createArticle(db, input({ title: "Alt" }));
     setArticleArchived(db, archived.id, true);
@@ -147,6 +152,7 @@ describe("picker", () => {
 describe("usage tracking", () => {
   test("finalizing counts each article once per document; drafts and credit notes don't count", () => {
     const db = createTestDb();
+    seedSeller(db);
     const client = addClient(db);
     const [web, , hosting] = seed(db);
     const doc = createDocument(db, {
@@ -169,6 +175,7 @@ describe("usage tracking", () => {
 
   test("unknown article ids on save are dropped, the line is kept", () => {
     const db = createTestDb();
+    seedSeller(db);
     const client = addClient(db);
     const doc = createDocument(db, { type: "offer", clientId: client.id });
     const saved = updateDocument(db, doc.id, { items: [lineFrom(4711, { title: "Frei" })] });
@@ -180,6 +187,7 @@ describe("usage tracking", () => {
 describe("delete keeps document items", () => {
   test("copied values stay, article_id becomes null; price changes don't propagate", () => {
     const db = createTestDb();
+    seedSeller(db);
     const client = addClient(db);
     const [web] = seed(db);
     const doc = createDocument(db, {

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { DOCUMENT_TYPE_LABELS, type DocumentType } from "@shared/documents";
 import { type DocumentFormData, type DocumentFormValues, documentFormSchema } from "@shared/schemas/document";
 import { formatDate } from "@shared/dates";
+import { missingSellerFields, sellerMissingMessage } from "@shared/seller";
 import { requiresClientUid, TAX_MODE_LABELS, TAX_MODES, type TaxMode, taxNoteFor } from "@shared/tax";
 import { Page } from "@/components/page";
 import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
@@ -44,6 +45,7 @@ import {
 } from "@/sdk";
 import { ActionBar, useDeriveAndOpen } from "./components/action-bar";
 import { DocumentRelations } from "./components/document-relations";
+import { toastFinalizeError } from "./components/finalize-error";
 import { LineItemsEditor } from "./components/line-items-editor";
 import { StatusBadge } from "./components/status-badge";
 import { TotalsPanel } from "./components/totals-panel";
@@ -176,6 +178,12 @@ export function DocumentEditor({
       toast.error(issues.find((i) => !i.name)?.message ?? "Bitte Eingaben prüfen");
       return;
     }
+    // the server refuses too; checked here so the user isn't asked to confirm first
+    const missingSeller = settings ? missingSellerFields(settings) : [];
+    if (missingSeller.length > 0) {
+      toastFinalizeError(sellerMissingMessage(missingSeller), navigate);
+      return;
+    }
     setChecking(true);
     try {
       const saved = await save();
@@ -227,7 +235,7 @@ export function DocumentEditor({
         openDetail(final);
       },
       onError: (err) => {
-        toast.error(apiErrorMessage(err));
+        toastFinalizeError(apiErrorMessage(err), navigate);
         openDetail(saved);
       },
     });

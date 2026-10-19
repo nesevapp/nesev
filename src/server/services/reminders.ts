@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, lt, ne, type SQL, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { addDays, todayIso } from "../../shared/dates";
+import { missingSellerFields, sellerMissingMessage } from "../../shared/seller";
 import {
   calcInterestCents,
   DEFAULT_REMINDER_SETTINGS,
@@ -331,13 +332,16 @@ export function finalizeReminder(db: DbOrTx, id: number): ReminderDetail {
     if (invoice.status === "paid") throw conflict(`Rechnung ${invoice.number} ist bereits bezahlt`);
     const client = getClient(tx, invoice.clientId);
     const snapshot = client ? clientSnapshot(client) : invoice.clientSnapshot;
+    const seller = getSettings(tx);
+    const missingSeller = missingSellerFields(seller);
+    if (missingSeller.length > 0) throw unprocessable(sellerMissingMessage(missingSeller));
     const { number } = nextNumber(tx, "reminder", Number(row.issueDate.slice(0, 4)));
     tx.update(reminders)
       .set({
         status: "final",
         number,
         clientSnapshot: snapshot,
-        sellerSnapshot: sellerSnapshot(getSettings(tx)),
+        sellerSnapshot: sellerSnapshot(seller),
         finalizedAt: new Date().toISOString(),
       })
       .where(eq(reminders.id, id))

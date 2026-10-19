@@ -10,9 +10,11 @@ import { ensureDefaultTemplates } from "./pdf";
 import { refreezeMissingPdfs } from "./pdf-refreeze";
 import { createReminder, finalizeReminder } from "./reminders";
 import { updateSettings } from "./settings";
+import { seedSeller } from "./test-seller";
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   updateSettings(db, { companyName: "Muster GmbH", iban: "AT611904300234573201", bic: "BKAUATWW" });
   ensureDefaultTemplates(db);
   const client = db.insert(clients).values({ number: 1, name: "Beispiel AG", country: "AT" }).returning().get();

@@ -22,6 +22,7 @@ import {
 } from "./documents";
 import { updateSettings } from "./settings";
 import { setTaxStatus } from "./tax-status";
+import { seedSeller } from "./test-seller";
 
 const item = (over: Partial<DocumentItemInput> = {}): DocumentItemInput => ({
   title: "Beratung",
@@ -45,6 +46,7 @@ function addClient(db: Db, over: Partial<NewClient> = {}) {
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   const client = addClient(db);
   return { db, client };
 }
@@ -207,6 +209,7 @@ describe("finalize", () => {
 
   test("finalize warnings: AT invoice to a business above € 10.000 gross needs the client's UID", () => {
     const { db, client } = setup();
+    updateSettings(db, { uid: "ATU99999999" });
     const big = createDocument(db, { type: "invoice", clientId: client.id, items: [item({ quantity: 1000, unitPriceCents: 833334 })] }); // 10.000,01 gross
     expect(finalizeWarnings(db, big.id)).toEqual([expect.stringContaining("§ 11 Abs. 1 Z 3 lit. i")]);
     const exact = createDocument(db, { type: "invoice", clientId: client.id, items: [item({ quantity: 1000, unitPriceCents: 833333 })] }); // 9.999,99... ≤ 10.000
@@ -218,6 +221,34 @@ describe("finalize", () => {
     // a warning only: finalizing still works
     db.update(clients).set({ uid: "" }).where(eq(clients.id, client.id)).run();
     expect(finalizeDocument(db, big.id).status).toBe("final");
+  });
+
+  test("finalize refuses without the seller's name and address (frozen into the document), naming what's missing", () => {
+    const { db, client } = setup();
+    updateSettings(db, { companyName: "", ownerName: "", street: "", zip: "" });
+    const doc = createDocument(db, { type: "invoice", clientId: client.id, items: [item()] });
+    expectHttp(() => finalizeDocument(db, doc.id), 422, "Unternehmensdaten fehlen: Firmenname oder Inhaber:in, Straße, PLZ.");
+    // no number consumed, still a draft
+    expect(getDocument(db, doc.id)).toMatchObject({ status: "draft", number: null });
+    // a sole trader's own name is enough as the seller name
+    updateSettings(db, { ownerName: "Maria Muster", street: "Gasse 1", zip: "1010" });
+    expect(finalizeDocument(db, doc.id).sellerSnapshot).toMatchObject({ ownerName: "Maria Muster", city: "Wien" });
+    // offers and credit notes too
+    updateSettings(db, { city: "" });
+    const offer = createDocument(db, { type: "offer", clientId: client.id, items: [item()] });
+    expectHttp(() => finalizeDocument(db, offer.id), 422, "Unternehmensdaten fehlen: Ort.");
+  });
+
+  test("finalize warnings: invoice with VAT over € 400 gross without own UID (§ 11 Abs. 1 Z 2)", () => {
+    const { db } = setup();
+    const person = addClient(db, { type: "person" });
+    const draft = (unitPriceCents: number, taxMode?: "SMALL_BUSINESS") =>
+      createDocument(db, { type: "invoice", clientId: person.id, items: [item({ quantity: 1000, unitPriceCents })], ...(taxMode ? { taxMode } : {}) }).id;
+    updateSettings(db, { uid: "" });
+    expect(finalizeWarnings(db, draft(33_334))).toEqual([expect.stringContaining("§ 11 Abs. 1 Z 2")]); // 400,01 gross
+    expect(finalizeWarnings(db, draft(33_333))).toEqual([]); // Kleinbetragsrechnung
+    updateSettings(db, { uid: "ATU12345678" });
+    expect(finalizeWarnings(db, draft(100_000))).toEqual([]);
   });
 
   test("finalize warnings: reverse charge without own UID; Kleinunternehmer invoicing a foreign business", () => {

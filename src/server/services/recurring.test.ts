@@ -14,6 +14,7 @@ import {
   runDueRecurring,
   updateRecurring,
 } from "./recurring";
+import { seedSeller } from "./test-seller";
 
 let clientNo = 0;
 function addClient(db: Db, over: Partial<NewClient> = {}) {
@@ -49,6 +50,7 @@ function input(clientId: number, over: Partial<RecurringCreate> = {}): Recurring
 
 function setup() {
   const db = createTestDb();
+  seedSeller(db);
   updateSettings(db, { paymentTermsDays: 14 });
   const client = addClient(db);
   return { db, client };

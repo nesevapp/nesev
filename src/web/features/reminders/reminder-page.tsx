@@ -51,6 +51,7 @@ import {
   useUpdateReminder,
 } from "@/sdk";
 import { LevelBadge, ReminderStatusBadge } from "./components/reminder-status-badge";
+import { toastFinalizeError } from "@/features/documents/components/finalize-error";
 
 type FormValues = z.input<typeof reminderUpdateSchema>;
 const DEFAULT_TEMPLATE = "default";
@@ -312,7 +313,7 @@ function ReminderEditor({ reminder }: { reminder: Reminder }) {
     if (!saved) return;
     finalize.mutate(saved.id, {
       onSuccess: (r) => toast.success(`Mahnung ${r.number} finalisiert`),
-      onError: (err) => toast.error(apiErrorMessage(err)),
+      onError: (err) => toastFinalizeError(apiErrorMessage(err), navigate),
     });
   };
 
