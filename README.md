@@ -224,7 +224,6 @@ All variables, with explanations: [.env.example](.env.example).
 
 On the first start nesev asks for a data folder and suggests:
 
-
 - the app-data folder of your system (**recommended**): macOS `~/Library/Application Support/nesev/Daten`, Linux
   `~/.local/share/nesev`, Windows `%LOCALAPPDATA%\nesev\Daten`;
 - `~/Documents/nesev`, if you want to see the files in Finder/Explorer;
