@@ -13,6 +13,7 @@ import forecast from "./routes/forecast";
 import recurring from "./routes/recurring";
 import reminders from "./routes/reminders";
 import settings from "./routes/settings";
+import setup from "./routes/setup";
 import pdf from "./routes/pdf";
 import receipts from "./routes/receipts";
 import receiptInbox from "./routes/receipt-inbox";
@@ -45,6 +46,7 @@ base.use("*", securityHeaders());
 // Mount points. Feature agents implement the route files; this list should not need changes.
 export const app = base
   .route("/api/settings", settings)
+  .route("/api/setup", setup)
   .route("/api/clients", clients)
   .route("/api/documents", documents)
   .route("/api/templates", templates)

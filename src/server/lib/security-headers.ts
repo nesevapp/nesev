@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MiddlewareHandler } from "hono";
-import { WEB_DIST_DIR } from "./paths";
+import { WEB_DIST_DIR } from "./app-files";
 
 // Security headers on everything Hono serves (API, files, and the built SPA in production; in dev Vite serves the
 // SPA). Every response: nosniff, no referrer, framing only by nesev itself. HTML documents get a CSP the SPA works

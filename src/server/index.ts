@@ -1,44 +1,39 @@
-import { app } from "./app";
-import { db } from "./db";
-import { DB_PATH, WEB_DIST_DIR } from "./lib/paths";
-import { startBackupScheduler } from "./services/backup";
-import { startPdfRefreeze } from "./services/pdf-refreeze";
-import { startReceiptInbox } from "./services/receipt-inbox";
-import { getLlamaServer } from "./services/receipt-llama";
-import { initReceiptQueue } from "./services/receipt-queue";
-import { startRecurringScheduler } from "./services/recurring";
-import { serveFile } from "./lib/static";
+import type { Server } from "bun";
+import { DEFAULT_PORT } from "./lib/app-files";
+import { resolveDataDir } from "./lib/data-location";
+import { createSetupApp } from "./setup";
 
 export type { AppType } from "./app";
 
+// Server entry. With a data dir (lib/data-location.ts) it loads the app right away; without one it serves the
+// first-start setup and loads the app in-process once the user picked a folder. main.ts is imported dynamically
+// because importing it opens the DB in the data dir.
+
 const isProd = process.env.NODE_ENV === "production";
-const port = Number(process.env.PORT ?? 3001);
+const port = Number(process.env.PORT ?? DEFAULT_PORT);
 // No auth: listen on the loopback interface only. NESEV_HOST=0.0.0.0 opens it to the network (at your own risk).
 const hostname = process.env.NESEV_HOST ?? "127.0.0.1";
 
-if (isProd) {
-  // Built SPA: static assets, falling back to index.html for client-side routes.
-  app.get("*", async (c) => {
-    return (await serveFile(WEB_DIST_DIR, c.req.path)) ?? (await serveFile(WEB_DIST_DIR, "index.html")) ?? c.notFound();
-  });
-} else {
-  app.get("/", (c) => c.text("nesev API — open the web app at http://localhost:5173"));
+type Fetch = (req: Request, server: Server<undefined>) => Response | Promise<Response>;
+
+async function loadApp(): Promise<Fetch> {
+  const main = await import("./main");
+  return main.fetch;
 }
 
-// Daily local DB snapshots to data/backups (guarded against double start under bun --hot).
-if (DB_PATH !== ":memory:") startBackupScheduler(db);
-if (DB_PATH !== ":memory:") startRecurringScheduler(db);
-// finalized documents/reminders whose PDF freeze failed: freeze them now (background, logs what it fixed)
-if (DB_PATH !== ":memory:") startPdfRefreeze(db);
-// Belege-Eingang: poll the inbox folder (copies new files, never analyses them)
-if (DB_PATH !== ":memory:") startReceiptInbox(db);
-if (DB_PATH !== ":memory:") {
-  // receipt analysis: recover runs interrupted by a restart, resume the queue
-  initReceiptQueue(db);
-  // llama-server: exit handlers + reap a llama-server orphaned by a hard-killed previous instance
-  getLlamaServer();
+let handler: Fetch;
+if (resolveDataDir()) {
+  handler = await loadApp();
+} else {
+  console.log("nesev: no data dir chosen yet, serving the setup");
+  handler = createSetupApp({
+    isProd,
+    onComplete: async () => {
+      handler = await loadApp();
+    },
+  }).fetch;
 }
 
 console.log(`nesev ${isProd ? "server" : "API"} listening on http://${hostname}:${port}`);
 
-export default { port, hostname, fetch: app.fetch };
+export default { port, hostname, fetch: (req: Request, server: Server<undefined>) => handler(req, server) };

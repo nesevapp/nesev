@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
-const apiPort = Number(process.env.PORT ?? 3001);
+const apiPort = Number(process.env.PORT ?? 3998); // DEFAULT_PORT in src/server/lib/app-files.ts
 
 export default defineConfig({
   root: r("./src/web"),

@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
-import { WEB_DIST_DIR } from "./paths";
+import { WEB_DIST_DIR } from "./app-files";
 
 /**
  * Types a browser runs as a document of their own (scripts, links, forms) when a file is opened directly. Files from

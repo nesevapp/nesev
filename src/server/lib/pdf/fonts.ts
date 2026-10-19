@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import type { Font } from "@pdfme/common";
 import { FONT_FILES, FONT_REGULAR } from "../../../shared/pdf/plugins";
-import { PROJECT_ROOT } from "../paths";
+import { FONTS_DIR } from "../app-files";
 
 /** Bundled fonts (Inter, SIL OFL), also served to the browser at /api/pdf/fonts/<file>. */
-export const FONTS_DIR = join(PROJECT_ROOT, "src/server/assets/fonts");
+export { FONTS_DIR };
 
 let cached: Promise<Font> | null = null;
 

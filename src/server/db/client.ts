@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { MIGRATIONS_DIR } from "../lib/paths";
+import { MIGRATIONS_DIR } from "../lib/app-files";
 import * as schema from "./schema";
 
 export function createDb(path: string) {
