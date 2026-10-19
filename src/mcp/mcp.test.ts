@@ -209,6 +209,21 @@ describe("tools", () => {
     expect(invoices.data.total).toBe(3);
     expect(invoices.data.truncated).toBe(true);
     expect(invoices.data.documents).toHaveLength(1);
+
+    // sums: credit notes subtract, offers are not counted; per type all positive
+    const all = await callTool("list_documents", { limit: 200 });
+    const gross = (t: string) => all.data.documents.filter((d: Data) => d.type === t).reduce((s: number, d: Data) => s + d.gross.cents, 0);
+    expect(gross("credit_note")).toBeGreaterThan(0);
+    expect(gross("offer")).toBeGreaterThan(0);
+    expect(all.data.sumByType).toMatchObject({
+      invoices: { cents: gross("invoice") },
+      creditNotes: { cents: gross("credit_note") },
+      offers: { cents: gross("offer") },
+    });
+    expect(all.data.sumGross.cents).toBe(gross("invoice") - gross("credit_note"));
+    expect(all.text).toContain("Rechnungen − Gutschriften");
+    const creditNotes = await callTool("list_documents", { type: "credit_note" });
+    expect(creditNotes.data.sumGross.cents).toBe(gross("credit_note"));
   });
 
   test("get_client lists the open invoices", async () => {

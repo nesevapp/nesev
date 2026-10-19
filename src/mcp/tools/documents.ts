@@ -83,9 +83,18 @@ export const DocumentDetail = z.object({
   payment: z
     .object({
       credited: Money.describe("finalized credit notes"),
-      paid: Money.describe("bank payments"),
-      open: Money,
-      payments: z.array(z.object({ date: z.string(), amount: Money, account: z.string(), counterparty: z.string(), purpose: z.string() })),
+      paid: Money.describe("bank payments on the invoice minus refunds paid out on its credit notes"),
+      open: Money.describe("gross − credited − paid; negative = overpaid"),
+      payments: z.array(
+        z.object({
+          date: z.string(),
+          amount: Money.describe("negative for a refund"),
+          kind: z.enum(["payment", "refund"]).describe("refund = money paid back to the client on a credit note of this invoice"),
+          account: z.string(),
+          counterparty: z.string(),
+          purpose: z.string(),
+        }),
+      ),
     })
     .nullable()
     .describe("finalized invoices only"),
@@ -133,6 +142,7 @@ export async function documentDetail(ctx: ToolContext, id: number): Promise<Tool
     payments: payments.payments.map((p) => ({
       date: p.bookingDate,
       amount: money(p.amountCents),
+      kind: p.kind,
       account: p.accountName,
       counterparty: p.counterpartyName,
       purpose: p.purpose,
@@ -232,7 +242,9 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
         'status (draft|final|sent|accepted|declined|paid, or "overdue" = unpaid invoices past due date, or "open" = invoices ' +
         "with an amount still open plus offers awaiting an answer), clientId, issue date range, text query (number, client, " +
         "title). Rows contain number, client, dates, net/gross, the open amount of finalized invoices (gross − credit notes − " +
-        "bank payments) and the German status label. Credit notes have positive amounts that reduce revenue.",
+        "bank payments) and the German status label. Credit notes have positive amounts that reduce revenue. Sums: " +
+        "sumByType has the gross per type; sumGross is the billed gross, i.e. invoices minus credit notes (offers are " +
+        "not counted), or with a type filter simply the gross of that type.",
       input: z.object({
         type: z.enum(DOCUMENT_TYPES).optional(),
         status: z.enum(LIST_STATUSES).optional(),
@@ -245,7 +257,12 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
       output: z.object({
         total: z.number().int().describe("matching documents before the limit"),
         truncated: z.boolean(),
-        sumGross: Money.describe("gross of all matching documents"),
+        sumGross: Money.describe(
+          "without type filter: gross of matching invoices minus gross of matching credit notes (offers excluded); with a type filter: gross of the matching documents",
+        ),
+        sumByType: z
+          .object({ invoices: Money, creditNotes: Money, offers: Money })
+          .describe("gross of all matching documents per type (credit notes positive)"),
         sumOpen: Money.describe("open amount of all matching invoices"),
         documents: z.array(DocumentRow),
       }),
@@ -287,12 +304,23 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
         partiallyPaid: d.partial,
         link: ctx.webUrl(documentPath(d.type, d.id)),
       }));
-      const sumGross = matching.reduce((s, d) => s + d.grossCents, 0);
+      const byType = (t: DocumentType) => matching.filter((d) => d.type === t).reduce((s, d) => s + d.grossCents, 0);
+      const sums = { invoices: byType("invoice"), creditNotes: byType("credit_note"), offers: byType("offer") };
+      const sumGross = type ? sums[type === "invoice" ? "invoices" : type === "credit_note" ? "creditNotes" : "offers"] : sums.invoices - sums.creditNotes;
+      const typesPresent = [sums.invoices, sums.creditNotes, sums.offers].filter(Boolean).length;
+      const breakdown = type || typesPresent < 2
+        ? null
+        : join(
+            sums.invoices ? `Rechnungen ${eur(sums.invoices)}` : null,
+            sums.creditNotes ? `Gutschriften −${eur(sums.creditNotes)}` : null,
+            sums.offers ? `Angebote ${eur(sums.offers)} (nicht in der Summe)` : null,
+          );
       const sumOpen = matching.reduce((s, d) => s + Math.max(d.openCents ?? 0, 0), 0);
       const header =
         `${matching.length} Belege` +
         (matching.length > shown.length ? ` (die neuesten ${shown.length} gezeigt)` : "") +
-        `, Summe brutto ${eur(sumGross)}` +
+        (type ? `, Summe brutto ${eur(sumGross)}` : `, Summe brutto (Rechnungen − Gutschriften) ${eur(sumGross)}`) +
+        (breakdown ? ` [${breakdown}]` : "") +
         (sumOpen ? `, offen ${eur(sumOpen)}` : "") +
         ":";
       const text = [
@@ -314,7 +342,11 @@ export function registerDocumentTools(server: McpServer, ctx: ToolContext) {
       ].join("\n");
       return {
         text,
-        data: { total: matching.length, truncated: matching.length > shown.length, sumGross: money(sumGross), sumOpen: money(sumOpen), documents },
+        data: { total: matching.length, truncated: matching.length > shown.length, sumGross: money(sumGross),
+          sumByType: { invoices: money(sums.invoices), creditNotes: money(sums.creditNotes), offers: money(sums.offers) },
+          sumOpen: money(sumOpen),
+          documents,
+        },
       };
     },
   );
