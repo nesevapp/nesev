@@ -64,16 +64,16 @@ export function SetupPage({ status }: { status: SetupStatus }) {
             <h1 className="text-2xl font-semibold tracking-tight">Datenordner nicht gefunden</h1>
             <p className="text-muted-foreground">
               Im bisherigen Datenordner <code className="break-all text-foreground">{missing}</code> liegen keine
-              nesev-Daten (mehr). Wurde er verschoben oder ist das Laufwerk nicht verbunden? Verbinden Sie es und prüfen
-              Sie erneut, oder wählen Sie den neuen Ort des Ordners.
+              nesev-Daten (mehr). Wurde er verschoben oder ist das Laufwerk nicht verbunden? Verbinde es und prüfe erneut,
+              oder wähle den neuen Ort des Ordners.
             </p>
           </div>
         ) : (
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold tracking-tight">Willkommen bei nesev</h1>
             <p className="text-muted-foreground">
-              nesev speichert alles auf diesem Computer: Datenbank, Rechnungs-PDFs, Belege und Backups. Wählen Sie
-              dafür einen Ordner. Sie finden ihn später unter Einstellungen → Export &amp; Backup.
+              nesev speichert alles auf diesem Computer: Datenbank, Rechnungs-PDFs, Belege und Backups. Wähle dafür
+              einen Ordner. Du findest ihn später unter Einstellungen → Export &amp; Backup.
             </p>
           </div>
         )}
@@ -122,8 +122,8 @@ export function SetupPage({ status }: { status: SetupStatus }) {
         <CheckResult check={pending ? undefined : check.data} loading={pending || check.isFetching} />
         {missing && check.data?.ok && !check.data.hasData && !pending && (
           <Note tone="warning" icon={AlertTriangle}>
-            Hier liegen keine nesev-Daten. Fortfahren beginnt mit leeren Daten; Ihre bisherigen Rechnungen und Belege
-            sehen Sie erst wieder, wenn Sie den Ordner mit ihnen wählen.
+            Hier liegen keine nesev-Daten. Fortfahren beginnt mit leeren Daten; deine bisherigen Rechnungen und Belege
+            siehst du erst wieder, wenn du den Ordner mit ihnen wählst.
           </Note>
         )}
 
@@ -177,7 +177,7 @@ export function SetupPage({ status }: { status: SetupStatus }) {
           )}
           <p className="text-xs text-muted-foreground">
             Wichtig: Kein Ordner, der von iCloud, OneDrive oder Dropbox synchronisiert wird – die laufende Datenbank kann
-            dabei beschädigt werden. Sichern Sie stattdessen die Backups (Einstellungen → Export &amp; Backup).
+            dabei beschädigt werden. Sichere stattdessen die Backups (Einstellungen → Export &amp; Backup).
           </p>
         </div>
       </div>

@@ -589,7 +589,7 @@ function Onboarding({ setup }: { setup: Dashboard["setup"] }) {
       done: !setup.companyMissing,
       icon: Building2,
       title: "Firmendaten hinterlegen",
-      text: "Name, Adresse, UID und Bankverbindung für Ihre Belege.",
+      text: "Name, Adresse, UID und Bankverbindung für deine Belege.",
       action: <Link to="/settings">Einstellungen</Link>,
     },
     {

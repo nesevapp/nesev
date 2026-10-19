@@ -396,7 +396,7 @@ export function finalizeWarnings(db: DbOrTx, id: number): string[] {
     const gross = cachedTotals(getItems(db, id), doc.taxMode).grossCents;
     if (!ownUid && gross > SMALL_INVOICE_MAX_CENTS) {
       warnings.push(
-        `Rechnungsbetrag über ${formatCents(SMALL_INVOICE_MAX_CENTS)} brutto ohne eigene UID-Nummer: Rechnungen mit Umsatzsteuer müssen die UID des leistenden Unternehmens enthalten (§ 11 Abs. 1 Z 2 UStG). Falls Ihnen das Finanzamt eine UID erteilt hat, unter Einstellungen → Unternehmen hinterlegen.`,
+        `Rechnungsbetrag über ${formatCents(SMALL_INVOICE_MAX_CENTS)} brutto ohne eigene UID-Nummer: Rechnungen mit Umsatzsteuer müssen die UID des leistenden Unternehmens enthalten (§ 11 Abs. 1 Z 2 UStG). Falls dir das Finanzamt eine UID erteilt hat, unter Einstellungen → Unternehmen hinterlegen.`,
       );
     }
     if (client.type === "company" && !client.uid.trim() && gross > UID_REQUIRED_ABOVE_CENTS) {
@@ -407,7 +407,7 @@ export function finalizeWarnings(db: DbOrTx, id: number): string[] {
   }
   if (doc.taxMode === "EU_REVERSE_CHARGE" && !ownUid) {
     warnings.push(
-      "Reverse Charge ohne eigene UID-Nummer: Die Rechnung muss Ihre UID und die des Kunden enthalten (§ 11 Abs. 1a UStG). UID beim Finanzamt beantragen und unter Einstellungen → Unternehmen hinterlegen.",
+      "Reverse Charge ohne eigene UID-Nummer: Die Rechnung muss deine UID und die des Kunden enthalten (§ 11 Abs. 1a UStG). UID beim Finanzamt beantragen und unter Einstellungen → Unternehmen hinterlegen.",
     );
   }
   const { smallBusiness } = taxStatusAt(db, doc.issueDate);
@@ -417,14 +417,14 @@ export function finalizeWarnings(db: DbOrTx, id: number): string[] {
     );
   } else if (doc.taxMode === "AT_DOMESTIC" && smallBusiness) {
     warnings.push(
-      `Laut Steuerstatus sind Sie am ${formatDate(doc.issueDate)} Kleinunternehmer: Eine Rechnung mit ausgewiesener USt schuldet diese trotzdem (§ 11 Abs. 12 UStG). Meist richtig ist „${TAX_MODE_LABELS.SMALL_BUSINESS}“.`,
+      `Laut Steuerstatus bist du am ${formatDate(doc.issueDate)} Kleinunternehmer: Eine Rechnung mit ausgewiesener USt schuldet diese trotzdem (§ 11 Abs. 12 UStG). Meist richtig ist „${TAX_MODE_LABELS.SMALL_BUSINESS}“.`,
     );
   }
   if (doc.taxMode === "SMALL_BUSINESS" && country !== "AT" && business) {
     const where = countryName(country);
     if (isEuCountry(country)) {
       warnings.push(
-        `Kunde ist ein Unternehmen in ${where}: Bei Dienstleistungen liegt der Leistungsort dort (§ 3a Abs. 6 UStG), die Kleinunternehmerbefreiung gilt dafür nicht. Richtig ist „${TAX_MODE_LABELS.EU_REVERSE_CHARGE}“ mit der UID des Kunden${ownUid ? "" : " und Ihrer eigenen UID-Nummer (beim Finanzamt beantragen, unter Einstellungen → Unternehmen hinterlegen)"}; die Leistung gehört in die Zusammenfassende Meldung. Für Warenlieferungen bleibt es bei der Kleinunternehmerregelung.`,
+        `Kunde ist ein Unternehmen in ${where}: Bei Dienstleistungen liegt der Leistungsort dort (§ 3a Abs. 6 UStG), die Kleinunternehmerbefreiung gilt dafür nicht. Richtig ist „${TAX_MODE_LABELS.EU_REVERSE_CHARGE}“ mit der UID des Kunden${ownUid ? "" : " und deiner eigenen UID-Nummer (beim Finanzamt beantragen, unter Einstellungen → Unternehmen hinterlegen)"}; die Leistung gehört in die Zusammenfassende Meldung. Für Warenlieferungen bleibt es bei der Kleinunternehmerregelung.`,
       );
     } else {
       warnings.push(

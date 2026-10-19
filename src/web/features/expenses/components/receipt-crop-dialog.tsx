@@ -72,7 +72,7 @@ export function ReceiptCropDialog({
         <DialogHeader>
           <DialogTitle>Beleg zuschneiden</DialogTitle>
           <DialogDescription>
-            Ziehen Sie die Ecken auf die Ränder des Belegs. Der Ausschnitt wird gerade gerückt, das Originalfoto bleibt erhalten.
+            Zieh die Ecken auf die Ränder des Belegs. Der Ausschnitt wird gerade gerückt, das Originalfoto bleibt erhalten.
           </DialogDescription>
         </DialogHeader>
 

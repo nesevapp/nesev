@@ -111,7 +111,7 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
   return (
     <Page
       title="Zahlungsprognose"
-      description={`Erwartete Zahlungen (brutto) bis ${formatDate(data.horizonEnd)} – Eingänge aus Rechnungen und dem Zahlungsverhalten Ihrer Kunden, Ausgänge aus Fixkosten, offenen Ausgaben und Steuern.`}
+      description={`Erwartete Zahlungen (brutto) bis ${formatDate(data.horizonEnd)} – Eingänge aus Rechnungen und dem Zahlungsverhalten deiner Kunden, Ausgänge aus Fixkosten, offenen Ausgaben und Steuern.`}
       actions={
         <>
           <ForecastSettingsPopover open={settingsOpen} onOpenChange={setSettingsOpen} />
@@ -135,7 +135,7 @@ export function ForecastPage({ search, setSearch }: { search: ForecastSearch; se
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
               Der Kontostand fällt voraussichtlich am {formatDate(data.kpis.lowestBalance.date)} auf{" "}
-              <span className="font-medium tabular">{formatCents(data.kpis.lowestBalance.cents)}</span>. Prüfen Sie Zahlungsziele,
+              <span className="font-medium tabular">{formatCents(data.kpis.lowestBalance.cents)}</span>. Prüf Zahlungsziele,
               offene Rechnungen oder verschiebbare Ausgaben.
             </span>
           </div>
@@ -264,7 +264,7 @@ function Kpis({ data, onSetBalance }: { data: Forecast; onSetBalance: () => void
       ) : (
         <div className="bg-background p-4">
           <div className="text-xs text-muted-foreground">Erwarteter Kontostand</div>
-          <p className="mt-1.5 text-xs text-muted-foreground">Tragen Sie Ihren aktuellen Kontostand ein, um den Verlauf vorauszurechnen.</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">Trag deinen aktuellen Kontostand ein, um den Verlauf vorauszurechnen.</p>
           <Button size="sm" variant="outline" className="mt-2 h-7 text-xs" onClick={onSetBalance}>
             Kontostand eintragen
           </Button>

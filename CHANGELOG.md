@@ -9,6 +9,8 @@ they are called out here, and database migrations always run automatically on st
 
 ### Changed
 
+- The app now addresses you with „du“ everywhere (UI, tour, setup, warnings, assistant). Texts to your clients
+  (document and reminder texts, PDFs) stay formal.
 - Dependencies: pdfme 6.2.6 (security fix GHSA-2rg9-wxfw-wrr7 and PDF fixes), React 19.3.1, TanStack Query,
   lucide-react; CI actions checkout v7 and cache v6.
 

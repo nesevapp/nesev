@@ -62,7 +62,7 @@ export function ReceiptSettingsSection() {
           description={
             <>
               Liest Belege von Ausgaben aus – vollständig lokal, ohne Cloud. Beim Hochladen passiert nichts; die Analyse
-              starten Sie selbst im Beleg oder in der Ausgabenliste. Ergebnisse sind nur Vorschläge.
+              startest du selbst im Beleg oder in der Ausgabenliste. Ergebnisse sind nur Vorschläge.
             </>
           }
         >

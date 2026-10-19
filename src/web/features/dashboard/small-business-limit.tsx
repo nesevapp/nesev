@@ -117,7 +117,7 @@ function Message({ limit, level, showProjection }: { limit: Limit; level: SmallB
 
   if (limit.statusEndsOn) {
     lines.push(
-      `Ihr Steuerstatus sagt am ${formatDate(limit.statusEndsOn)} noch „Kleinunternehmer“: Unter Einstellungen → Belege → Umsatzsteuer → Steuerstatus einen Eintrag ab diesem Tag ohne Kleinunternehmerregelung anlegen, damit Belege und UVA stimmen.`,
+      `Dein Steuerstatus sagt am ${formatDate(limit.statusEndsOn)} noch „Kleinunternehmer“: Unter Einstellungen → Belege → Umsatzsteuer → Steuerstatus einen Eintrag ab diesem Tag ohne Kleinunternehmerregelung anlegen, damit Belege und UVA stimmen.`,
     );
   }
 

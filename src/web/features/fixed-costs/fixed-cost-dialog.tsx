@@ -103,7 +103,7 @@ export function FixedCostDialog({
           <DialogTitle>{item ? "Fixkosten bearbeiten" : "Neue Fixkosten"}</DialogTitle>
           <DialogDescription>
             Wiederkehrende Zahlung, die in der Zahlungsprognose als Ausgang eingeplant wird. Gebucht wird nichts –
-            die tatsächliche Rechnung erfassen Sie weiterhin als Ausgabe.
+            die tatsächliche Rechnung erfasst du weiterhin als Ausgabe.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

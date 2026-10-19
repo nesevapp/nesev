@@ -20,7 +20,7 @@ const LINK_TABS = Object.keys(SETTINGS_LINK_TABS) as SettingsLinkTab[];
 /** Page frame of the settings area (title, description). */
 export function SettingsAreaPage({ children }: { children: ReactNode }) {
   return (
-    <Page title="Einstellungen" description="Ihre Firmendaten, Belegtexte und wie nesev arbeitet.">
+    <Page title="Einstellungen" description="Deine Firmendaten, Belegtexte und wie nesev arbeitet.">
       {children}
     </Page>
   );
