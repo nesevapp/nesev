@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, ne, type SQL } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
-import { addDays, todayIso } from "../../shared/dates";
+import { addDays, formatDate, todayIso } from "../../shared/dates";
 import {
   ALLOWED_STATUS_ACTIONS,
   type DocumentStatus,
@@ -25,6 +25,7 @@ import { bumpArticleUsage, existingArticleIds } from "./articles";
 import { creditedCentsByInvoice, invoicePaymentState, invoicePaymentStates, lastPaymentDate, paidCentsForDocument } from "./bank";
 import { clientSnapshot, getClient } from "./clients";
 import { getSettings, sellerSnapshot } from "./settings";
+import { taxStatusAt } from "./tax-status";
 
 // Business rules for offers, invoices and credit notes.
 // - Drafts are freely editable; finalize assigns the gapless number, freezes client + seller snapshots
@@ -148,6 +149,8 @@ export interface DocumentDefaults {
   dueDate: string | null;
   validUntil: string | null;
   taxMode: TaxMode;
+  /** Steuerstatus at issueDate: Kleinunternehmer? (the editor re-derives the tax mode when it no longer fits) */
+  smallBusiness: boolean;
   introText: string;
   closingText: string;
 }
@@ -160,6 +163,8 @@ export function documentDefaults(
   issueDate: string = todayIso(),
 ): DocumentDefaults {
   const s = getSettings(db);
+  // Kleinunternehmer status valid at the document date (not today's), see shared/tax-status.ts
+  const { smallBusiness } = taxStatusAt(db, issueDate);
   const client = clientId ? getClient(db, clientId) : undefined;
   const texts: Record<DocumentType, [string, string]> = {
     offer: [s.defaultOfferIntro, s.defaultOfferClosing],
@@ -170,7 +175,8 @@ export function documentDefaults(
     issueDate,
     dueDate: type === "invoice" ? addDays(issueDate, client?.paymentTermsDays ?? s.paymentTermsDays) : null,
     validUntil: type === "offer" ? addDays(issueDate, s.offerValidityDays) : null,
-    taxMode: client ? defaultTaxMode(client, s) : s.smallBusiness ? "SMALL_BUSINESS" : "AT_DOMESTIC",
+    taxMode: client ? defaultTaxMode(client, { smallBusiness, uid: s.uid }) : smallBusiness ? "SMALL_BUSINESS" : "AT_DOMESTIC",
+    smallBusiness,
     introText: texts[type][0],
     closingText: texts[type][1],
   };
@@ -362,7 +368,9 @@ export const UID_REQUIRED_ABOVE_CENTS = 1_000_000;
  * - an Austrian invoice to a business above € 10.000 gross without the recipient's UID;
  * - reverse charge without our own UID (§ 11 Abs. 1a UStG: the invoice names both UIDs);
  * - Kleinunternehmer invoicing a foreign business: for services the place of supply is abroad (§ 3a Abs. 6 UStG),
- *   so the exemption doesn't cover them (see defaultTaxMode in shared/tax.ts).
+ *   so the exemption doesn't cover them (see defaultTaxMode in shared/tax.ts);
+ * - the tax mode doesn't fit the Steuerstatus at the issue date (Kleinunternehmer mode without the status, or VAT
+ *   charged while Kleinunternehmer), e.g. a recurring invoice or an old draft from before a status change.
  * Credit notes inherit their invoice's tax mode (checkCreditNote) and get no tax-mode hints.
  */
 export function finalizeWarnings(db: DbOrTx, id: number): string[] {
@@ -387,6 +395,16 @@ export function finalizeWarnings(db: DbOrTx, id: number): string[] {
   if (doc.taxMode === "EU_REVERSE_CHARGE" && !ownUid) {
     warnings.push(
       "Reverse Charge ohne eigene UID-Nummer: Die Rechnung muss Ihre UID und die des Kunden enthalten (§ 11 Abs. 1a UStG). UID beim Finanzamt beantragen und unter Einstellungen → Unternehmen hinterlegen.",
+    );
+  }
+  const { smallBusiness } = taxStatusAt(db, doc.issueDate);
+  if (doc.taxMode === "SMALL_BUSINESS" && !smallBusiness) {
+    warnings.push(
+      `Laut Steuerstatus gilt am ${formatDate(doc.issueDate)} die Kleinunternehmerregelung nicht: „${TAX_MODE_LABELS.SMALL_BUSINESS}“ passt dann nicht, die Leistung ist umsatzsteuerpflichtig. Steuermodus ändern oder den Steuerstatus unter Einstellungen → Belege → Umsatzsteuer prüfen.`,
+    );
+  } else if (doc.taxMode === "AT_DOMESTIC" && smallBusiness) {
+    warnings.push(
+      `Laut Steuerstatus sind Sie am ${formatDate(doc.issueDate)} Kleinunternehmer: Eine Rechnung mit ausgewiesener USt schuldet diese trotzdem (§ 11 Abs. 12 UStG). Meist richtig ist „${TAX_MODE_LABELS.SMALL_BUSINESS}“.`,
     );
   }
   if (doc.taxMode === "SMALL_BUSINESS" && country !== "AT" && business) {

@@ -21,6 +21,8 @@ import { DATA_DIR } from "../lib/paths";
 import { csvAmount, csvRate, type ExportRange, listExportDocuments, neutralizeFormula, rangeLabel, toCsv } from "./export";
 import { documentPdfFileName, renderDocumentPdfWith } from "./pdf";
 import { getSettings } from "./settings";
+import { loadTaxStatus } from "./tax-status";
+import type { TaxStatusTimeline } from "../../shared/tax-status";
 
 // Accountant export (Steuerberater): bookings for the BMD NTCS "Buchungsimport" (BMD standard interface for
 // third-party systems, "BuErf variabel"), a generic CSV for RZL and others, and a ZIP with all receipts.
@@ -137,7 +139,7 @@ function loadDocs(db: DbOrTx, range: ExportRange): DocRow[] {
   });
 }
 
-function loadExpenses(db: DbOrTx, range: ExportRange, smallBusiness: boolean): ExpenseRow[] {
+function loadExpenses(db: DbOrTx, range: ExportRange, status: TaxStatusTimeline): ExpenseRow[] {
   const rows = db.select().from(expenses).where(between(expenses.issueDate, range.from, range.to)).orderBy(asc(expenses.issueDate), asc(expenses.id)).all();
   if (rows.length === 0) return [];
   const lines = db.select().from(expenseLines).where(inArray(expenseLines.expenseId, rows.map((r) => r.id))).all();
@@ -149,6 +151,7 @@ function loadExpenses(db: DbOrTx, range: ExportRange, smallBusiness: boolean): E
     if (ls.length === 0) continue; // incomplete draft receipt
     const treatment = e.vatTreatment as VatTreatment;
     const number = e.number || `ER-${e.id}`;
+    const smallBusiness = status.smallBusinessAt(e.issueDate);
     out.push({
       id: e.id,
       number,
@@ -167,7 +170,7 @@ function loadExpenses(db: DbOrTx, range: ExportRange, smallBusiness: boolean): E
           rateBp: treatment === "none" ? 0 : l.taxRateBp,
           netCents: l.netCents,
           taxCents,
-          // Kleinunternehmer: no Vorsteuer at all
+          // Kleinunternehmer (at the Belegdatum): no Vorsteuer at all
           deductibleCents: treatment === "none" || smallBusiness ? 0 : deductibleTaxCents({ taxCents, deductibleBp: l.deductibleBp }),
         };
       }),
@@ -482,7 +485,7 @@ function load(db: DbOrTx, range: ExportRange, options: AccountingExportOptions):
   return {
     settings: resolveAccountingExportSettings(s.accountingExport),
     docs: loadDocs(db, range),
-    expenses: loadExpenses(db, range, s.smallBusiness),
+    expenses: loadExpenses(db, range, loadTaxStatus(db)),
     payments: options.payments ? loadPayments(db, range) : [],
   };
 }

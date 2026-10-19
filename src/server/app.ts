@@ -22,6 +22,7 @@ import search from "./routes/search";
 import chat from "./routes/chat";
 import transcribe from "./routes/transcribe";
 import tax from "./routes/tax";
+import taxStatus from "./routes/tax-status";
 import templates from "./routes/templates";
 import units from "./routes/units";
 import { originGuard } from "./lib/origin-guard";
@@ -59,6 +60,7 @@ export const app = base
   .route("/api/expenses", expenses)
   .route("/api/bank", bank)
   .route("/api/tax", tax)
+  .route("/api/tax-status", taxStatus)
   .route("/api/units", units)
   .route("/api/receipts", receipts)
   .route("/api/receipt-inbox", receiptInbox)

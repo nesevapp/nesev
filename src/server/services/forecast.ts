@@ -20,6 +20,8 @@ import { creditedCentsByInvoice, creditTotalsByInvoice, invoicePaymentStates, pa
 import { linkedSlotKeys } from "./recurring-expenses";
 import { getSettings, updateSettings } from "./settings";
 import { computeUva } from "./tax";
+import { loadTaxStatus } from "./tax-status";
+import type { TaxStatusTimeline } from "../../shared/tax-status";
 
 // Payment forecast (GET /api/forecast): expected incoming and outgoing money (gross) per week / month, plus a
 // projected account balance.
@@ -147,6 +149,7 @@ export interface ForecastData {
   /** start balance from the settings; null = not set */
   balance: { startCents: number; date: string } | null;
   /** the VAT rows are skipped (Kleinunternehmer) */
+  /** Kleinunternehmer for the whole horizon (no USt-Zahllast) */
   smallBusiness: boolean;
   kpis: {
     /** inflows */
@@ -336,6 +339,7 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
   const probability = Math.min(100, Math.max(0, opts.offerProbability));
   const includeOutflows = opts.includeOutflows ?? true;
   const s = getSettings(db);
+  const status = loadTaxStatus(db);
   const defaultTerms = s.paymentTermsDays;
   const clientRows = db
     .select({ id: clients.id, name: clients.name, paymentTermsDays: clients.paymentTermsDays })
@@ -496,10 +500,8 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
         }
       }
     }
-    // VAT last: its estimate is built from the entries above
-    if (!s.smallBusiness) {
-      for (const v of vatEntries(db, entries, s.vatPeriod, s.vatBasis, today, horizonEnd)) push(v);
-    }
+    // VAT last: its estimate is built from the entries above (per UVA period by the Steuerstatus then)
+    for (const v of vatEntries(db, entries, s.vatPeriod, status, today, horizonEnd)) push(v);
   }
 
   entries.sort(
@@ -547,7 +549,7 @@ export function buildForecast(db: DbOrTx, opts: ForecastOptions): ForecastData {
     },
     globalDelay: global,
     balance,
-    smallBusiness: s.smallBusiness,
+    smallBusiness: status.smallBusinessThroughout(today, horizonEnd),
     kpis: {
       next30: sumWhere((e) => isIn(e) && e.expectedDate <= in30),
       next90: sumWhere((e) => isIn(e) && e.expectedDate <= in90),
@@ -653,7 +655,7 @@ export function vatEntries(
   db: DbOrTx,
   entries: ForecastEntry[],
   vatPeriod: "monthly" | "quarterly",
-  basis: "accrual" | "cash",
+  status: TaxStatusTimeline,
   today: string,
   horizonEnd: string,
 ): EntryInput[] {
@@ -665,6 +667,9 @@ export function vatEntries(
     if (p.from > horizonEnd) break;
     const due = uvaDueDate(p);
     if (due < today || due > horizonEnd) continue;
+    // Kleinunternehmer the whole period: no UVA. Basis = the one valid at the period start (changes only there).
+    if (status.smallBusinessThroughout(p.from, p.to)) continue;
+    const basis = status.vatBasisAt(p.from);
     let estimate = 0;
     for (const e of entries) {
       const d = vatPeriodDate(e, basis, today);

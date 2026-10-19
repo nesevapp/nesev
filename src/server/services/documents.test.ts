@@ -21,6 +21,7 @@ import {
   updateDocument,
 } from "./documents";
 import { updateSettings } from "./settings";
+import { setTaxStatus } from "./tax-status";
 
 const item = (over: Partial<DocumentItemInput> = {}): DocumentItemInput => ({
   title: "Beratung",
@@ -230,7 +231,7 @@ describe("finalize", () => {
     updateSettings(db, { uid: "" });
     expect(finalizeWarnings(db, draft(de.id, "EU_REVERSE_CHARGE"))).toEqual([expect.stringContaining("§ 11 Abs. 1a")]);
 
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     // without own UID the default stays Kleinunternehmer, and the dialog explains why that's wrong for services
     const kuDe = draft(de.id);
     expect(getDocument(db, kuDe).taxMode).toBe("SMALL_BUSINESS");

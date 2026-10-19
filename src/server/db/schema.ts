@@ -53,13 +53,14 @@ export const settings = sqliteTable("settings", {
   defaultInvoiceClosing: str("default_invoice_closing"),
   defaultCreditNoteIntro: str("default_credit_note_intro"),
   defaultCreditNoteClosing: str("default_credit_note_closing"),
+  /** deprecated: the Kleinunternehmer status lives in tax_status_periods (dated); kept only as the migration source */
   smallBusiness: integer("small_business", { mode: "boolean" }).notNull().default(false),
   taxNoteReverseCharge: str("tax_note_reverse_charge"),
   taxNoteThirdCountry: str("tax_note_third_country"),
   taxNoteSmallBusiness: str("tax_note_small_business"),
   /** Mahnstufen config (JSON array, shape owned by the reminders feature); null → built-in defaults */
   reminderLevels: text("reminder_levels", { mode: "json" }).$type<unknown>(),
-  /** Umsatzsteuer: "accrual" = Sollbesteuerung (by invoice date), "cash" = Istbesteuerung (by payment date) */
+  /** deprecated: Soll/Ist lives in tax_status_periods (dated); kept only as the migration source */
   vatBasis: text("vat_basis").$type<"accrual" | "cash">().notNull().default("accrual"),
   /** UVA period */
   vatPeriod: text("vat_period").$type<"monthly" | "quarterly">().notNull().default("quarterly"),
@@ -674,6 +675,23 @@ export const chatFeedback = sqliteTable(
   (t) => [uniqueIndex("chat_feedback_message_uq").on(t.messageId)],
 );
 
+/**
+ * Steuerstatus history: Kleinunternehmer yes/no and Soll/Ist, each row valid from `validFrom` until the next row.
+ * The first row starts at "0001-01-01" (TAX_STATUS_BEGINNING); see src/shared/tax-status.ts.
+ */
+export const taxStatusPeriods = sqliteTable(
+  "tax_status_periods",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    validFrom: text("valid_from").notNull(),
+    smallBusiness: integer("small_business", { mode: "boolean" }).notNull(),
+    vatBasis: text("vat_basis").$type<"accrual" | "cash">().notNull(),
+    note: str("note"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("tax_status_periods_valid_from_uq").on(t.validFrom)],
+);
+
 export const numberSequences = sqliteTable(
   "number_sequences",
   {
@@ -716,4 +734,4 @@ export type ChatConversation = typeof chatConversations.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewFixedAsset = typeof fixedAssets.$inferInsert;
 export type NewPdfTemplate = typeof pdfTemplates.$inferInsert;
-
+export type TaxStatusPeriodRow = typeof taxStatusPeriods.$inferSelect;

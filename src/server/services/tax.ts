@@ -31,6 +31,8 @@ import { formatAssetNumber, GWG_LIMIT_CENTS } from "../../shared/assets";
 import { afaEntries, ASSET_CATEGORY, expensesWithoutAsset, monthlyAfa } from "./assets";
 import { csvAmount, toCsv } from "./export";
 import { getSettings } from "./settings";
+import type { TaxStatusTimeline } from "../../shared/tax-status";
+import { loadTaxStatus } from "./tax-status";
 
 // Tax reports: UVA (U 30 Kennzahlen), ZM and EAR. A helper for preparing filings, not tax advice.
 //
@@ -51,6 +53,16 @@ import { getSettings } from "./settings";
 //   the Anlagenverzeichnis (fixed_assets, services/assets.ts) and the remaining book value of assets disposed
 //   in the year count under E1a KZ 9130 (category rows "afa" / "afa_abgang"). Their VAT is unaffected: the
 //   input VAT of an asset purchase stays deductible in the UVA right away.
+//
+// Steuerstatus (Kleinunternehmer, Soll/Ist) comes from the dated history (services/tax-status.ts), loaded once per
+// report, never from the current settings:
+// - Soll/Ist per document: an invoice uses the basis valid at its issue date (credit notes follow their invoice),
+//   an expense the one at its Belegdatum. After a change, older items keep their basis, so nothing is dropped or
+//   counted twice (§ 17 Abs. 4 UStG); e.g. a December invoice under Ist paid in January (now Soll) is in January.
+//   UvaReport.basis = the basis at the period's first day (changes are only allowed at period starts).
+// - Kleinunternehmer: expenses of a Kleinunternehmer (by Belegdatum) have no Vorsteuer (UVA) and count gross in
+//   the EAR; revenue counts gross in the EAR when the invoice was issued as Kleinunternehmer (its tax mode already
+//   carries no VAT). UvaReport.smallBusiness / EarReport.gross = Kleinunternehmer on every day of the period.
 
 const isoDay = (s: string) => s.slice(0, 10);
 const GWG_CATEGORY = "hardware_gwg";
@@ -281,6 +293,33 @@ export function revenueEvents(db: DbOrTx, basis: VatBasis, docs = loadDocs(db)):
   return out;
 }
 
+/** Date that picks a document's Steuerstatus: its issue date; a credit note on an invoice uses the invoice's. */
+function statusDates(docs: LoadedDoc[]): Map<number, string> {
+  const byId = new Map(docs.map((d) => [d.ref.id, d]));
+  const out = new Map<number, string>();
+  for (const d of docs) {
+    const parent = d.ref.type === "credit_note" && d.parentId != null ? byId.get(d.parentId) : undefined;
+    out.set(d.ref.id, parent?.ref.type === "invoice" ? parent.ref.issueDate : d.ref.issueDate);
+  }
+  return out;
+}
+
+/** Soll/Ist per document (see header). */
+function docBases(docs: LoadedDoc[], status: TaxStatusTimeline): Map<number, VatBasis> {
+  return new Map([...statusDates(docs)].map(([id, date]) => [id, status.vatBasisAt(date)]));
+}
+
+/** Revenue events for the UVA: each document on the Soll/Ist basis valid for it (docBases). */
+export function uvaRevenueEvents(db: DbOrTx, status: TaxStatusTimeline, docs = loadDocs(db)): RevenueEvent[] {
+  const bases = docBases(docs, status);
+  const used = new Set(bases.values());
+  const out: RevenueEvent[] = [];
+  for (const basis of ["accrual", "cash"] as const) {
+    if (used.has(basis)) out.push(...revenueEvents(db, basis, docs).filter((e) => bases.get(e.doc.id) === basis));
+  }
+  return out;
+}
+
 // ── Expense events ──────────────────────────────────────────────────────────────
 
 export interface ExpenseRef {
@@ -401,10 +440,10 @@ function expenseCashEvents(e: LoadedExpense): ExpenseEvent[] {
   return out;
 }
 
-/** Expense line events for the UVA: domestic per basis, self-assessed/import by issue date. */
-export function uvaExpenseEvents(db: DbOrTx, basis: VatBasis, list = loadExpenses(db)): ExpenseEvent[] {
+/** Expense line events for the UVA: domestic per basis (valid at the Belegdatum), self-assessed/import by issue date. */
+export function uvaExpenseEvents(db: DbOrTx, status: TaxStatusTimeline, list = loadExpenses(db)): ExpenseEvent[] {
   return list.flatMap((e) => {
-    if (basis === "accrual" || e.ref.vatTreatment !== "domestic") return expenseEventsAt(e, e.ref.issueDate, 0, e.grossCents, "");
+    if (status.vatBasisAt(e.ref.issueDate) === "accrual" || e.ref.vatTreatment !== "domestic") return expenseEventsAt(e, e.ref.issueDate, 0, e.grossCents, "");
     return expenseCashEvents(e);
   });
 }
@@ -445,8 +484,10 @@ export interface UvaInfoLine {
 
 export interface UvaReport {
   period: TaxPeriod;
+  /** Soll/Ist valid at the period's first day */
   basis: VatBasis;
   vatPeriod: VatPeriod;
+  /** Kleinunternehmer on every day of the period (no UVA needed) */
   smallBusiness: boolean;
   euServicesIn021: boolean;
   dueDate: string;
@@ -502,14 +543,15 @@ const inRange = (date: string, p: TaxPeriod) => date >= p.from && date <= p.to;
 
 export function computeUva(db: DbOrTx, period: TaxPeriod, options: UvaOptions = {}): UvaReport {
   const s = getSettings(db);
-  const basis = s.vatBasis;
+  const status = loadTaxStatus(db);
+  const basis = status.vatBasisAt(period.from);
   const euIn021 = options.euServicesIn021 ?? false;
   const acc = new Map<string, Acc>(UVA_KZ.map((k) => [k.kz, new Acc()]));
   const kz = (k: string) => acc.get(k)!;
   const info = { eu_services: new Acc(), third_country: new Acc(), unassigned: new Acc() };
   const warnings: string[] = [];
 
-  const revenue = revenueEvents(db, basis).filter((e) => inRange(e.date, period));
+  const revenue = uvaRevenueEvents(db, status).filter((e) => inRange(e.date, period));
   for (const e of revenue) {
     const src = docSource(e);
     switch (e.doc.taxMode) {
@@ -542,9 +584,10 @@ export function computeUva(db: DbOrTx, period: TaxPeriod, options: UvaOptions = 
     }
   }
 
-  for (const e of uvaExpenseEvents(db, basis).filter((x) => inRange(x.date, period))) {
+  for (const e of uvaExpenseEvents(db, status).filter((x) => inRange(x.date, period))) {
     const src = expenseSource(e);
-    const vst = s.smallBusiness ? 0 : e.deductibleCents;
+    // Kleinunternehmer (at the Belegdatum): no Vorsteuerabzug (§ 12 Abs. 1 iVm § 6 Abs. 1 Z 27); self-assessed tax stays owed
+    const vst = status.smallBusinessAt(e.expense.issueDate) ? 0 : e.deductibleCents;
     switch (e.expense.vatTreatment) {
       case "domestic":
         if (vst) kz("060").add(vst, 0, src, e.netCents, vst);
@@ -669,7 +712,7 @@ export function computeUva(db: DbOrTx, period: TaxPeriod, options: UvaOptions = 
     period,
     basis,
     vatPeriod: s.vatPeriod,
-    smallBusiness: s.smallBusiness,
+    smallBusiness: status.smallBusinessThroughout(period.from, period.to),
     euServicesIn021: euIn021,
     dueDate: uvaDueDate(period),
     lines,
@@ -780,8 +823,10 @@ export interface EarOpenItem {
 
 export interface EarReport {
   year: number;
-  /** true → amounts gross (Kleinunternehmer, no Vorsteuer) */
+  /** true → amounts gross (Kleinunternehmer the whole year, no Vorsteuer) */
   gross: boolean;
+  /** Kleinunternehmer for part of the year only: items count gross or net by their own date */
+  mixed: boolean;
   incomeCents: number;
   expensesCents: number;
   profitCents: number;
@@ -811,21 +856,24 @@ export const E1A_LABELS: Record<string, string> = {
 };
 
 export function computeEar(db: DbOrTx, year: number): EarReport {
-  const s = getSettings(db);
-  const gross = s.smallBusiness;
+  const status = loadTaxStatus(db);
   const from = `${year}-01-01`;
   const to = `${year}-12-31`;
+  const gross = status.smallBusinessThroughout(from, to);
+  const mixed = !gross && status.smallBusinessSometime(from, to);
   const warnings: string[] = [];
   const monthly = Array.from({ length: 12 }, (_, month) => ({ month, incomeCents: 0, expensesCents: 0, profitCents: 0 }));
   const monthOf = (d: string) => Number(d.slice(5, 7)) - 1;
 
   const docs = loadDocs(db);
+  const docDates = statusDates(docs);
   const incomeAcc = new Acc();
   const received = new Map<number, number>();
   for (const e of revenueEvents(db, "cash", docs)) {
     if (e.doc.type === "invoice" && e.date <= to) received.set(e.doc.id, (received.get(e.doc.id) ?? 0) + e.amountCents);
     if (e.date < from || e.date > to) continue;
-    const amount = gross ? e.netCents + e.taxCents : e.netCents;
+    // issued as Kleinunternehmer (credit notes: their invoice): gross; otherwise the VAT is owed → net
+    const amount = status.smallBusinessAt(docDates.get(e.doc.id)!) ? e.netCents + e.taxCents : e.netCents;
     incomeAcc.add(amount, e.taxCents, docSource(e), e.netCents, e.taxCents);
     monthly[monthOf(e.date)]!.incomeCents += amount;
   }
@@ -837,8 +885,8 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     if (e.date < from || e.date > to) continue;
     if (e.category === ASSET_CATEGORY) continue; // capitalized: counts through the AfA below
     if (e.category === GWG_CATEGORY) gwgInYear.add(e.expense.id);
-    // Nettomethode: net + non-deductible tax; Kleinunternehmer: no Vorsteuer at all.
-    const amount = expenseCostCents(e, e.expense.vatTreatment, gross);
+    // Nettomethode: net + non-deductible tax; Kleinunternehmer (at the Belegdatum): no Vorsteuer at all.
+    const amount = expenseCostCents(e, e.expense.vatTreatment, status.smallBusinessAt(e.expense.issueDate));
     catAmounts.set(e.category, (catAmounts.get(e.category) ?? 0) + amount);
     monthly[monthOf(e.date)]!.expensesCents += amount;
   }
@@ -898,10 +946,11 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     if (!gwgInYear.has(e.ref.id)) continue;
     for (const l of e.lines) {
       if (l.category !== GWG_CATEGORY) continue;
-      const cost = expenseCostCents(l, e.ref.vatTreatment, gross);
+      const ku = status.smallBusinessAt(e.ref.issueDate);
+      const cost = expenseCostCents(l, e.ref.vatTreatment, ku);
       if (cost <= GWG_LIMIT_CENTS) continue;
       warnings.push(
-        `${e.ref.number || e.ref.supplierName}: Geringwertiges Wirtschaftsgut mit ${formatCents(cost)} ${gross ? "brutto" : "netto"} über der GWG-Grenze von ${formatCents(GWG_LIMIT_CENTS)} — voll als Ausgabe enthalten; als Anlagegut (Kategorie „Anlagegüter“) erfassen und abschreiben, sofern es kein Sammelposten mehrerer Geräte ist.`,
+        `${e.ref.number || e.ref.supplierName}: Geringwertiges Wirtschaftsgut mit ${formatCents(cost)} ${ku ? "brutto" : "netto"} über der GWG-Grenze von ${formatCents(GWG_LIMIT_CENTS)} — voll als Ausgabe enthalten; als Anlagegut (Kategorie „Anlagegüter“) erfassen und abschreiben, sofern es kein Sammelposten mehrerer Geräte ist.`,
       );
     }
   }
@@ -945,6 +994,7 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
   return {
     year,
     gross,
+    mixed,
     incomeCents,
     expensesCents,
     profitCents: incomeCents - expensesCents,

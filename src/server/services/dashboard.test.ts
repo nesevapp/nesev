@@ -6,6 +6,7 @@ import { createAsset } from "./assets";
 import { getDashboard } from "./dashboard";
 import { updateSettings } from "./settings";
 import { computeEar } from "./tax";
+import { setTaxStatus } from "./tax-status";
 
 const TODAY = "2026-06-15";
 
@@ -173,12 +174,12 @@ describe("getDashboard", () => {
 
     expect(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents).toBe(12000 + 11000 + 10000 + 5000);
     // Kleinunternehmer: no Vorsteuer at all, every VAT amount is cost (as in the EAR)
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     expect(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents).toBe(12000 + 12000 + 12000 + 6000);
     // paid in the same month → the EAR shows the same amount
     db.update(expenses).set({ paidAt: "2026-04-20" }).run();
     expect(computeEar(db, 2026).monthly[3]!.expensesCents).toBe(42000);
-    updateSettings(db, { smallBusiness: false });
+    setTaxStatus(db, { smallBusiness: false });
     expect(computeEar(db, 2026).monthly[3]!.expensesCents).toBe(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents);
   });
   test("expenses: anlagen lines replaced by the AfA spread evenly over the year", () => {

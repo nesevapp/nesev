@@ -16,7 +16,7 @@ import {
   getAccountingExportSettings,
   updateAccountingExportSettings,
 } from "./export-accounting";
-import { updateSettings } from "./settings";
+import { setTaxStatus } from "./tax-status";
 
 const RANGE = { from: "2026-09-01", to: "2026-09-30" };
 const NO_PAYMENTS = { payments: false };
@@ -205,7 +205,7 @@ describe("BMD bookings", () => {
 
   test("Kleinunternehmer: no Vorsteuer on expenses", () => {
     const { db, expense } = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     expense("domestic", [{ net: 10000 }]);
     expect(bmdRows(db)[0]).toMatchObject({ steuercode: "", betrag: "120,00", steuer: "" });
   });

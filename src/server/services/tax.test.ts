@@ -16,9 +16,9 @@ import {
 } from "../db/schema";
 import { createAsset } from "./assets";
 import { createCreditNote, createDocument, finalizeDocument, getDocument } from "./documents";
-import { updateSettings } from "./settings";
 import { computeEar, computeUva, computeZm, earCsv, revenueEvents, uvaCsv, uvaValues } from "./tax";
 import { uvaXmlErrors } from "./tax-xml";
+import { setTaxStatus } from "./tax-status";
 
 const Q1 = parsePeriod("2026-Q1")!;
 const Q2 = parsePeriod("2026-Q2")!;
@@ -28,9 +28,9 @@ interface Line {
   rate?: number;
 }
 
-function setup(settings: Parameters<typeof updateSettings>[1] = {}) {
+function setup(status: Parameters<typeof setTaxStatus>[1] = {}) {
   const db = createTestDb();
-  if (Object.keys(settings).length) updateSettings(db, settings);
+  if (Object.keys(status).length) setTaxStatus(db, status);
   const at = db.insert(clients).values({ number: 1, name: "Wien GmbH", country: "AT" }).returning().get();
   const de = db.insert(clients).values({ number: 2, name: "Berlin GmbH", country: "DE", uid: "DE123456789" }).returning().get();
   const ch = db.insert(clients).values({ number: 3, name: "Zürich AG", country: "CH" }).returning().get();
@@ -194,7 +194,7 @@ describe("UVA Kennzahlen", () => {
     expect(v(db, Q1)["022"]!.amount).toBe(100000);
     expect(v(db, Q2)["022"]).toBeUndefined();
 
-    updateSettings(db, { vatBasis: "cash" });
+    setTaxStatus(db, { vatBasis: "cash" });
     expect(v(db, Q1)["022"]).toBeUndefined();
     expect(v(db, Q2)["022"]).toEqual({ amount: 100000, tax: 20000 });
 
@@ -418,7 +418,7 @@ describe("EAR", () => {
     expect(gwg[0]).toStartWith("ER-");
     expect(computeEar(db, 2027).warnings.some((w) => w.includes("GWG-Grenze"))).toBe(false); // paid in 2026
 
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     r = computeEar(db, 2026);
     expect(r.warnings.filter((w) => w.includes("GWG-Grenze"))).toHaveLength(2); // 1.200,00 gross
   });

@@ -28,17 +28,19 @@ export const settingsUpdateSchema = z.object({
   defaultInvoiceClosing: longText(),
   defaultCreditNoteIntro: longText(),
   defaultCreditNoteClosing: longText(),
-  smallBusiness: z.boolean(),
   taxNoteReverseCharge: longText(),
   taxNoteThirdCountry: longText(),
   taxNoteSmallBusiness: longText(),
-  vatBasis: z.enum(["accrual", "cash"]),
   vatPeriod: z.enum(["monthly", "quarterly"]),
   /** payment QR code (EPC/GiroCode) on invoices */
   paymentQr: z.boolean().default(true),
   /** receipt inbox folder (absolute path); "" = off. Omitted = unchanged: the settings form doesn't carry it, the
    *  Belege-Eingang block saves it via PUT /api/receipt-inbox/folder (validated). */
   receiptInboxPath: text(1000).optional(),
+  /** Read-only here: Kleinunternehmer and Soll/Ist are dated (PUT/POST /api/tax-status). Accepted only when equal to
+   *  the status valid today, so clients that send the whole GET /api/settings object back keep working. */
+  smallBusiness: z.boolean().optional(),
+  vatBasis: z.enum(["accrual", "cash"]).optional(),
 });
 
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;

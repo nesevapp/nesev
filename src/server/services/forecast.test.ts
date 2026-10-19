@@ -8,6 +8,7 @@ import { buildForecast, paymentDelays, updateForecastSettings } from "./forecast
 import { createRecurringExpense, linkExpense, unlinkExpense, updateRecurringExpense } from "./recurring-expenses";
 import { createRecurring } from "./recurring";
 import { updateSettings } from "./settings";
+import { setTaxStatus } from "./tax-status";
 
 const TODAY = "2026-10-13";
 let clientNo = 0;
@@ -223,7 +224,7 @@ function addInvoiceWithItem(db: Db, over: Partial<NewDocument> & { clientId: num
 describe("Fixkosten", () => {
   test("every payment in the horizon, anchored to the start day, respecting end date and active", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true }); // no VAT rows in this test
+    setTaxStatus(db, { smallBusiness: true }); // no VAT rows in this test
     createRecurringExpense(db, fixed({ endDate: "2026-12-15" }));
     createRecurringExpense(db, fixed({ name: "SVS", supplierName: "", category: "svs", intervalCount: 3, startDate: "2026-02-15", grossCents: 120000, taxCents: 0 }));
     createRecurringExpense(db, fixed({ name: "Aus", active: false }));
@@ -248,7 +249,7 @@ describe("Fixkosten", () => {
 describe("unpaid expenses", () => {
   test("open expenses on their due date (fallback issue date + 14), overdue at today, drafts and paid ones skipped", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     const future = addExpense(db);
     const overdue = addExpense(db, { dueDate: "2026-10-01" });
     const noDue = addExpense(db, { issueDate: "2026-10-10", dueDate: null });
@@ -330,7 +331,8 @@ describe("VAT payments", () => {
 
   test("cash basis: open invoices count in the period of their expected payment", () => {
     const db = setup();
-    updateSettings(db, { vatPeriod: "monthly", vatBasis: "cash" });
+    updateSettings(db, { vatPeriod: "monthly" });
+    setTaxStatus(db, { vatBasis: "cash" });
     const c = addClient(db);
     addInvoiceWithItem(db, { clientId: c.id, issueDate: "2026-10-01", dueDate: "2026-11-05" });
     const f = buildForecast(db, { ...out, months: 6 });
@@ -340,7 +342,7 @@ describe("VAT payments", () => {
 
   test("Kleinunternehmer: no VAT rows", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     const c = addClient(db);
     addInvoiceWithItem(db, { clientId: c.id, issueDate: "2026-09-10", status: "paid", paidAt: "2026-09-20", dueDate: "2026-09-24" });
     expect(buildForecast(db, out).entries.filter((e) => e.source === "vat")).toHaveLength(0);
@@ -350,7 +352,7 @@ describe("VAT payments", () => {
 describe("income tax prepayment", () => {
   test("quarterly on 15.2./15.5./15.8./15.11., moved to the next working day", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     updateForecastSettings(db, { cashBalanceCents: null, cashBalanceDate: null, incomeTaxPrepaymentCents: 250000 });
     const f = buildForecast(db, { ...out, months: 12 }); // until 2027-09-30
     const est = f.entries.filter((e) => e.source === "income_tax");
@@ -362,7 +364,7 @@ describe("income tax prepayment", () => {
 describe("balance projection", () => {
   test("start balance + inflows − outflows; entries before the balance date ignored; lowest point flagged", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     const c = addClient(db);
     addInvoice(db, { clientId: c.id, dueDate: "2026-11-05", grossCents: 300000, taxCents: 0 });
     addInvoice(db, { clientId: c.id, dueDate: "2026-10-01", grossCents: 5000, taxCents: 0 }); // overdue → today
@@ -394,7 +396,7 @@ describe("balance projection", () => {
 describe("Fixkosten linked to expenses", () => {
   test("a linked slot is not projected; an unpaid linked expense counts once; paid → nothing; unlink restores", () => {
     const db = setup();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     const miete = createRecurringExpense(db, fixed({ startDate: "2026-01-01" })); // 1.11., 1.12. in the horizon
     const nov = addExpense(db, { issueDate: "2026-10-28", dueDate: "2026-11-01" }, [{ netCents: 50000, taxCents: 10000 }]);
     const fc = (f: ReturnType<typeof buildForecast>) => f.entries.filter((e) => e.source === "fixed_cost").map((e) => e.expectedDate);

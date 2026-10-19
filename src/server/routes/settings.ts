@@ -8,7 +8,7 @@ import { db } from "../db";
 import { sniffLogo, svgProblem } from "../lib/logo-file";
 import { ASSETS_DIR, DATA_DIR } from "../lib/paths";
 import { validate } from "../lib/validate";
-import { getSettings, updateSettings } from "../services/settings";
+import { getSettings, settingsTaxStatusConflict, updateSettings } from "../services/settings";
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const TYPE_ERROR = "Nur PNG, JPG, SVG oder WebP erlaubt";
@@ -19,7 +19,13 @@ async function removeLogoFile(logoPath: string | null) {
 
 const app = new Hono()
   .get("/", (c) => c.json(getSettings(db)))
-  .put("/", validate("json", settingsUpdateSchema), (c) => c.json(updateSettings(db, c.req.valid("json"))))
+  /** smallBusiness / vatBasis (read-only, status valid today) may be sent back unchanged; a change → 422. */
+  .put("/", validate("json", settingsUpdateSchema), (c) => {
+    const { smallBusiness, vatBasis, ...data } = c.req.valid("json");
+    const conflict = settingsTaxStatusConflict(db, { smallBusiness, vatBasis });
+    if (conflict) return c.json({ error: conflict }, 422);
+    return c.json(updateSettings(db, data));
+  })
   /** multipart/form-data, field "file". The file type comes from the content, not the client's MIME type; SVGs must pass svgProblem() (lib/logo-file.ts). */
   .post(
     "/logo",

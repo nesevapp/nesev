@@ -8,6 +8,8 @@ import { clients, documents, expenseLines, expenses, settings } from "../db/sche
 import { afaEntries, ASSET_CATEGORY, monthlyAfa } from "./assets";
 import { creditedCentsSql, invoicePaymentStates, openCentsSql } from "./bank";
 import { getSmallBusinessLimit } from "./small-business";
+import { loadTaxStatus } from "./tax-status";
+import type { TaxStatusTimeline } from "../../shared/tax-status";
 
 // Dashboard aggregation (GET /api/dashboard?year=). All sums are integer cents.
 // - Revenue = net of non-draft invoices minus net of non-draft credit notes (credit notes store
@@ -74,7 +76,7 @@ export interface DashboardData {
   recent: DashboardDocRow[];
   openOffers: DashboardDocRow[];
   setup: { hasClients: boolean; hasDocuments: boolean; companyMissing: boolean };
-  /** Kleinunternehmer limit for `year`; only when settings.smallBusiness is on */
+  /** Kleinunternehmer limit for `year`; only when the Steuerstatus is Kleinunternehmer on some day of `year` */
   smallBusiness: SmallBusinessLimit | null;
 }
 
@@ -135,7 +137,7 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
 }
 
 /** Expense costs per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
-function monthlyExpenses(db: DbOrTx, years: number[], smallBusiness: boolean): Map<number, number[]> {
+function monthlyExpenses(db: DbOrTx, years: number[], status: TaxStatusTimeline): Map<number, number[]> {
   const from = `${Math.min(...years)}-01-01`;
   const to = `${Math.max(...years) + 1}-01-01`;
   const lines = db
@@ -153,9 +155,16 @@ function monthlyExpenses(db: DbOrTx, years: number[], smallBusiness: boolean): M
   const out = new Map(years.map((y) => [y, monthlyAfa(afaEntries(db, y))]));
   for (const l of lines) {
     const bucket = out.get(Number(l.issueDate.slice(0, 4)));
-    if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += expenseCostCents({ ...l, deductibleCents: deductibleTaxCents(l) }, l.treatment as VatTreatment, smallBusiness);
+    if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += expenseCostCents({ ...l, deductibleCents: deductibleTaxCents(l) }, l.treatment as VatTreatment, status.smallBusinessAt(l.issueDate));
   }
   return out;
+}
+
+/** Limit card; flags when the limit ends the exemption on a day the Steuerstatus still says Kleinunternehmer. */
+function smallBusinessCard(db: DbOrTx, year: number, today: string, status: TaxStatusTimeline): SmallBusinessLimit {
+  const limit = getSmallBusinessLimit(db, year, today);
+  const endsOn = limit.previousYearExceeded ? `${year}-01-01` : limit.exceededOn;
+  return { ...limit, statusEndsOn: endsOn && status.smallBusinessAt(endsOn) ? endsOn : null };
 }
 
 export function getDashboard(db: DbOrTx, year: number, today = todayIso()): DashboardData {
@@ -197,10 +206,12 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const current = monthlyByYear.get(year)!;
   const previous = monthlyByYear.get(year - 1)!;
   const company = db
-    .select({ name: settings.companyName, street: settings.street, city: settings.city, smallBusiness: settings.smallBusiness })
+    .select({ name: settings.companyName, street: settings.street, city: settings.city })
     .from(settings)
     .get();
-  const expensesByYear = monthlyExpenses(db, [year, year - 1], !!company?.smallBusiness);
+  const status = loadTaxStatus(db);
+  // Kleinunternehmer by the Belegdatum of each expense (no Vorsteuer → gross cost)
+  const expensesByYear = monthlyExpenses(db, [year, year - 1], status);
   const currentExpenses = expensesByYear.get(year)!;
   const previousExpenses = expensesByYear.get(year - 1)!;
   const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
@@ -256,6 +267,6 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
       hasDocuments: recent.length > 0,
       companyMissing: !company || !company.name || !company.street || !company.city,
     },
-    smallBusiness: company?.smallBusiness ? getSmallBusinessLimit(db, year, today) : null,
+    smallBusiness: status.smallBusinessSometime(`${year}-01-01`, `${year}-12-31`) ? smallBusinessCard(db, year, today, status) : null,
   };
 }

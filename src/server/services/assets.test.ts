@@ -15,7 +15,7 @@ import {
   undoDisposal,
   updateAsset,
 } from "./assets";
-import { updateSettings } from "./settings";
+import { setTaxStatus } from "./tax-status";
 
 const laptop = { name: "MacBook Pro", acquisitionDate: "2026-09-10", inServiceDate: "2026-09-15", costCents: 240000, usefulLifeYears: 3 };
 
@@ -79,7 +79,7 @@ describe("assets service", () => {
     expect(assetPrefillFromExpense(db, e.id)).toMatchObject({ linkedCostCents: 240000, costCents: 110000 });
     expect(assetLinks(db)).toEqual([expect.objectContaining({ number: 1, expenseId: e.id })]);
 
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     expect(assetPrefillFromExpense(db, e.id).totalCostCents).toBe(288000 + 120000);
 
     const other = expense([{ net: 1000, tax: 200, category: "buero" }], { number: "ER-2026-0002" });

@@ -10,6 +10,7 @@ import { analyzeReceipt, type AnalyzeOutput } from "./receipt-pipeline";
 import { getLlamaLease, getLlamaServer } from "./receipt-llama";
 import { getOcrSettings } from "./receipt-settings";
 import { getSettings } from "./settings";
+import { taxStatusAt } from "./tax-status";
 
 // Queue of receipt analyses. Uploading never enqueues anything; the user queues runs explicitly and a single
 // in-process worker handles them one at a time. Cancelling a queued run removes it from the queue; cancelling
@@ -323,10 +324,13 @@ export const runAnalysis: RunFn = async (db, row, { signal }) => {
   if (!row.attachmentPath) throw new Error("Kein Beleg vorhanden");
   const settings = getOcrSettings(db);
   const company = getSettings(db);
+  // Kleinunternehmer at the expense's Belegdatum (a fresh draft: the upload day) – decides GWG/asset limits gross vs. net
+  const issueDate = db.select({ issueDate: expenses.issueDate }).from(expenses).where(eq(expenses.id, row.expenseId)).get()?.issueDate;
+  const { smallBusiness } = taxStatusAt(db, issueDate);
   return analyzeReceipt({
     file: join(DATA_DIR, row.attachmentPath),
     settings,
-    context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban, smallBusiness: company.smallBusiness },
+    context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban, smallBusiness },
     signal,
     db,
   });

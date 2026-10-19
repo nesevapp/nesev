@@ -17,7 +17,7 @@ import type { AssetCreate, AssetDisposal, AssetUpdate } from "../../shared/schem
 import type { DbOrTx } from "../db/client";
 import { expenseLines, expenses, type FixedAsset, fixedAssets } from "../db/schema";
 import { csvAmount, toCsv } from "./export";
-import { getSettings } from "./settings";
+import { taxStatusAt } from "./tax-status";
 
 // Anlagenverzeichnis (fixed_assets). Depreciation math lives in src/shared/assets.ts; this service adds
 // persistence, the yearly register, the prefill from an expense's "anlagen" lines and the per-year AfA that
@@ -320,7 +320,8 @@ export function assetPrefillFromExpense(db: DbOrTx, expenseId: number): AssetPre
     .orderBy(asc(expenseLines.position))
     .all();
   if (lines.length === 0) throw new HTTPException(400, { message: "Die Ausgabe hat keine Position der Kategorie „Anlagegüter“" });
-  const smallBusiness = getSettings(db).smallBusiness;
+  // Kleinunternehmer at the Belegdatum: no Vorsteuer, the asset costs gross
+  const smallBusiness = taxStatusAt(db, e.issueDate).smallBusiness;
   const noTax = e.vatTreatment === "none";
   const totalCostCents = lines.reduce((s, l) => {
     if (noTax) return s + l.netCents;

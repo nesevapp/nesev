@@ -4,7 +4,7 @@ import { createTestDb } from "../db/client";
 import { bankAccounts, bankMatches, bankTransactions, clients, documents, type NewDocument, recurringInvoices } from "../db/schema";
 import { getDashboard } from "./dashboard";
 import { getSmallBusinessLimit } from "./small-business";
-import { updateSettings } from "./settings";
+import { setTaxStatus } from "./tax-status";
 
 const TODAY = "2026-06-15";
 
@@ -94,7 +94,7 @@ describe("getSmallBusinessLimit", () => {
 
   test("counts by service date (period end → start → invoice date), whatever the VAT basis", () => {
     const { db, add } = setup();
-    updateSettings(db, { vatBasis: "cash" });
+    setTaxStatus(db, { vatBasis: "cash" });
     // December 2025 service, invoiced in January 2026 → 2025
     add({ type: "invoice", grossCents: 1_000_000, issueDate: "2026-01-05", servicePeriodStart: "2025-12-01", servicePeriodEnd: "2025-12-31" });
     // only a start date → that date
@@ -164,7 +164,7 @@ describe("getSmallBusinessLimit", () => {
     const { db, add } = setup();
     add({ type: "invoice", grossCents: 100_000 });
     expect(getDashboard(db, 2026, TODAY).smallBusiness).toBeNull();
-    updateSettings(db, { smallBusiness: true });
+    setTaxStatus(db, { smallBusiness: true });
     expect(getDashboard(db, 2026, TODAY).smallBusiness?.turnoverCents).toBe(100_000);
   });
 });

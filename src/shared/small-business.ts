@@ -47,6 +47,9 @@ export interface SmallBusinessLimit {
   previousYearExceeded: boolean;
   /** service date of the invoice that took the turnover over € 60.500, if any */
   exceededOn: string | null;
+  /** the exemption ends on this date by the limit (exceededOn, or 1.1. when the previous year was over it), but the
+   *  Steuerstatus history still says Kleinunternehmer then: a hint to add an entry (set by the dashboard) */
+  statusEndsOn: string | null;
 }
 
 export function smallBusinessLimit(args: {
@@ -64,5 +67,6 @@ export function smallBusinessLimit(args: {
     level: smallBusinessLevel(args.turnoverCents),
     projectedLevel: smallBusinessLevel(args.projectedCents),
     previousYearExceeded: args.previousYearCents > SMALL_BUSINESS_LIMIT_CENTS,
+    statusEndsOn: null,
   };
 }

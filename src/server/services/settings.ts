@@ -4,6 +4,7 @@ import { DEFAULT_TAX_NOTES } from "../../shared/tax";
 import type { SellerSnapshot } from "../../shared/types";
 import type { DbOrTx } from "../db/client";
 import { type Settings, settings } from "../db/schema";
+import { taxStatusAt } from "./tax-status";
 
 const SETTINGS_ID = 1;
 
@@ -21,16 +22,34 @@ const DEFAULTS = {
   ...DEFAULT_TAX_NOTES,
 } satisfies Partial<typeof settings.$inferInsert>;
 
-/** Returns the singleton settings row, creating it with defaults on first access. */
+/**
+ * Returns the singleton settings row, creating it with defaults on first access. `smallBusiness` and `vatBasis`
+ * are the Steuerstatus valid today (services/tax-status.ts); figures for other dates must use loadTaxStatus().
+ */
 export function getSettings(db: DbOrTx): Settings {
-  const row = db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).get();
-  if (row) return row;
-  return db.insert(settings).values(DEFAULTS).returning().get();
+  const row = db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).get() ?? db.insert(settings).values(DEFAULTS).returning().get();
+  return { ...row, ...taxStatusAt(db) };
 }
 
-export function updateSettings(db: DbOrTx, data: Partial<SettingsUpdate> & { logoPath?: string | null }): Settings {
+/** Kleinunternehmer and Soll/Ist are not settings fields any more: they are dated (services/tax-status.ts). */
+export type SettingsPatch = Partial<Omit<SettingsUpdate, "smallBusiness" | "vatBasis">> & { logoPath?: string | null };
+
+export function updateSettings(db: DbOrTx, data: SettingsPatch): Settings {
   getSettings(db);
-  return db.update(settings).set(data).where(eq(settings.id, SETTINGS_ID)).returning().get();
+  if (Object.keys(data).length) db.update(settings).set(data).where(eq(settings.id, SETTINGS_ID)).run();
+  return getSettings(db);
+}
+
+/**
+ * PUT /api/settings may carry smallBusiness / vatBasis (clients send the GET object back): accepted only when equal
+ * to the status valid today. A change → German message pointing to the Steuerstatus list (null = fine).
+ */
+export function settingsTaxStatusConflict(db: DbOrTx, body: { smallBusiness?: boolean; vatBasis?: "accrual" | "cash" }): string | null {
+  const today = taxStatusAt(db);
+  const changed = (body.smallBusiness !== undefined && body.smallBusiness !== today.smallBusiness) || (body.vatBasis !== undefined && body.vatBasis !== today.vatBasis);
+  return changed
+    ? "Kleinunternehmerregelung und Soll-/Istbesteuerung gelten ab einem Datum: bitte unter Einstellungen → Belege → Umsatzsteuer → Steuerstatus einen Eintrag ab dem gewünschten Tag anlegen (oder per POST /api/tax-status)."
+    : null;
 }
 
 /** Seller data to freeze onto a document at finalize time. */
