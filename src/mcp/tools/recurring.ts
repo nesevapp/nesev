@@ -119,7 +119,8 @@ export function registerRecurringTools(server: McpServer, ctx: ToolContext) {
       group: "documents",
       description:
         "Pause (active: false) or resume (active: true) a recurring invoice. Paused ones generate nothing; on resume, " +
-        "missed periods since the next issue date are caught up by the app's next run (each as its own invoice).",
+        "missed periods since the next issue date are caught up by the app's next run (each as its own invoice, dated " +
+        "today, with the missed period as its service period).",
       input: z.object({ id: z.number().int().positive(), active: z.boolean() }),
       output: RecurringRow,
       annotations: { ...CHANGES_STATE, idempotentHint: true },
@@ -127,7 +128,7 @@ export function registerRecurringTools(server: McpServer, ctx: ToolContext) {
     async ({ id, active }) => {
       await call(ctx.api.recurring[":id"].$put({ param: idParam(id), json: { active } }));
       const data = await getRow(ctx, id);
-      const catchUp = active && !data.ended && data.nextRunDate < todayIso() ? ` Achtung: Der nächste Termin ${deDate(data.nextRunDate)} liegt in der Vergangenheit; versäumte Perioden werden nachgeholt.` : "";
+      const catchUp = active && !data.ended && data.nextRunDate < todayIso() ? ` Achtung: Der nächste Termin ${deDate(data.nextRunDate)} liegt in der Vergangenheit; versäumte Perioden werden nachgeholt (jede als eigene Rechnung mit dem heutigen Rechnungsdatum; Leistungszeitraum bzw. Leistungsdatum bleibt die versäumte Periode).` : "";
       return { text: `${active ? "Fortgesetzt" : "Pausiert"}: ${rowLine(data)}${catchUp}\nLink: ${data.link}`, data };
     },
   );
