@@ -139,6 +139,27 @@ describe("getSmallBusinessLimit", () => {
     expect(getSmallBusinessLimit(db, 2026, TODAY).projectedCents).toBe(70_000); // the licence covers 2027
   });
 
+  test("only turnover taxable in Austria: EU reverse charge and third country (incl. their credit notes) don't count", () => {
+    const { db, client, add } = setup();
+    add({ type: "invoice", grossCents: 1_000_000 });
+    add({ type: "credit_note", grossCents: 100_000, issueDate: "2026-03-20" });
+    const eu = add({ type: "invoice", grossCents: 2_000_000, taxMode: "EU_REVERSE_CHARGE" });
+    add({ type: "credit_note", parentId: eu.id, grossCents: 500_000, taxMode: "EU_REVERSE_CHARGE", issueDate: "2026-03-20" });
+    add({ type: "invoice", grossCents: 3_000_000, taxMode: "THIRD_COUNTRY" });
+    add({ type: "invoice", status: "draft", grossCents: 400_000, taxMode: "THIRD_COUNTRY" });
+    add({ type: "invoice", status: "draft", grossCents: 50_000, taxMode: "AT_DOMESTIC" });
+    db.insert(recurringInvoices)
+      .values({ clientId: client.id, name: "CH", intervalUnit: "year", startDate: "2026-07-01", nextRunDate: "2026-07-01", taxMode: "THIRD_COUNTRY", netCents: 900_000, grossCents: 900_000 })
+      .run();
+    add({ type: "invoice", grossCents: 7_000_000, taxMode: "EU_REVERSE_CHARGE", issueDate: "2025-05-01" });
+
+    const l = getSmallBusinessLimit(db, 2026, TODAY);
+    expect(l.turnoverCents).toBe(1_000_000 - 100_000);
+    expect(l.projectedCents).toBe(1_000_000 - 100_000 + 50_000);
+    expect(l.previousYearCents).toBe(0);
+    expect(l.previousYearExceeded).toBe(false);
+  });
+
   test("dashboard includes it only for Kleinunternehmer", () => {
     const { db, add } = setup();
     add({ type: "invoice", grossCents: 100_000 });

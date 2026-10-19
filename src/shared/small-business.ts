@@ -6,7 +6,8 @@
 // - Above € 60.500 the exemption ends at once: the invoice that crosses the line already carries VAT.
 // - The turnover counts by the time of supply (Leistungszeitpunkt), also for Istbesteuerung: the date the
 //   money comes in doesn't matter (VwGH; BFG RV/5100868/2012; see PLAN.md for sources).
-// Turnover here = gross of finalized invoices − finalized credit notes, by service date (see services/small-business.ts).
+// Turnover here = gross of finalized invoices − finalized credit notes taxable in Austria (no EU reverse charge /
+// third country), by service date (see services/small-business.ts).
 // A planning aid only; certain turnover (e.g. Hilfsgeschäfte, some exempt sales) doesn't count towards the limit.
 
 export const SMALL_BUSINESS_LIMIT_CENTS = 5_500_000;

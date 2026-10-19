@@ -1,5 +1,6 @@
-import { and, asc, eq, gte, inArray, lt, ne, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, ne, notInArray, type SQL, sql } from "drizzle-orm";
 import { coveredPeriod, runDatesUntil } from "../../shared/recurring";
+import type { TaxMode } from "../../shared/tax";
 import { type SmallBusinessLimit, SMALL_BUSINESS_TOLERANCE_CENTS, smallBusinessLimit } from "../../shared/small-business";
 import type { DbOrTx } from "../db/client";
 import { documents, recurringInvoices } from "../db/schema";
@@ -10,6 +11,10 @@ import { invoicePaymentStates } from "./bank";
 // time of supply (Leistungszeitpunkt): end of the service period, else its start, else the invoice date. This
 // holds for Ist- and Sollbesteuerung alike (payment dates don't matter for the limit), so settings.vatBasis is
 // not used. Credit notes subtract by their own date (issue date) – the reduction happens when it's granted.
+// Only turnover taxable in Austria counts (§ 6 Abs. 1 Z 27 UStG: "Umsätze nach § 1 Abs. 1 Z 1 und 2"): EU
+// reverse-charge and third-country invoices (place of supply abroad, see the UVA in services/tax.ts) and their
+// credit notes (which carry the invoice's tax mode) are left out, in the projection too. Caveat: a third-country
+// export of goods (Ausfuhrlieferung, § 6 Abs. 1 Z 1) would count, but this app treats THIRD_COUNTRY as services.
 // "Received" = the part of those invoices already paid: gross − credit notes for invoices marked paid, else
 // the bank allocations (services/bank.ts invoicePaymentStates), capped at what is due.
 // Projection (current year only) adds draft invoices whose service date is in the year and every future run
@@ -20,6 +25,10 @@ const supplyDate = sql<string>`case when ${documents.type} = 'credit_note' then 
   else coalesce(${documents.servicePeriodEnd}, ${documents.servicePeriodStart}, ${documents.issueDate}) end`;
 
 const inYear = (year: number): SQL => and(gte(supplyDate, `${year}-01-01`), lt(supplyDate, `${year + 1}-01-01`))!;
+
+/** Tax modes whose place of supply is abroad: not taxable in Austria, so not part of the limit. */
+const FOREIGN_MODES: TaxMode[] = ["EU_REVERSE_CHARGE", "THIRD_COUNTRY"];
+const domestic = notInArray(documents.taxMode, FOREIGN_MODES);
 
 /** Signed gross turnover rows of a year, oldest first. */
 function turnoverRows(db: DbOrTx, year: number) {
@@ -33,7 +42,7 @@ function turnoverRows(db: DbOrTx, year: number) {
       cents: sql<number>`case when ${documents.type} = 'credit_note' then -${documents.grossCents} else ${documents.grossCents} end`,
     })
     .from(documents)
-    .where(and(inArray(documents.type, ["invoice", "credit_note"]), ne(documents.status, "draft"), inYear(year)))
+    .where(and(inArray(documents.type, ["invoice", "credit_note"]), ne(documents.status, "draft"), domestic, inYear(year)))
     .orderBy(asc(supplyDate), asc(documents.id))
     .all();
 }
@@ -63,10 +72,11 @@ export function getSmallBusinessLimit(db: DbOrTx, year: number, today: string): 
     projectedCents += db
       .select({ cents: sql<number>`coalesce(sum(${documents.grossCents}), 0)` })
       .from(documents)
-      .where(and(eq(documents.type, "invoice"), eq(documents.status, "draft"), inYear(year)))
+      .where(and(eq(documents.type, "invoice"), eq(documents.status, "draft"), domestic, inYear(year)))
       .get()!.cents;
     const recurring = db.select().from(recurringInvoices).where(eq(recurringInvoices.active, true)).all();
     for (const r of recurring) {
+      if (FOREIGN_MODES.includes(r.taxMode)) continue;
       // runs already due are generated on the next scheduler tick, so they count too; with a service period
       // the run counts by the end of the period it covers (a December run may belong to next year)
       const runs = runDatesUntil(r, r.nextRunDate, yearEnd)
