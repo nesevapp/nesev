@@ -10,7 +10,8 @@ import { createContext } from "./tool";
 
 export { buildServer, SERVER_INFO } from "./build";
 
-if (import.meta.main) {
+/** Serves MCP on stdin/stdout. Also the `nesev mcp` command of the release binary (src/cli/main.ts). */
+export function startStdio() {
   if (!DATA_DIR_SOURCE) {
     console.error("[nesev-mcp] nesev is not set up yet: start nesev once and choose a data folder, or set NESEV_DATA_DIR.");
     process.exit(1);
@@ -19,3 +20,5 @@ if (import.meta.main) {
   console.error(`[nesev-mcp] data dir: ${DATA_DIR}`);
   serveStdio(() => buildServer(ctx), { onerror: (err) => console.error("[nesev-mcp]", err) });
 }
+
+if (import.meta.main) startStdio();

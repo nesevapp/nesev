@@ -11,3 +11,4 @@ demo-data/
 CLAUDE.local.md
 *.local.*
 .idea/
+build/

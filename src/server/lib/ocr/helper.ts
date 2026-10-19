@@ -1,12 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { OCR_HELPER_SOURCE, PREBUILT_BIN_DIR } from "../app-files";
 import { DATA_DIR } from "../paths";
 import { CommandError, runCommand } from "./run";
 
 // The Swift helper (nesev-ocr.swift: PDF text layer, Apple Vision OCR, page rendering) is compiled once
-// with swiftc into <DATA_DIR>/bin/nesev-ocr-<source hash>; a changed source gets a fresh binary.
+// with swiftc into <DATA_DIR>/bin/nesev-ocr-<source hash>; a changed source gets a fresh binary. The macOS release
+// binaries ship it precompiled under the same name (PREBUILT_BIN_DIR), so users don't need the Xcode tools.
 
-const SOURCE = join(import.meta.dir, "nesev-ocr.swift");
+const SOURCE = OCR_HELPER_SOURCE;
 
 export interface HelperStatus {
   /** macOS with swiftc installed */
@@ -25,7 +27,10 @@ function binDir(dataDir: string) {
 }
 
 export function helperPath(dataDir = DATA_DIR): string {
-  return join(binDir(dataDir), `nesev-ocr-${sourceHash()}`);
+  const name = `nesev-ocr-${sourceHash()}`;
+  const prebuilt = join(PREBUILT_BIN_DIR, name);
+  if (process.platform === "darwin" && existsSync(prebuilt)) return prebuilt;
+  return join(binDir(dataDir), name);
 }
 
 export function helperAvailable(): boolean {

@@ -23,6 +23,8 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "NODE_ENV=production bun src/server/index.ts",
+    "build:binary": "bun scripts/build-binary.ts",
+    "cli": "bun src/cli/main.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/server/db/migrate.ts",
     "typecheck": "tsc --noEmit",
