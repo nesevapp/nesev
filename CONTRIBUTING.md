@@ -4,6 +4,10 @@ Thanks for your interest. nesev is a small, local, single-user app for Austrian 
 and well-scoped features are welcome. For anything bigger than a fix, please open an issue first so we can agree on
 the approach before you write the code.
 
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Questions go to
+[GitHub Discussions](https://github.com/nesevapp/nesev/discussions); security problems are reported privately as
+described in [SECURITY.md](SECURITY.md).
+
 ## Setup
 
 ```bash

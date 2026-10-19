@@ -12,8 +12,8 @@ To keep that safe:
   address, and don't put nesev behind a reverse proxy, tunnel or port forward that other people can reach.
 - The MCP server speaks over stdio only and opens no port.
 - Local AI (llama-server) is started by nesev on `127.0.0.1` with a random API key per start.
-- Your data lives in `data/` (or `NESEV_DATA_DIR`). Protect it like any other financial records: disk encryption,
-  backups, file permissions.
+- Your data lives in the data folder chosen on first start (or `NESEV_DATA_DIR`). Protect it like any other
+  financial records: disk encryption, backups, file permissions.
 
 - Against browser pages (DNS rebinding, CSRF-style requests to `localhost`) every request must carry a loopback
   `Host` (`localhost`, `127.0.0.1`, `[::1]`, any port), and writes with a foreign `Origin` or
@@ -22,7 +22,7 @@ To keep that safe:
 
 - Every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and same-origin framing
   only; HTML pages (the built SPA) get a Content Security Policy (scripts only from nesev itself, no plugins, no
-  foreign frames or form targets). Files from `data/` (logos, receipts) are served with nosniff, and SVG/XML/HTML
+  foreign frames or form targets). Files from the data folder (logos, receipts) are served with nosniff, and SVG/XML/HTML
   files additionally in a CSP sandbox, so an uploaded file can't run script in nesev's origin.
 - Logo uploads are typed by their content, not the browser's MIME type. SVG logos must be plain vector graphics:
   scripts, event handlers, `javascript:` links, HTML content and references to outside files are refused.
@@ -40,13 +40,14 @@ Reports in that area are especially welcome.
 
 ## Supported versions
 
-Only the latest commit on `main` is supported. There are no release branches.
+Only the latest release gets security fixes (starting with v0.1.0). There are no release branches; fixes land on
+`main` and ship in the next release.
 
 ## Reporting a vulnerability
 
 Please **don't open a public issue** for security problems. Report them privately via GitHub private vulnerability
-reporting (the "Report a vulnerability" button on the repository's Security tab).
-<!-- TODO(owner): add the repository URL / a contact e-mail once the repo is public. -->
+reporting: <https://github.com/nesevapp/nesev/security/advisories/new> (the "Report a vulnerability" button on the
+repository's Security tab). This is the only channel for security reports.
 
 Include what you found, how to reproduce it and the impact you expect. You'll get an answer within a week. Once a fix
 is available, the report can be published with credit to you, if you like.
