@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, FolderOpen, Info, Loader2 } from "lucide-react";
+import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, Info, Loader2 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import {
   type SetupStatus,
   useBrowseFolder,
   useCompleteSetup,
+  useRestoreSetup,
 } from "@/sdk";
 
 type Choice = { kind: "suggestion"; id: string } | { kind: "custom" };
@@ -26,6 +27,8 @@ export function SetupPage({ status }: { status: SetupStatus }) {
   const debounced = useDebounced(custom, 300);
   const browse = useBrowseFolder();
   const complete = useCompleteSetup();
+  const restore = useRestoreSetup();
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const suggestion = choice.kind === "suggestion" ? status.suggestions.find((s) => s.id === choice.id) : undefined;
   const path = suggestion ? suggestion.path : debounced;
@@ -41,6 +44,11 @@ export function SetupPage({ status }: { status: SetupStatus }) {
         setCustom(picked);
       },
     });
+
+  const restoreBackup = (file: File) => {
+    if (!check.data?.ok) return;
+    restore.mutate({ path: check.data.path, file }, { onSuccess: () => window.location.replace("/") });
+  };
 
   const submit = () => {
     if (!check.data?.ok) return;
@@ -120,6 +128,7 @@ export function SetupPage({ status }: { status: SetupStatus }) {
         )}
 
         {complete.error && <p className="text-sm text-destructive">{apiErrorMessage(complete.error)}</p>}
+        {restore.error && <p className="text-sm text-destructive">{apiErrorMessage(restore.error)}</p>}
         {browse.error && <p className="text-sm text-destructive">{apiErrorMessage(browse.error)}</p>}
 
         <div className="flex flex-col gap-3">
@@ -138,6 +147,34 @@ export function SetupPage({ status }: { status: SetupStatus }) {
               </Button>
             )}
           </div>
+          {!check.data?.hasData && (
+            <div className="flex flex-col items-start gap-1 rounded-lg border border-dashed p-4 text-sm">
+              <span className="font-medium">Umzug auf einen neuen Computer?</span>
+              <span className="text-muted-foreground">
+                Ein Backup aus „Backup herunterladen“ (ZIP) in den gewählten Ordner einspielen und damit weiterarbeiten.
+              </span>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".zip,.db,application/zip"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) restoreBackup(file);
+                }}
+              />
+              <Button
+                variant="outline"
+                className="mt-2"
+                disabled={!ready || restore.isPending || complete.isPending}
+                onClick={() => fileInput.current?.click()}
+              >
+                {restore.isPending ? <Loader2 className="animate-spin" /> : <ArchiveRestore />}
+                {restore.isPending ? "Backup wird eingespielt…" : "Backup einspielen…"}
+              </Button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Wichtig: Kein Ordner, der von iCloud, OneDrive oder Dropbox synchronisiert wird – die laufende Datenbank kann
             dabei beschädigt werden. Sichern Sie stattdessen die Backups (Einstellungen → Export &amp; Backup).

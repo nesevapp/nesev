@@ -56,3 +56,24 @@ describe("GET /status", () => {
     expect(s).toMatchObject({ configured: false, missingDataDir: dir });
   });
 });
+
+describe("POST /restore", () => {
+  const upload = (path: string, file: File) => {
+    const form = new FormData();
+    form.set("path", path);
+    form.set("file", file);
+    return setup.request("/restore", { method: "POST", body: form });
+  };
+
+  test("refuses a non-backup and a folder that already has data; nothing is configured", async () => {
+    setSetupCompleteHook(async () => {});
+    const res = await upload(join(root, "books"), new File(["nope"], "x.zip"));
+    expect(res.status).toBe(422);
+    expect(resolveDataDir()).toBeNull();
+
+    const withData = join(root, "existing");
+    await post("/complete", { path: withData });
+    setSetupCompleteHook(async () => {});
+    expect((await upload(withData, new File(["nope"], "x.zip"))).status).toBe(400);
+  });
+});

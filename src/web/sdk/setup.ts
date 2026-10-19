@@ -10,6 +10,8 @@ export const setupApi = {
   check: (path: string) => parseResponse(setup.check.$post({ json: { path } })),
   browse: () => parseResponse(setup.browse.$post()),
   complete: (path: string) => parseResponse(setup.complete.$post({ json: { path } })),
+  /** restore a backup (ZIP / .db) into the chosen, new or empty folder and finish the setup */
+  restore: ({ path, file }: { path: string; file: File }) => parseResponse(setup.restore.$post({ form: { path, file } })),
   reveal: () => parseResponse(setup.reveal.$post()),
 };
 
@@ -37,6 +39,11 @@ export function useBrowseFolder() {
 /** Saves the data folder; the server then loads the app, so the page reloads afterwards. */
 export function useCompleteSetup() {
   return useMutation({ mutationFn: setupApi.complete });
+}
+
+/** Like useCompleteSetup, starting from a backup. */
+export function useRestoreSetup() {
+  return useMutation({ mutationFn: setupApi.restore });
 }
 
 export function useRevealDataDir() {

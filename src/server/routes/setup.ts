@@ -1,6 +1,7 @@
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
   appDataDir,
@@ -14,6 +15,7 @@ import {
 } from "../lib/data-location";
 import { canPickFolder, pickFolder, revealFolder } from "../lib/folder-dialog";
 import { validate } from "../lib/validate";
+import { RestoreError, restoreIntoEmptyDir } from "../services/restore";
 
 // First-start setup: choosing the data dir. Mounted in two places:
 //  - setup mode (server/setup.ts, no data dir yet): the only API; /complete writes the config and starts the app
@@ -78,6 +80,35 @@ const app = new Hono()
     await hook();
     return c.json({ dataDir: check.path, hasData: check.hasData });
   })
+  /**
+   * multipart: "path" (the chosen data folder, new or empty) + "file" (backup ZIP or nesev .db). Restores the backup
+   * there, then completes the setup like /complete. For moving to a new computer.
+   */
+  .post(
+    "/restore",
+    bodyLimit({ maxSize: 4 * 1024 ** 3, onError: (c) => c.json({ error: "Datei ist zu groß (max. 4 GB)" }, 413) }),
+    validate("form", z.object({ path: z.string().max(4096), file: z.instanceof(File, { message: "Keine Datei hochgeladen" }) })),
+    async (c) => {
+      if (!onComplete) return c.json({ error: "nesev ist bereits eingerichtet." }, 409);
+      const { path, file } = c.req.valid("form");
+      const check = inspectDataDir(path);
+      if (!check.ok) return c.json({ error: check.error ?? "Ordner nicht verwendbar" }, 400);
+      if (check.hasData) return c.json({ error: "In diesem Ordner liegen bereits nesev-Daten. Für ein Backup bitte einen neuen oder leeren Ordner wählen." }, 400);
+      let summary;
+      try {
+        mkdirSync(check.path, { recursive: true });
+        summary = restoreIntoEmptyDir(check.path, new Uint8Array(await file.arrayBuffer()));
+      } catch (err) {
+        if (err instanceof RestoreError) return c.json({ error: err.message }, 422);
+        throw err;
+      }
+      writeConfig({ dataDir: check.path });
+      const hook = onComplete;
+      onComplete = null;
+      await hook();
+      return c.json({ dataDir: check.path, summary });
+    },
+  )
   .post("/reveal", (c) => {
     const resolved = resolveDataDir();
     if (!resolved) return c.json({ error: "Noch kein Datenordner gewählt" }, 409);
