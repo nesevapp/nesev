@@ -31,6 +31,7 @@ export function setSetupCompleteHook(hook: CompleteHook | null) {
 }
 
 const pathBody = z.object({ path: z.string().max(4096) });
+const completeBody = pathBody.extend({ updateCheck: z.boolean().optional() });
 
 const app = new Hono()
   .get("/status", (c) => {
@@ -66,15 +67,16 @@ const app = new Hono()
   })
   .post("/check", validate("json", pathBody), (c) => c.json(inspectDataDir(c.req.valid("json").path)))
   .post("/browse", async (c) => c.json({ path: await pickFolder("Ordner für die nesev-Daten wählen") }))
-  .post("/complete", validate("json", pathBody), async (c) => {
+  .post("/complete", validate("json", completeBody), async (c) => {
     if (!onComplete) return c.json({ error: "nesev ist bereits eingerichtet." }, 409);
-    const check = inspectDataDir(c.req.valid("json").path);
+    const { path, updateCheck } = c.req.valid("json");
+    const check = inspectDataDir(path);
     if (!check.ok) return c.json({ error: check.error ?? "Ordner nicht verwendbar" }, 400);
     mkdirSync(check.path, { recursive: true });
     // an empty nesev.db marks the folder as nesev's before the config points at it: resolveDataDir() treats a configured
     // folder without one as moved/missing. SQLite opens a 0-byte file as a new database (migrations fill it).
     if (!check.hasData) closeSync(openSync(join(check.path, "nesev.db"), "a"));
-    writeConfig({ dataDir: check.path });
+    writeConfig({ dataDir: check.path, ...(updateCheck === undefined ? {} : { updateCheck }) });
     const hook = onComplete;
     onComplete = null;
     await hook();
@@ -87,10 +89,17 @@ const app = new Hono()
   .post(
     "/restore",
     bodyLimit({ maxSize: 4 * 1024 ** 3, onError: (c) => c.json({ error: "Datei ist zu groß (max. 4 GB)" }, 413) }),
-    validate("form", z.object({ path: z.string().max(4096), file: z.instanceof(File, { message: "Keine Datei hochgeladen" }) })),
+    validate(
+      "form",
+      z.object({
+        path: z.string().max(4096),
+        file: z.instanceof(File, { message: "Keine Datei hochgeladen" }),
+        updateCheck: z.enum(["0", "1"]).optional(),
+      }),
+    ),
     async (c) => {
       if (!onComplete) return c.json({ error: "nesev ist bereits eingerichtet." }, 409);
-      const { path, file } = c.req.valid("form");
+      const { path, file, updateCheck } = c.req.valid("form");
       const check = inspectDataDir(path);
       if (!check.ok) return c.json({ error: check.error ?? "Ordner nicht verwendbar" }, 400);
       if (check.hasData) return c.json({ error: "In diesem Ordner liegen bereits nesev-Daten. Für ein Backup bitte einen neuen oder leeren Ordner wählen." }, 400);
@@ -102,7 +111,7 @@ const app = new Hono()
         if (err instanceof RestoreError) return c.json({ error: err.message }, 422);
         throw err;
       }
-      writeConfig({ dataDir: check.path });
+      writeConfig({ dataDir: check.path, ...(updateCheck === undefined ? {} : { updateCheck: updateCheck === "1" }) });
       const hook = onComplete;
       onComplete = null;
       await hook();

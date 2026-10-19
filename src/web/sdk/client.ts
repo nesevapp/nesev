@@ -18,6 +18,7 @@ import type taxApp from "@server/routes/tax";
 import type taxStatusApp from "@server/routes/tax-status";
 import type templatesApp from "@server/routes/templates";
 import type unitsApp from "@server/routes/units";
+import type updateApp from "@server/routes/update";
 import type recurringExpensesApp from "@server/routes/recurring-expenses";
 import type assetsApp from "@server/routes/assets";
 import type searchApp from "@server/routes/search";
@@ -57,6 +58,7 @@ export const search = hc<typeof searchApp>(`${base}/search`);
 export const chat = hc<typeof chatApp>(`${base}/chat`);
 export const transcribe = hc<typeof transcribeApp>(`${base}/transcribe`);
 export const units = hc<typeof unitsApp>(`${base}/units`);
+export const update = hc<typeof updateApp>(`${base}/update`);
 
 /** parseResponse() returns the typed JSON body and throws DetailedError on non-2xx. */
 export { parseResponse };

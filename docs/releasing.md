@@ -7,8 +7,13 @@ nesev ships as a single executable per platform, built with `bun build --compile
 
 ## Cutting a release
 
-1. Update `CHANGELOG.md` and set `"version"` in `package.json` (e.g. `0.2.0`). Commit.
-2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`.
+Work happens on `development`; `main` only moves with a release.
+
+1. On `development`: update `CHANGELOG.md` and set `"version"` in `package.json` (e.g. `0.2.0`). Commit and push,
+   and wait for CI.
+2. Merge `development` into `main` with a pull request (`gh pr create --base main --head development`), merge it once
+   CI is green, then tag the merge commit on `main` and push the tag:
+   `git switch main && git pull && git tag -a v0.2.0 -m "nesev 0.2.0" && git push origin v0.2.0`.
 3. The [release workflow](../.github/workflows/release.yml) runs typecheck and tests on Linux and macOS, then builds on
    macOS: the SPA, the Apple Vision OCR helper for arm64 and x86_64, and the four binaries. It smoke-tests the
    darwin-arm64 binary, checks the checksums and creates a **draft** release. The tag has to match the

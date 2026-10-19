@@ -9,9 +9,11 @@ export const setupApi = {
   status: () => parseResponse(setup.status.$get()),
   check: (path: string) => parseResponse(setup.check.$post({ json: { path } })),
   browse: () => parseResponse(setup.browse.$post()),
-  complete: (path: string) => parseResponse(setup.complete.$post({ json: { path } })),
+  complete: ({ path, updateCheck }: { path: string; updateCheck: boolean }) =>
+    parseResponse(setup.complete.$post({ json: { path, updateCheck } })),
   /** restore a backup (ZIP / .db) into the chosen, new or empty folder and finish the setup */
-  restore: ({ path, file }: { path: string; file: File }) => parseResponse(setup.restore.$post({ form: { path, file } })),
+  restore: ({ path, file, updateCheck }: { path: string; file: File; updateCheck: boolean }) =>
+    parseResponse(setup.restore.$post({ form: { path, file, updateCheck: updateCheck ? "1" : "0" } })),
   reveal: () => parseResponse(setup.reveal.$post()),
 };
 

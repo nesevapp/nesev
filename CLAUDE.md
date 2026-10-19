@@ -73,4 +73,4 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 ## Working style for this repo
 - Bigger features have been built by parallel agents. The lead first lands the schema, migrations, route mounts, nav entries and placeholder pages in one go, so agents only touch their own feature folders. Keep doing that, and never let two agents generate migrations concurrently.
 - Verify against reality: typecheck, tests, run the app on an isolated data dir, and look at generated PDFs (rasterize with `pdftoppm`).
-- Commit only when asked.
+- Commit only when asked. Work on `development` (the default branch); never commit or push to `main` directly, it only moves with a release (docs/releasing.md).

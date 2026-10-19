@@ -28,7 +28,7 @@ export function UnsavedChangesGuard({ when, shouldBlock }: { when: boolean; shou
         <AlertDialogHeader>
           <AlertDialogTitle>Ungespeicherte Änderungen verwerfen?</AlertDialogTitle>
           <AlertDialogDescription>
-            Ihre Änderungen auf dieser Seite sind noch nicht gespeichert und gehen beim Verlassen verloren.
+            Deine Änderungen auf dieser Seite sind noch nicht gespeichert und gehen beim Verlassen verloren.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -12,6 +12,9 @@ export const keys = {
   setup: {
     status: ["setup", "status"] as const,
   },
+  update: {
+    status: ["update"] as const,
+  },
   taxStatus: {
     all: ["tax-status"] as const,
   },

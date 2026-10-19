@@ -46,7 +46,7 @@ const STEPS: Step[] = [
           Rechnungen und Buchhaltung für österreichische Einzelunternehmen. nesev läuft nur auf diesem Rechner: keine
           Cloud, kein Konto, alle Daten bleiben lokal.
         </p>
-        <p className="mt-2">In einer Minute zeigen wir Ihnen, wo Sie was finden.</p>
+        <p className="mt-2">In einer Minute zeigen wir dir, wo du was findest.</p>
       </>
     ),
   },
@@ -58,7 +58,7 @@ const STEPS: Step[] = [
       <Where
         items={[
           ["Dashboard", "Umsatz im Jahresverlauf, offene und überfällige Rechnungen, Kleinunternehmergrenze."],
-          ["Zahlungsprognose", "Erwartete Ein- und Ausgänge der nächsten Monate und Ihr voraussichtlicher Kontostand."],
+          ["Zahlungsprognose", "Erwartete Ein- und Ausgänge der nächsten Monate und dein voraussichtlicher Kontostand."],
         ]}
       />
     ),
@@ -90,7 +90,7 @@ const STEPS: Step[] = [
     body: (
       <Where
         items={[
-          ["Ausgaben", "Belege als Foto oder PDF ablegen; die Belegerkennung liest sie lokal aus, wenn Sie es wollen."],
+          ["Ausgaben", "Belege als Foto oder PDF ablegen; die Belegerkennung liest sie lokal aus, wenn du es willst."],
           ["Fixkosten", "Regelmäßige Ausgaben wie Miete oder Abos, auch für die Prognose."],
           ["Anlagen", "Anschaffungen über 1.000 € mit Abschreibung (AfA)."],
           ["Bank", "Kontoauszüge importieren und Zahlungen Rechnungen und Ausgaben zuordnen."],
@@ -108,7 +108,7 @@ const STEPS: Step[] = [
       <Where
         items={[
           ["Kunden", "Aus Österreich, der EU oder einem Drittland; die Steuerbehandlung ergibt sich daraus."],
-          ["Artikel", "Leistungen und Produkte, die Sie oft verrechnen, mit Preis und Einheit."],
+          ["Artikel", "Leistungen und Produkte, die du oft verrechnest, mit Preis und Einheit."],
         ]}
       />
     ),
@@ -129,13 +129,13 @@ const STEPS: Step[] = [
     title: "Einstellungen",
     body: (
       <>
-        <p>Hier beginnen Sie am besten: Ihre Firmendaten erscheinen auf jedem Beleg.</p>
+        <p>Hier beginnst du am besten: Deine Firmendaten erscheinen auf jedem Beleg.</p>
         <Where
           items={[
             ["Unternehmen", "Name, Adresse, UID, Bankverbindung, Logo."],
             ["Belege", "Kleinunternehmerregelung, Zahlungsziel, Texte."],
-            ["PDF-Vorlagen", "Das Layout Ihrer Belege im Designer anpassen."],
-            ["Export", "Backups und Export für Ihre Steuerberatung (BMD, RZL)."],
+            ["PDF-Vorlagen", "Das Layout deiner Belege im Designer anpassen."],
+            ["Export", "Backups und Export für deine Steuerberatung (BMD, RZL)."],
           ]}
         />
         <p className="mt-3">Das Fragezeichen daneben startet diesen Rundgang neu.</p>
@@ -147,7 +147,7 @@ const STEPS: Step[] = [
     title: "Assistent",
     body: (
       <p>
-        Fragen Sie in eigenen Worten, etwa „Welche Rechnungen sind offen?“, oder lassen Sie ihn Entwürfe anlegen. Das
+        Frag in eigenen Worten, etwa „Welche Rechnungen sind offen?“, oder lass ihn Entwürfe anlegen. Das
         Sprachmodell läuft lokal, und bevor er etwas ändert, fragt er nach. Öffnen mit <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
       </p>
     ),
@@ -156,7 +156,7 @@ const STEPS: Step[] = [
     title: "Los geht's",
     body: (
       <p>
-        Am einfachsten starten Sie mit Ihren Firmendaten, dann legen Sie einen Kunden und die erste Rechnung an. Solange
+        Am einfachsten startest du mit deinen Firmendaten, dann legst du einen Kunden und die erste Rechnung an. Solange
         es noch keine Belege gibt, führt eine Checkliste auf dem Dashboard durch diese Schritte.
       </p>
     ),

@@ -2,6 +2,7 @@
 // src/server/services/chat-tools.ts) without the stdio entry's stdout guard. server.ts is the stdio entry.
 
 import { McpServer } from "@modelcontextprotocol/server";
+import { VERSION } from "../cli/version";
 import { createContext, type ToolContext } from "./tool";
 import { registerArticleTools } from "./tools/articles";
 import { registerBankTools } from "./tools/bank";
@@ -18,7 +19,7 @@ import { registerExpenseWriteTools } from "./tools/write-expenses";
 import { registerMasterDataWriteTools } from "./tools/write-masterdata";
 import { registerRecordWriteTools } from "./tools/write-records";
 
-export const SERVER_INFO = { name: "nesev", version: "0.1.0" };
+export const SERVER_INFO = { name: "nesev", version: VERSION };
 
 export const INSTRUCTIONS = `nesev is the user's local invoicing and bookkeeping app (Austrian sole trader, EUR, German UI).
 Use "search" to find ids (clients, invoices, offers, credit notes, expenses, …), then the get_* tools for details.

@@ -498,6 +498,14 @@ the link on the empty dashboard.
     rendered; expense receipts by attachment).
   - Expenses by Belegdatum; `anlagen` lines go to the asset account (AfA is the accountant's).
 
+## Update hint
+`services/update-check.ts`, `GET/PUT /api/update`: the only request nesev makes on its own. When the web app asks (not
+at startup, so tests and scripts never hit the network), the server reads `releases/latest` from the GitHub API at most
+once a day (an hour after an error), compares its tag with `VERSION` (`src/cli/version.ts`) and flags it as a security
+release when the notes mention "security"/`GHSA-`. On by default; `updateCheck` in the per-user config file (setup
+checkbox, switch under Export & Backup), `NESEV_UPDATE_CHECK=0` turns it off and locks the switch. The sidebar shows a
+dismissible card (per version; security updates come back) with `nesev update` or the git commands for a checkout.
+
 ## Security
 Details and the threat model are in [SECURITY.md](../SECURITY.md). In code:
 - `lib/origin-guard.ts`: loopback `Host` only (against DNS rebinding), no foreign `Origin` / cross-site writes;

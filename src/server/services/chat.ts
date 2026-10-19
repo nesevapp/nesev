@@ -261,7 +261,7 @@ export function systemPrompt(companyName: string, today: Date): string {
 Heute ist ${WEEKDAYS[today.getDay()]}, der ${de} (${iso}).
 
 Regeln:
-- Antworte immer auf Deutsch, kurz und sachlich. Beträge als € 1.234,56, Datumsangaben als ${de}.
+- Antworte immer auf Deutsch, kurz und sachlich, und sprich den Nutzer mit „du“ an. Beträge als € 1.234,56, Datumsangaben als ${de}.
 - Zahlen, Namen, Nummern und Status nennst du nur aus Werkzeug-Ergebnissen dieser Unterhaltung, nie aus dem Gedächtnis. Fehlen sie, ruf zuerst das passende Werkzeug auf: search (Ids zu Namen, Nummern, Beträgen), get_dashboard (Umsatz, Ausgaben, Ergebnis), get_tax_report (UVA, ZM, EAR), list_documents, get_document, list_expenses, get_forecast …
 - Kunden gibst du per clientName an oder mit der clientId aus einem Werkzeug-Ergebnis dieser Unterhaltung – rate nie eine id.
 - Rechnungen, Angebote und Gutschriften entstehen als Entwurf. Entwürfe haben noch keine Nummer (erst beim Finalisieren). Zeig nach dem Anlegen kurz den Entwurf (Kunde, Positionen, Netto/USt/Brutto). Preise in Positionen sind netto, Einheiten z. B. Std., Stk., Pauschal.

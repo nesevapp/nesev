@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveDataDir } from "../lib/data-location";
+import { readConfig, resolveDataDir } from "../lib/data-location";
 import setup, { setSetupCompleteHook } from "./setup";
 
 // The setup routes read NESEV_CONFIG_DIR at request time; nothing here opens a DB.
@@ -34,6 +34,12 @@ describe("POST /complete", () => {
     expect(res.status).toBe(200);
     expect(resolvedInHook).toEqual({ dir, source: "config" });
     expect(existsSync(join(dir, "nesev.db"))).toBe(true);
+  });
+
+  test("stores the update-check choice", async () => {
+    setSetupCompleteHook(async () => {});
+    await post("/complete", { path: join(root, "books"), updateCheck: false });
+    expect(readConfig(join(root, "cfg", "config.json")).updateCheck).toBe(false);
   });
 
   test("409 once set up, 400 for an unusable path", async () => {

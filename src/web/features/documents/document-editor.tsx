@@ -535,7 +535,7 @@ export function DocumentEditor({
                   </li>
                 ))}
               </ul>
-              <p className="text-xs">Sie können trotzdem finalisieren.</p>
+              <p className="text-xs">Du kannst trotzdem finalisieren.</p>
             </div>
           )}
           <AlertDialogFooter>

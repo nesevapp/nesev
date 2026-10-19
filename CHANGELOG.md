@@ -7,6 +7,21 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
+## [0.1.1] – 2026-10-19
+
+### Added
+
+- **Update hint:** nesev checks once a day whether a newer release is out and shows it in the sidebar (security
+  updates highlighted), with the command to update. On by default; switch it off in the setup, under Einstellungen →
+  Export & Backup, or with `NESEV_UPDATE_CHECK=0`. Nothing but the request to GitHub is sent.
+
+### Changed
+
+- The app now addresses you with „du“ everywhere (UI, tour, setup, warnings, assistant). Texts to your clients
+  (document and reminder texts, PDFs) stay formal.
+- Dependencies: pdfme 6.2.6 (security fix GHSA-2rg9-wxfw-wrr7 and PDF fixes), React 19.3.1, TanStack Query,
+  lucide-react; CI actions checkout v7 and cache v6.
+
 ## [0.1.0] – 2026-10-19
 
 The first public release. nesev is a local, single-user invoicing and bookkeeping app for Austrian sole traders; the
@@ -63,5 +78,6 @@ user interface is German.
   security headers and a Content Security Policy for the web app; uploaded files typed by content. See
   [SECURITY.md](SECURITY.md).
 
-[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nesevapp/nesev/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nesevapp/nesev/releases/tag/v0.1.0

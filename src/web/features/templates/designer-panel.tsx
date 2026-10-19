@@ -178,7 +178,7 @@ function StructureTab({
       <div className="space-y-2 border-t p-3 text-xs leading-relaxed text-muted-foreground">
         <p>
           Die Reihenfolge ergibt sich aus der Position auf der Seite. Wächst ein Abschnitt (z. B. viele Positionen),
-          rutscht alles darunter nach und fließt auf Folgeseiten. Mit den Pfeilen tauschen Sie Abschnitte.
+          rutscht alles darunter nach und fließt auf Folgeseiten. Mit den Pfeilen tauschst du Abschnitte.
         </p>
         <p>Neue Texte, Linien oder Bilder aus der linken Leiste auf die Seite ziehen. Element anklicken zum Bearbeiten.</p>
       </div>

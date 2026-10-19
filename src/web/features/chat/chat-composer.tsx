@@ -87,7 +87,7 @@ export const ChatComposer = forwardRef<
               if (canSend) onSend();
             }
           }}
-          placeholder="Ihre Frage … (Enter senden, Shift+Enter neue Zeile)"
+          placeholder="Deine Frage … (Enter senden, Shift+Enter neue Zeile)"
           aria-label="Nachricht an den Assistenten"
           className="max-h-[200px] min-h-6 flex-1 resize-none bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
         />

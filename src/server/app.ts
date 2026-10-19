@@ -26,6 +26,7 @@ import tax from "./routes/tax";
 import taxStatus from "./routes/tax-status";
 import templates from "./routes/templates";
 import units from "./routes/units";
+import update from "./routes/update";
 import { originGuard } from "./lib/origin-guard";
 import { securityHeaders } from "./lib/security-headers";
 
@@ -70,7 +71,8 @@ export const app = base
   .route("/api/assets", assets)
   .route("/api/search", search)
   .route("/api/chat", chat)
-  .route("/api/transcribe", transcribe);
+  .route("/api/transcribe", transcribe)
+  .route("/api/update", update);
 
 app.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
 

@@ -47,6 +47,8 @@ export const CHECKOUT_DATA_DIR = join(APP_ROOT, "data");
 
 interface NesevConfig {
   dataDir?: string;
+  /** daily check for a newer release (services/update-check.ts); missing = on */
+  updateCheck?: boolean;
 }
 
 export function readConfig(file = configFile()): NesevConfig {

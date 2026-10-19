@@ -46,7 +46,7 @@ export function migrationState(sqlite: Database, known = knownMigrations()): Mig
 }
 
 export const NEWER_DATABASE_MESSAGE =
-  "Die Datenbank wurde von einer neueren nesev-Version geschrieben. Bitte nesev aktualisieren, bevor Sie sie öffnen. " +
+  "Die Datenbank wurde von einer neueren nesev-Version geschrieben. Bitte nesev aktualisieren, bevor du sie öffnest. " +
   "(This database was written by a newer version of nesev. Please update nesev.)";
 
 /** Local date and time for file names: 2026-10-19-143005. */
