@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { addDays, todayIso } from "../../shared/dates";
 import type { DocumentItemInput } from "../../shared/schemas/document";
 import { createTestDb, type Db } from "../db/client";
-import { clients, documentItems, documents, type NewClient } from "../db/schema";
+import { bankAccounts, bankMatches, bankTransactions, clients, documentItems, documents, type NewClient } from "../db/schema";
 import {
   changeStatus,
   convertOfferToInvoice,
@@ -17,6 +17,7 @@ import {
   finalizeWarnings,
   getDocument,
   listDocuments,
+  settleInvoice,
   updateDocument,
 } from "./documents";
 import { updateSettings } from "./settings";
@@ -179,6 +180,28 @@ describe("finalize", () => {
     const third = createCreditNote(db, inv.id);
     updateDocument(db, third.id, { items: [item({ quantity: 1, unitPriceCents: 1000 })] }); // 0,01 € too much
     expectHttp(() => finalizeDocument(db, third.id), 422, "noch offen für Gutschriften");
+  });
+
+  test("settleInvoice uses the open amount: a refund beyond the credit note reopens an auto-paid invoice", () => {
+    const { db, client } = setup();
+    const account = db.insert(bankAccounts).values({ name: "Giro" }).returning().get();
+    let seq = 0;
+    const allocate = (documentId: number, date: string, amountCents: number) => {
+      const tx = db.insert(bankTransactions).values({ accountId: account.id, bookingDate: date, amountCents, importHash: `h${++seq}`, status: "matched" }).returning().get();
+      db.insert(bankMatches).values({ transactionId: tx.id, documentId, amountCents: Math.abs(amountCents) }).run();
+      settleInvoice(db, documentId, new Set());
+    };
+    const inv = finalizeDocument(db, createDocument(db, { type: "invoice", clientId: client.id, items: [item()] }).id); // 240,00
+    allocate(inv.id, "2026-03-01", 24000);
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "paid", paidAt: "2026-03-01" });
+
+    const cn = createCreditNote(db, inv.id);
+    updateDocument(db, cn.id, { issueDate: "2026-02-20", items: [item({ quantity: 500 })] }); // 60,00
+    finalizeDocument(db, cn.id);
+    allocate(cn.id, "2026-03-10", -6000); // refund of the credit note: still settled
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "paid", paidAt: "2026-03-01" });
+    allocate(cn.id, "2026-03-12", -6000); // refunded twice → 60,00 open again
+    expect(getDocument(db, inv.id)).toMatchObject({ status: "final", paidAt: null, openCents: 6000 });
   });
 
   test("finalize warnings: AT invoice to a business above € 10.000 gross needs the client's UID", () => {

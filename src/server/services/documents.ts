@@ -21,7 +21,7 @@ import type { DbOrTx } from "../db/client";
 import { type Client, type Document, type DocumentItem, clients, documentItems, documents } from "../db/schema";
 import { nextNumber } from "../lib/numbering";
 import { bumpArticleUsage, existingArticleIds } from "./articles";
-import { creditedCentsByInvoice, invoicePaymentStates, lastPaymentDate, paidCentsForDocument } from "./bank";
+import { creditedCentsByInvoice, invoicePaymentState, invoicePaymentStates, lastPaymentDate, paidCentsForDocument } from "./bank";
 import { clientSnapshot, getClient } from "./clients";
 import { getSettings, sellerSnapshot } from "./settings";
 
@@ -416,13 +416,20 @@ function setPaidAt(db: DbOrTx, doc: Document, paidAt: string | null): void {
 }
 
 /**
- * Bring an invoice's paid status in line with what settles it: finalized credit notes plus bank allocations.
+ * Bring an invoice's paid status in line with what settles it: its open amount (invoicePaymentState: gross −
+ * finalized credit notes − bank payments + refunds on its credit notes) is 0 or less.
  * Covered → "paid" with paidAt = the latest payment or credit note date. No longer covered (or a later date) →
  * reverted/moved, but only if paidAt was set automatically: `autoDates` (booking dates of its allocations
  * before the change) or a credit note's date. A payment marked by hand stays untouched.
+ * Called with a credit note (e.g. a refund allocated to it), it settles the credit note's invoice.
  */
 export function settleInvoice(db: DbOrTx, invoiceId: number, autoDates: Set<string> = new Set()): void {
   const doc = db.select().from(documents).where(eq(documents.id, invoiceId)).get();
+  if (doc?.type === "credit_note" && doc.parentId != null && doc.parentId !== invoiceId) {
+    // the invoice's own allocations didn't change: a paidAt on its last booking date was set automatically
+    const own = lastPaymentDate(db, { documentId: doc.parentId });
+    return settleInvoice(db, doc.parentId, new Set(own ? [own] : []));
+  }
   if (!doc || doc.type !== "invoice" || doc.status === "draft") return;
   const creditDates = db
     .select({ issueDate: documents.issueDate })
@@ -430,8 +437,9 @@ export function settleInvoice(db: DbOrTx, invoiceId: number, autoDates: Set<stri
     .where(and(eq(documents.parentId, invoiceId), eq(documents.type, "credit_note"), ne(documents.status, "draft")))
     .all()
     .map((c) => c.issueDate);
-  const settled = (creditedCentsByInvoice(db, [invoiceId]).get(invoiceId) ?? 0) + paidCentsForDocument(db, invoiceId);
-  const covered = settled > 0 && settled >= doc.grossCents;
+  const state = invoicePaymentState(db, doc);
+  const creditedCents = doc.grossCents - state.dueCents;
+  const covered = creditedCents + state.paidCents > 0 && state.openCents <= 0;
   const dates = [lastPaymentDate(db, { documentId: invoiceId }), ...creditDates].filter((d): d is string => !!d).sort();
   const last = dates.at(-1) ?? null;
   const auto = doc.paidAt != null && (autoDates.has(doc.paidAt) || creditDates.includes(doc.paidAt));
