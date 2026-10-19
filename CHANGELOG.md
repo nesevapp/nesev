@@ -7,7 +7,7 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
-## [0.1.0] – unreleased
+## [0.1.0] – 2026-10-19
 
 The first public release. nesev is a local, single-user invoicing and bookkeeping app for Austrian sole traders; the
 user interface is German.
