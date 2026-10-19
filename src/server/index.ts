@@ -41,4 +41,10 @@ if (resolveDataDir()) {
 
 console.log(`nesev ${isProd ? "server" : "API"} listening on http://${hostname}:${port}`);
 
-export default { port, hostname, fetch: (req: Request, server: Server<undefined>) => handler(req, server) };
+export default {
+  port,
+  hostname,
+  // Bun's default (128 MB) would cut off "Backup einspielen" uploads with receipt photos; the routes set their own limits
+  maxRequestBodySize: 4 * 1024 ** 3,
+  fetch: (req: Request, server: Server<undefined>) => handler(req, server),
+};
