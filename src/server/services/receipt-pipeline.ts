@@ -19,7 +19,7 @@ import { observationsToText } from "../lib/ocr/layout";
 import { AbortedError, runCommand } from "../lib/ocr/run";
 import { tesseractImage, tesseractStatus } from "../lib/ocr/tesseract";
 import { supplierSuggestions } from "./expenses";
-import { detectAmountBasis, extractWithRules, repairGrossTaxLines, type RulesContext } from "./receipt-heuristics";
+import { detectAmountBasis, extractWithRules, gwgOrAsset, repairGrossTaxLines, type RulesContext } from "./receipt-heuristics";
 import { modelAlias } from "../lib/llama/paths";
 import type { LlamaLease } from "../lib/llama/lease";
 import { getLlamaLease, llamaConfigFor, toLlmError } from "./receipt-llama";
@@ -157,7 +157,7 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
       text = `${parsed.summary}\n\n${layer?.pages.join("\n\n") ?? ""}`.trim();
       // the XML has no expense category: take the keyword guess from the text
       const category = extractWithRules(text, input.context).fields.category;
-      const history = supplierHistory(input.db, category ? { ...parsed.fields, category } : parsed.fields);
+      const history = supplierHistory(input.db, category ? { ...parsed.fields, category } : parsed.fields, input.context.smallBusiness);
       const v = validateFields(history.fields, input.today);
       timings.text = elapsed(t);
       timings.total = elapsed(started);
@@ -232,7 +232,7 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
     t = performance.now();
     try {
       const llm = await runModel(input, text, tools, step);
-      fields = mergeFields(llm.fields, rules.fields);
+      fields = mergeFields(llm.fields, rules.fields, input.context);
       if (step.serverStartMs) timings.server = step.serverStartMs;
       llmSkipped = false;
     } catch (err) {
@@ -246,7 +246,7 @@ export async function analyzeReceipt(input: AnalyzeInput): Promise<AnalyzeOutput
   }
 
   // 5. supplier history + validation
-  const history = supplierHistory(input.db, fields);
+  const history = supplierHistory(input.db, fields, input.context.smallBusiness);
   let v = validateFields(history.fields, input.today);
   const amountBasis = detectAmountBasis(text, v.fields);
   if (amountBasis?.value === "gross") {
@@ -330,6 +330,7 @@ async function runModel(input: AnalyzeInput, text: string, tools: ReceiptTools, 
 export function supplierHistory(
   db: DbOrTx,
   input: ReceiptFields,
+  smallBusiness = false,
 ): { fields: ReceiptFields; matched?: ReceiptExtraction["matchedSupplier"] } {
   const fields = { ...input };
   let name: string | undefined;
@@ -365,6 +366,9 @@ export function supplierHistory(
   if (suggestion.uid && !fields.supplierUid) fields.supplierUid = fromHistory(suggestion.uid, 0.8);
   if (fields.supplierCountry?.source !== "xml") fields.supplierCountry = fromHistory(suggestion.country, 0.85);
   if (fields.vatTreatment?.source !== "xml") fields.vatTreatment = fromHistory<VatTreatment>(suggestion.vatTreatment, 0.85);
-  if (suggestion.category && isCategoryKey(suggestion.category)) fields.category = fromHistory(suggestion.category, 0.85);
+  // the supplier's usual "hardware_gwg" still becomes "anlagen" above the GWG limit
+  if (suggestion.category && isCategoryKey(suggestion.category)) {
+    fields.category = gwgOrAsset(fromHistory(suggestion.category, 0.85), fields.taxLines?.value ?? [], fields.grossCents?.value, smallBusiness);
+  }
   return { fields, matched: { name: suggestion.name, by, count: suggestion.count } };
 }

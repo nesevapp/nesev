@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { type FieldSuggestion, type ReceiptFields, suggestedLines } from "../../shared/receipts";
+import { createTestDb } from "../db/client";
+import { createExpense } from "./expenses";
+import { supplierHistory } from "./receipt-pipeline";
 import { mergeFields, validateFields } from "./receipt-validate";
 
 const f = <T>(value: T, confidence = 0.7, source: FieldSuggestion<T>["source"] = "llm"): FieldSuggestion<T> => ({
@@ -143,5 +146,49 @@ describe("mergeFields arithmetic", () => {
       { grossCents: f(6980, 0.65, "rules"), taxLines: f(rows, 0.7, "rules") },
     );
     expect(merged.grossCents!.value).toBe(6980);
+  });
+});
+
+describe("mergeFields GWG limit", () => {
+  const laptop = [{ taxRateBp: 2000, netCents: 120000, taxCents: 24000, grossCents: 144000 }];
+  test("a model's hardware_gwg above 1.000 € net becomes anlagen after the merge", () => {
+    const merged = mergeFields(
+      { category: f("hardware_gwg" as const, 0.6), taxLines: f(laptop, 0.8), grossCents: f(144000, 0.8) },
+      { category: f("buero" as const, 0.45, "rules") },
+    );
+    expect(merged.category?.value).toBe("anlagen");
+    expect(merged.category?.note).toContain("GWG");
+  });
+
+  test("Kleinunternehmer compare the gross amount", () => {
+    const row = [{ taxRateBp: 2000, netCents: 90000, taxCents: 18000, grossCents: 108000 }];
+    const model = { category: f("hardware_gwg" as const, 0.6), taxLines: f(row, 0.8) };
+    expect(mergeFields(model, {}).category?.value).toBe("hardware_gwg");
+    expect(mergeFields(model, {}, { smallBusiness: true }).category?.value).toBe("anlagen");
+  });
+
+  test("up to the limit and other categories stay", () => {
+    const row = [{ taxRateBp: 2000, netCents: 100000, taxCents: 20000, grossCents: 120000 }];
+    expect(mergeFields({ category: f("hardware_gwg" as const, 0.6), taxLines: f(row) }, {}).category?.value).toBe("hardware_gwg");
+    expect(mergeFields({ category: f("buero" as const, 0.6), taxLines: f(laptop) }, {}).category?.value).toBe("buero");
+  });
+});
+
+describe("supplierHistory GWG limit", () => {
+  test("the supplier's usual hardware_gwg becomes anlagen above the limit", () => {
+    const db = createTestDb();
+    createExpense(db, {
+      supplierName: "Computer Huber",
+      supplierCountry: "AT",
+      vatTreatment: "domestic",
+      issueDate: "2026-05-01",
+      lines: [{ category: "hardware_gwg", description: "", netCents: 50000, taxRateBp: 2000, taxCents: 10000, deductibleBp: 10000 }],
+    });
+    const row = (net: number) => [{ taxRateBp: 2000, netCents: net, taxCents: net / 5, grossCents: net * 1.2 }];
+    const big = supplierHistory(db, { supplierName: f("Computer Huber"), taxLines: f(row(150000)) });
+    expect(big.fields.category).toMatchObject({ value: "anlagen", source: "supplier" });
+    const small = supplierHistory(db, { supplierName: f("Computer Huber"), taxLines: f(row(90000)) });
+    expect(small.fields.category?.value).toBe("hardware_gwg");
+    expect(supplierHistory(db, { supplierName: f("Computer Huber"), taxLines: f(row(90000)) }, true).fields.category?.value).toBe("anlagen");
   });
 });

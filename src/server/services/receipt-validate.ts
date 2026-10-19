@@ -2,6 +2,7 @@ import { addDays, todayIso } from "../../shared/dates";
 import { EXPENSE_TAX_RATES_BP, isSelfAssessed } from "../../shared/expenses";
 import { formatCents } from "../../shared/money";
 import type { FieldSuggestion, ReceiptFields, ReceiptFieldKey, TaxLineSuggestion } from "../../shared/receipts";
+import { gwgOrAsset } from "./receipt-heuristics";
 import { checkUid, ibanValid, normalizeSupplierName, uidCountry } from "./receipt-parse";
 
 // Post-processing in code (never trusted to the model): sums, rates, UID / IBAN check digits, plausible dates.
@@ -185,8 +186,10 @@ function describe(key: ReceiptFieldKey, value: unknown): string {
 /**
  * Combines two extractions field by field. Agreement raises the confidence; on disagreement the primary
  * (model) value wins unless the secondary (rules) is clearly more confident, and the other value is noted.
+ * The GWG limit is checked again on the result: a model's "hardware_gwg" can win the merge even for a line
+ * above 1.000 € (net; gross for Kleinunternehmer), which has to be capitalized ("anlagen").
  */
-export function mergeFields(primary: ReceiptFields, secondary: ReceiptFields): ReceiptFields {
+export function mergeFields(primary: ReceiptFields, secondary: ReceiptFields, ctx: { smallBusiness?: boolean } = {}): ReceiptFields {
   const out: ReceiptFields = {};
   const keys = new Set([...Object.keys(primary), ...Object.keys(secondary)] as ReceiptFieldKey[]);
   for (const key of keys) {
@@ -211,5 +214,7 @@ export function mergeFields(primary: ReceiptFields, secondary: ReceiptFields): R
     }
     if (merged) (out as Record<string, unknown>)[key] = merged;
   }
+  const category = gwgOrAsset(out.category, out.taxLines?.value ?? [], out.grossCents?.value, ctx.smallBusiness ?? false);
+  if (category) out.category = category;
   return out;
 }

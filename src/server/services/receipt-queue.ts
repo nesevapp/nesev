@@ -326,7 +326,7 @@ export const runAnalysis: RunFn = async (db, row, { signal }) => {
   return analyzeReceipt({
     file: join(DATA_DIR, row.attachmentPath),
     settings,
-    context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban },
+    context: { ownName: company.companyName, ownUid: company.uid, ownIban: company.iban, smallBusiness: company.smallBusiness },
     signal,
     db,
   });
