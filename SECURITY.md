@@ -20,6 +20,21 @@ To keep that safe:
   `Sec-Fetch-Site: cross-site` are refused (403). Extra hostnames go into `NESEV_ALLOWED_HOSTS` (comma-separated);
   a specific `NESEV_HOST` address is allowed automatically.
 
+- Every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and same-origin framing
+  only; HTML pages (the built SPA) get a Content Security Policy (scripts only from nesev itself, no plugins, no
+  foreign frames or form targets). Files from `data/` (logos, receipts) are served with nosniff, and SVG/XML/HTML
+  files additionally in a CSP sandbox, so an uploaded file can't run script in nesev's origin.
+- Logo uploads are typed by their content, not the browser's MIME type. SVG logos must be plain vector graphics:
+  scripts, event handlers, `javascript:` links, HTML content and references to outside files are refused.
+- Imported files (bank statements, e-invoices, receipts) are untrusted input: upload sizes are capped before
+  parsing, embedded PDF files are inflated with a size cap, and CSV exports neutralize cell values that a
+  spreadsheet would run as a formula (`=`, `+`, `-`, `@` at the start get a leading `'`).
+- The in-app assistant is a small local model that reads untrusted text (receipts, client data). It can't do anything
+  the API can't, and every tool that changes existing records (finalize, payments, bank matching, record and draft
+  updates) runs only after a click on a confirmation card that names the change. It has no access to local files.
+  The MCP server for desktop clients may attach a receipt from a local path, but only files inside your home folder
+  that are a PDF/JPG/PNG/WebP by content. Links to other sites in assistant answers show their target domain.
+
 Other software running on your machine (including other local web apps on `localhost`) is the main remaining risk.
 Reports in that area are especially welcome.
 
