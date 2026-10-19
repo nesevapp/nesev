@@ -1,6 +1,6 @@
 {
   "name": "nesev",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Local-first invoicing and bookkeeping for Austrian sole traders",
   "homepage": "https://github.com/nesevapp/nesev#readme",

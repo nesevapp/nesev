@@ -7,6 +7,8 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
+## [0.1.1] – 2026-10-19
+
 ### Changed
 
 - The app now addresses you with „du“ everywhere (UI, tour, setup, warnings, assistant). Texts to your clients
@@ -70,5 +72,6 @@ user interface is German.
   security headers and a Content Security Policy for the web app; uploaded files typed by content. See
   [SECURITY.md](SECURITY.md).
 
-[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nesevapp/nesev/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nesevapp/nesev/releases/tag/v0.1.0
