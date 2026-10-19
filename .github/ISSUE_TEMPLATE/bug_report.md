@@ -14,7 +14,7 @@ labels: bug
 **What you expected**
 
 **Environment**
-- nesev commit: <!-- git rev-parse --short HEAD -->
+- nesev version or commit: <!-- release version, or git rev-parse --short HEAD for a source checkout -->
 - OS: <!-- e.g. macOS 26.1, Ubuntu 24.04 -->
 - Bun: <!-- bun --version -->
 - Optional parts involved: <!-- llama.cpp + model, whisper.cpp, Apple Vision OCR, none -->

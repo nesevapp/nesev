@@ -14,9 +14,13 @@
 nesev is a lightweight, local alternative to hosted invoicing tools, built for a single Austrian sole trader
 (Einzelunternehmer). You write offers, invoices and credit notes, record expenses, import bank statements and get UVA, ZM
 and EAR figures. Everything runs on your own machine: no cloud, no account, no telemetry. All data stays in one folder
-(`data/`), and the optional AI features (receipt recognition, assistant, voice input) use local models only.
+that you choose, and the optional AI features (receipt recognition, assistant, voice input) use local models only.
 
 The user interface is **German**. The code, comments and docs are in English.
+
+> [!NOTE]
+> nesev is a bookkeeping **helper**, not tax advice. Check every figure before you file it, and talk to your
+> Steuerberater when in doubt. See the [disclaimer](#disclaimer).
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Dashboard with revenue, expenses and result per month" width="900">
@@ -36,10 +40,10 @@ The user interface is **German**. The code, comments and docs are in English.
 **Ausgaben & Belegerkennung**
 - Expenses with receipts (PDF/JPG/PNG/WebP/HEIC), EAR categories, reverse charge / ig. Erwerb / import, partly
   deductible input VAT, fixed costs, fixed asset register with AfA.
-- Belege-Eingang: watches a folder (e.g. an iCloud scanner folder) and collects new receipts.
-- Receipt recognition **only on request**, fully local: embedded e-invoice XML, PDF text, Apple Vision OCR and a
-  local llama.cpp model. Suggestions never overwrite saved data.
-- Crop and straighten photographed receipts.
+- Belege-Eingang: watches a folder (e.g. a scanner folder) and collects new receipts.
+- Receipt recognition **only on request**, fully local: embedded e-invoice XML, PDF text, Apple Vision OCR (Tesseract
+  elsewhere) and a local llama.cpp model. Suggestions never overwrite saved data.
+- Crop and straighten photographed receipts (macOS).
 
 **Bank**
 - Import camt.053/052/054 and CSV (N26, Revolut, Wise, plus a generic column mapper).
@@ -47,9 +51,9 @@ The user interface is **German**. The code, comments and docs are in English.
 
 **Steuern: UVA, ZM, EAR**
 - UVA with U30 Kennzahlen (Ist- or Sollbesteuerung, monthly or quarterly), ZM, Einnahmen-Ausgaben-Rechnung.
-- Upload files for FinanzOnline (UVA U30, ZM U13), checked against the BMF XML schemas.
+- Kleinunternehmer and Ist/Soll status with valid-from dates, Kleinunternehmergrenze tracking on the dashboard.
+- Upload files for FinanzOnline (UVA U30, ZM U13), checked against the BMF XML schemas. nesev transmits nothing.
 - Accountant export: BMD booking import CSV, generic CSV, receipts ZIP.
-- Kleinunternehmergrenze tracking on the dashboard.
 
 **Prognose**
 - Cash forecast over 3–12 months: open invoices with each client's payment delay, recurring invoices, fixed costs,
@@ -62,7 +66,8 @@ The user interface is **German**. The code, comments and docs are in English.
 - [MCP server](src/mcp/README.md) so external AI clients (Claude Code, Claude Desktop, …) can work with your data.
 
 **Everything else**
-- Global search (⌘K), keyboard shortcuts, dark mode, CSV/ZIP export, daily database snapshots.
+- Global search (⌘K), keyboard shortcuts, dark mode, guided tour, CSV/ZIP export, backup ZIP and daily database
+  snapshots.
 
 ## Screenshots
 
@@ -77,58 +82,98 @@ The user interface is **German**. The code, comments and docs are in English.
 
 All screenshots show demo data.
 
+## Platforms
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Core app (documents, expenses, bank, taxes, PDFs, e-invoices) | ✓ | ✓ | untested |
+| Receipt OCR | Apple Vision | Tesseract, if installed | untested |
+| Crop/straighten photo receipts, HEIC conversion | ✓ | – | – |
+| Assistant (llama.cpp), voice input (whisper.cpp) | ✓ | ✓ | untested |
+| Background service | launchd (`bun run service:install`) | – | – |
+
+The core app is plain TypeScript and SQLite and is tested on macOS and Linux in CI. Apple Vision OCR and receipt
+cropping need the Xcode command line tools (`swiftc`); the helper is compiled on first use.
+
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3.13 or newer. No Node.js needed.
-- **macOS recommended.** The core app (documents, expenses, bank, taxes, PDFs) is plain TypeScript and SQLite and is
-  tested on macOS and Linux in CI.
-  Apple Vision OCR and receipt cropping need macOS with the Xcode command line tools (`swiftc`); on other systems receipt
-  recognition falls back to Tesseract if it is installed.
+- [Bun](https://bun.sh) 1.3.13 or newer (when running from source). No Node.js needed.
 - Optional, for the assistant and receipt recognition: [llama.cpp](https://github.com/ggml-org/llama.cpp)
-  (`llama-server`) and a GGUF model, e.g. `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` once to download it.
-  nesev starts and stops `llama-server` itself and never downloads anything.
+  (`llama-server`) and a GGUF model, e.g. run `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` once to download
+  it. nesev starts and stops `llama-server` itself and never downloads anything.
 - Optional, for voice input: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (`brew install whisper-cpp`) and a
   whisper model (`ggml-large-v3-turbo-q5_0` recommended).
+- Optional, on Linux: [Tesseract](https://github.com/tesseract-ocr/tesseract) for receipt OCR.
 
-## Quick start
+## Try the demo
 
 ```bash
+git clone https://github.com/nesevapp/nesev.git && cd nesev
 bun install
-bun run demo          # demo data in demo-data/, served on http://127.0.0.1:3999; your data/ is not touched
+bun run demo          # demo data in demo-data/, served on http://127.0.0.1:3999; your own data is not touched
 ```
 
 `bun run demo -- --reset` seeds the demo data again (dates are relative to the seed day), `-- --port 4100` picks
 another port.
 
-For real use:
+## Installation
+
+<!-- filled in by the release work: one-line installer, binaries, from source -->
+
+### From source
 
 ```bash
-PORT=3998 bun run dev               # development: API on :3998 + Vite dev server (prints its URL)
-bun run build && PORT=3998 bun start  # production: one process serves the web app and the API on :3998
+git clone https://github.com/nesevapp/nesev.git && cd nesev
+bun install
+bun run build && bun start      # one process serves the web app and the API on http://localhost:3998
 ```
 
-Then open the URL that is printed and fill in Einstellungen → Unternehmen (company, UID, Steuernummer, IBAN) before
-writing the first invoice. On macOS, `bun run service:install --port 3998` installs a launchd agent that keeps nesev
-running in the background.
+Open <http://localhost:3998>. On the first start nesev asks where to keep your data (see
+[Where your data lives](#where-your-data-lives)). Then fill in Einstellungen → Unternehmen (company, UID,
+Steuernummer, IBAN) before writing the first invoice.
 
-| Env | Default | |
-|---|---|---|
-| `PORT` | `3001` | API / server port |
-| `NESEV_DATA_DIR` | `<repo>/data` | where the database, PDFs and receipts live |
-| `NESEV_HOST` | `127.0.0.1` | interface to listen on |
-| `NESEV_ALLOWED_HOSTS` | – | extra hostnames (comma-separated) accepted in the `Host`/`Origin` header besides `localhost`, `127.0.0.1`, `[::1]` and a specific `NESEV_HOST` |
+On macOS, `bun run service:install` installs a launchd agent that keeps nesev running in the background
+(`service:status`, `service:uninstall`).
 
 > [!WARNING]
 > nesev has **no authentication** by design. It listens on `127.0.0.1` only. Don't set `NESEV_HOST=0.0.0.0` or put it
 > behind a public reverse proxy: anyone who can reach the port can read and change all of your bookkeeping data. See
 > [SECURITY.md](SECURITY.md).
 
-## Data & backups
+### Configuration
 
-Everything lives in `data/` (or `NESEV_DATA_DIR`), which is gitignored:
+Nothing needs to be configured. The environment variables you are most likely to need:
+
+| Env | Default | |
+|---|---|---|
+| `PORT` | `3998` | port of the server (web app + API) |
+| `NESEV_DATA_DIR` | chosen on first start | overrides the data folder |
+| `NESEV_HOST` | `127.0.0.1` | interface to listen on |
+| `NESEV_ALLOWED_HOSTS` | – | extra hostnames (comma-separated) accepted in the `Host`/`Origin` header besides `localhost`, `127.0.0.1`, `[::1]` and a specific `NESEV_HOST` |
+
+All variables, with explanations: [.env.example](.env.example).
+
+## Where your data lives
+
+On the first start nesev asks for a data folder and suggests:
+
+- the app-data folder of your system (**recommended**): macOS `~/Library/Application Support/nesev/Daten`, Linux
+  `~/.local/share/nesev`, Windows `%LOCALAPPDATA%\nesev\Daten`;
+- `~/Documents/nesev`, if you want to see the files in Finder/Explorer;
+- any other folder (with a folder picker).
+
+The choice is stored in a small config file (macOS `~/Library/Application Support/nesev/config.json`, Linux
+`~/.config/nesev/config.json`, Windows `%APPDATA%\nesev\config.json`). You can see the folder later in Einstellungen
+(„Datenordner“). Choosing a folder that already holds a nesev database continues with that data. Installs from before
+the setup existed keep using `<checkout>/data`.
+
+> [!CAUTION]
+> Don't put the data folder inside a cloud-synced folder (iCloud Drive, OneDrive, Dropbox, Google Drive, also
+> `~/Documents` when iCloud "Desktop & Documents" is on). Syncing a live SQLite database can corrupt it. nesev warns you
+> in the setup. Back up the folder instead.
 
 ```
-data/
+<data folder>/
   nesev.db      SQLite database (WAL mode)
   pdfs/         frozen PDFs of finalized documents
   receipts/     expense receipts by year
@@ -137,16 +182,43 @@ data/
   bin/          helpers compiled on first use (Apple Vision OCR)
 ```
 
-Back up the whole folder. Under Export you can download a backup ZIP (database snapshot, assets, PDFs, receipts),
-CSV exports and an accountant export (BMD CSV, generic CSV, all documents and receipts as a ZIP).
+### Backups
+
+nesev keeps a daily snapshot of the database in `backups/` (database only, in the same folder, so it doesn't protect
+against a lost disk). Under Einstellungen → Export & Backup you can download a backup ZIP (database snapshot, assets,
+PDFs, receipts), CSV exports and an accountant export (BMD CSV, generic CSV, all documents and receipts as a ZIP).
+
+Copy the backup ZIP, or the whole data folder while nesev is stopped, to another disk or an encrypted offsite
+location regularly. Austrian law requires you to keep your records for seven years (§ 132 BAO).
+
+## Updating
+
+1. **Back up first**: download a backup ZIP or copy the data folder.
+2. Update the code (`git pull && bun install && bun run build` for a source install; rerun `bun run service:install`
+   if you use the macOS service) and restart nesev.
+
+Database migrations run automatically on start, and nesev takes a snapshot of the database before it applies pending
+migrations. What changed is listed in the [changelog](CHANGELOG.md).
 
 ## MCP server
 
 `bun run mcp` starts a stdio [MCP](https://modelcontextprotocol.io) server with read and write tools (search,
-dashboard, documents, expenses, tax reports, drafts, finalizing with confirmation in the client, …). It calls nesev's
-API in-process and opens no network port. Setup for Claude Code and Claude Desktop: [src/mcp/README.md](src/mcp/README.md).
+dashboard, documents, expenses, tax reports, drafts, finalizing with confirmation in the client, …). It uses the same
+data folder as the app, calls nesev's API in-process and opens no network port. Setup for Claude Code and Claude
+Desktop: [src/mcp/README.md](src/mcp/README.md).
 
-## Project layout
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md): how each feature works, for contributors.
+- [docs/assistant.md](docs/assistant.md): the assistant, voice input and the MCP server in detail.
+- [docs/tax-notes.md](docs/tax-notes.md): simplifications and open tax questions.
+- [ROADMAP.md](ROADMAP.md): what's next. [CHANGELOG.md](CHANGELOG.md): what changed.
+- [CONTRIBUTING.md](CONTRIBUTING.md): setup, tests and the rules for changes. [CONVENTIONS.md](CONVENTIONS.md): code
+  layout, API and form patterns. [CLAUDE.md](CLAUDE.md): invariants and gotchas (written for coding agents, useful for
+  everyone).
+- [Code of Conduct](CODE_OF_CONDUCT.md) · [Security policy](SECURITY.md)
+
+Project layout:
 
 ```
 src/shared/   logic shared by server and web: money, totals, tax modes, schemas
@@ -155,16 +227,16 @@ src/web/      React SPA: features/<area>/, sdk/ (typed API client), shadcn/ui co
 src/mcp/      MCP server
 ```
 
-- [CONVENTIONS.md](CONVENTIONS.md): code layout, API and form patterns, units, colors.
-- [docs/architecture.md](docs/architecture.md): how each feature works in detail; [ROADMAP.md](ROADMAP.md): what's next.
-- [CONTRIBUTING.md](CONTRIBUTING.md): setup, tests and the rules for changes.
+Questions: [GitHub Discussions](https://github.com/nesevapp/nesev/discussions). Bugs and feature requests:
+[issues](https://github.com/nesevapp/nesev/issues). Security problems: report them privately, see
+[SECURITY.md](SECURITY.md).
 
 ## Disclaimer
 
 nesev is a bookkeeping **helper**, not tax advice. The UVA, ZM and EAR figures, the FinanzOnline upload files and the
-BMD export follow Austrian rules as the author understands them and may be incomplete or wrong for your situation.
-Check every figure before you file it, and talk to your Steuerberater when in doubt. nesev transmits nothing to
-FinanzOnline; you upload the files yourself.
+BMD export follow Austrian rules as the author understands them and may be incomplete or wrong for your situation
+(known simplifications: [docs/tax-notes.md](docs/tax-notes.md)). Check every figure before you file it, and talk to
+your Steuerberater when in doubt. nesev transmits nothing to FinanzOnline; you upload the files yourself.
 
 The software is provided "as is", without warranty of any kind (see sections 15 and 16 of the license). You are
 responsible for your bookkeeping, for keeping records as required by law (e.g. BAO retention periods) and for backups.
@@ -175,6 +247,8 @@ responsible for your bookkeeping, for keeping records as required by law (e.g. B
 
 You may use, change and share nesev freely. If you distribute it, or let other people use a modified version over a
 network, you have to make the complete source code of your version available under the same license.
+
+© 2026 Lukas Mascha – AGPL-3.0-only
 
 ## Credits
 
