@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { inboxFolderSchema, inboxIdsSchema, inboxListQuerySchema } from "../../shared/schemas/receipt-inbox";
 import { db } from "../db";
@@ -27,6 +28,12 @@ const filesForm = validate(
   }),
 );
 
+/** Upload cap per request (each file is checked against 20 MB in the service). */
+const uploadLimit = bodyLimit({
+  maxSize: 200 * 1024 * 1024,
+  onError: (c) => c.json({ error: "Zu viele Daten auf einmal (max. 200 MB) – bitte in mehreren Schritten hochladen" }, 413),
+});
+
 const app = new Hono()
   .get("/", validate("query", inboxListQuerySchema), (c) => c.json(listInboxItems(db, c.req.valid("query").status)))
   /** New items count (nav badge). */
@@ -51,7 +58,7 @@ const app = new Hono()
     return c.json(scanner.status());
   })
   /** Manual drop on the inbox page (multipart, field "files"): one item per file, duplicates reported. */
-  .post("/upload", filesForm, async (c) => c.json(await addUploadedFiles(db, c.req.valid("form").files), 201))
+  .post("/upload", uploadLimit, filesForm, async (c) => c.json(await addUploadedFiles(db, c.req.valid("form").files), 201))
   /** One expense draft per item, the file as its receipt. */
   .post("/convert", validate("json", inboxIdsSchema), async (c) =>
     c.json(await convertInboxItems(db, c.req.valid("json").ids), 201),

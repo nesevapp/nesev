@@ -1,9 +1,22 @@
 import { createHash } from "node:crypto";
-import { accessSync, constants, existsSync, type FSWatcher, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, watch } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  type FSWatcher,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  watch,
+} from "node:fs";
 import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
-import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { RECEIPT_MAX_BYTES } from "../../shared/expenses";
 import type { DbOrTx } from "../db/client";
@@ -160,7 +173,7 @@ export async function addInboxFile(
     return {
       kind: "duplicate",
       item: existing,
-      reason: existing.status === "new" ? "bereits im Eingang" : "bereits als Ausgabe übernommen",
+      reason: existing.status === "new" ? "bereits im Eingang" : existing.status === "converting" ? "wird gerade übernommen" : "bereits als Ausgabe übernommen",
     };
   }
   const expense = expenseWithSameFile(db, hash, dataDir);
@@ -176,6 +189,11 @@ export async function addInboxFile(
     await Bun.write(tmp, input.bytes);
     try {
       await (opts.convertHeic ?? sipsConvert)(tmp, abs);
+    } catch (err) {
+      await unlink(abs).catch(() => {});
+      if (err instanceof HTTPException) throw err;
+      // sips missing or the file unreadable: the user's file is the problem, not the server (no 500)
+      throw new HTTPException(422, { message: (err as Error).message || "HEIC-Umwandlung fehlgeschlagen" });
     } finally {
       await unlink(tmp).catch(() => {});
     }
@@ -192,9 +210,21 @@ export async function addInboxFile(
     status: "new" as const,
     expenseId: null,
   };
+  // The checks above ran before the await: the same bytes may have been added meanwhile (concurrent upload, the
+  // folder scan). The unique sha256 decides; the loser reports a duplicate instead of failing on the constraint.
   const item = existing
-    ? db.update(receiptInboxItems).set(values).where(eq(receiptInboxItems.id, existing.id)).returning().get()
-    : db.insert(receiptInboxItems).values(values).returning().get();
+    ? db
+        .update(receiptInboxItems)
+        .set(values)
+        .where(and(eq(receiptInboxItems.id, existing.id), eq(receiptInboxItems.status, "dismissed")))
+        .returning()
+        .get()
+    : db.insert(receiptInboxItems).values(values).onConflictDoNothing({ target: receiptInboxItems.sha256 }).returning().get();
+  if (!item) {
+    const winner = db.select().from(receiptInboxItems).where(eq(receiptInboxItems.sha256, hash)).get() as InboxItemDTO | undefined;
+    if (winner?.storedPath !== relPath) await unlink(abs).catch(() => {});
+    return { kind: "duplicate", item: winner, reason: "bereits im Eingang" };
+  }
   return { kind: "added", item: item as InboxItemDTO };
 }
 
@@ -216,43 +246,87 @@ export async function addUploadedFiles(
 
 const MIME_BY_EXT: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
+const notInInbox = (item: InboxItemDTO) => new HTTPException(409, { message: `„${item.fileName}“ ist nicht mehr im Eingang` });
+
 /**
  * Turns new inbox items into expense drafts (one each): createExpense + setExpenseAttachment with the stored copy,
- * then the copy is removed and the item marked converted. Validates all items before creating anything.
+ * then the copy is removed and the item marked converted. Validates all items before creating anything, then claims
+ * them atomically (status "converting"), so a second convert of the same items (double click, the MCP process)
+ * gets a 409 instead of creating a second expense. On a failure the unconverted items go back to "new".
  */
 export async function convertInboxItems(db: DbOrTx, ids: number[], dataDir = DATA_DIR): Promise<ExpenseWithLines[]> {
-  const items = ids.map((id) => requireItem(db, id));
+  const unique = [...new Set(ids)];
+  const items = unique.map((id) => requireItem(db, id));
   for (const item of items) {
-    if (item.status !== "new" || !item.storedPath) {
-      throw new HTTPException(409, { message: `„${item.fileName}“ ist nicht mehr im Eingang` });
-    }
+    if (item.status !== "new" || !item.storedPath) throw notInInbox(item);
     if (!existsSync(join(dataDir, item.storedPath))) {
       throw new HTTPException(410, { message: `Datei zu „${item.fileName}“ fehlt im Datenordner` });
     }
   }
-  const created: ExpenseWithLines[] = [];
-  for (const item of items) {
-    const stored = item.storedPath!;
-    const ext = extOf(stored);
-    const name = HEIC_EXT.has(extOf(item.fileName)) ? item.fileName.replace(/\.[^.]+$/, ".jpg") : item.fileName;
-    const file = new File([await Bun.file(join(dataDir, stored)).arrayBuffer()], name, { type: MIME_BY_EXT[ext] ?? "" });
-    receiptExtension(file);
-    const draft = createExpense(db, {});
-    let expense: ExpenseWithLines;
-    try {
-      expense = await setExpenseAttachment(db, draft.id, file, dataDir);
-    } catch (err) {
-      await deleteExpense(db, draft.id, dataDir);
-      throw err;
+  db.transaction((tx) => {
+    const claimed = tx
+      .update(receiptInboxItems)
+      .set({ status: "converting" })
+      .where(and(inArray(receiptInboxItems.id, unique), eq(receiptInboxItems.status, "new")))
+      .returning({ id: receiptInboxItems.id })
+      .all();
+    if (claimed.length !== unique.length) {
+      const got = new Set(claimed.map((c) => c.id));
+      throw notInInbox(items.find((i) => !got.has(i.id))!); // rolls the claim back
     }
-    db.update(receiptInboxItems)
-      .set({ status: "converted", expenseId: expense.id, storedPath: null })
-      .where(eq(receiptInboxItems.id, item.id))
-      .run();
-    await unlink(join(dataDir, stored)).catch(() => {});
-    created.push(expense);
+  });
+  const created: ExpenseWithLines[] = [];
+  let i = 0;
+  try {
+    for (; i < items.length; i++) {
+      const item = items[i]!;
+      const stored = item.storedPath!;
+      const ext = extOf(stored);
+      const name = HEIC_EXT.has(extOf(item.fileName)) ? item.fileName.replace(/\.[^.]+$/, ".jpg") : item.fileName;
+      const file = new File([await Bun.file(join(dataDir, stored)).arrayBuffer()], name, { type: MIME_BY_EXT[ext] ?? "" });
+      receiptExtension(file);
+      const draft = createExpense(db, {});
+      let expense: ExpenseWithLines;
+      try {
+        expense = await setExpenseAttachment(db, draft.id, file, dataDir);
+      } catch (err) {
+        await deleteExpense(db, draft.id, dataDir).catch(() => {});
+        throw err;
+      }
+      db.update(receiptInboxItems)
+        .set({ status: "converted", expenseId: expense.id, storedPath: null })
+        .where(eq(receiptInboxItems.id, item.id))
+        .run();
+      await unlink(join(dataDir, stored)).catch(() => {});
+      created.push(expense);
+    }
+  } catch (err) {
+    releaseClaims(db, items.slice(i).map((it) => it.id));
+    throw err;
   }
   return created;
+}
+
+function releaseClaims(db: DbOrTx, ids: number[]): void {
+  if (!ids.length) return;
+  db.update(receiptInboxItems)
+    .set({ status: "new" })
+    .where(and(inArray(receiptInboxItems.id, ids), eq(receiptInboxItems.status, "converting")))
+    .run();
+}
+
+/** A convert takes seconds; an item still "converting" after this long was left by a crashed process. */
+const STALE_CONVERTING_MS = 10 * 60_000;
+
+/** Server start: items left "converting" by a process that died mid-convert go back to "new". Returns the count. */
+export function recoverStaleConverting(db: DbOrTx, now = new Date()): number {
+  const before = new Date(now.getTime() - STALE_CONVERTING_MS).toISOString();
+  return db
+    .update(receiptInboxItems)
+    .set({ status: "new" })
+    .where(and(eq(receiptInboxItems.status, "converting"), lt(receiptInboxItems.updatedAt, before)))
+    .returning({ id: receiptInboxItems.id })
+    .all().length;
 }
 
 /** Dismisses new items: status dismissed, stored copy deleted (the moved source stays in Importiert/). */
@@ -506,8 +580,12 @@ export class InboxScanner {
       const abs = join(path, name);
       let st;
       try {
-        st = statSync(abs);
+        st = lstatSync(abs); // never follow symlinks out of the folder
       } catch {
+        continue;
+      }
+      if (st.isSymbolicLink()) {
+        skipped.push({ name, reason: "Verknüpfung (Symlink) – bitte die Datei selbst ablegen" });
         continue;
       }
       if (!st.isFile()) continue;
@@ -534,6 +612,8 @@ export class InboxScanner {
         continue;
       }
       try {
+        // re-check right before reading: the entry may have been swapped for a symlink since lstat
+        if (!lstatSync(abs).isFile()) continue;
         const r = await addInboxFile(
           this.db,
           { name, bytes: new Uint8Array(await Bun.file(abs).arrayBuffer()), sourcePath: abs },
@@ -574,5 +654,7 @@ export function getInboxScanner(db: DbOrTx): InboxScanner {
 
 /** Server start: scan the inbox folder now and periodically. */
 export function startReceiptInbox(db: DbOrTx): void {
+  const reset = recoverStaleConverting(db);
+  if (reset) console.log(`nesev Belege-Eingang: ${reset} unterbrochene Übernahme(n) zurück in den Eingang`);
   getInboxScanner(db).start();
 }

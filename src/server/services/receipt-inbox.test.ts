@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { createTestDb } from "../db/client";
 import { receiptInboxItems } from "../db/schema";
-import { getExpense, setExpenseAttachment, createExpense } from "./expenses";
+import { getExpense, listExpenses, setExpenseAttachment, createExpense } from "./expenses";
 import {
   addInboxFile,
   checkInboxFolder,
@@ -16,6 +16,7 @@ import {
   InboxScanner,
   type InboxTimers,
   listInboxItems,
+  recoverStaleConverting,
 } from "./receipt-inbox";
 import { updateSettings } from "./settings";
 
@@ -174,6 +175,38 @@ describe("InboxScanner", () => {
     expect(s.started).toBe(false);
   });
 
+  test("symlinks in the folder are skipped, never followed", async () => {
+    const { db, dataDir, inbox } = setup();
+    const outside = join(dataDir, "..", "geheim.pdf");
+    writeFileSync(outside, pdf("secret"));
+    symlinkSync(outside, join(inbox, "link.pdf"));
+    const { s } = scanner(db, dataDir);
+    await s.scan();
+    const r = await s.scan();
+    expect(r.imported).toBe(0);
+    expect(r.skipped).toEqual([{ name: "link.pdf", reason: "Verknüpfung (Symlink) – bitte die Datei selbst ablegen" }]);
+    expect(listInboxItems(db, "all")).toEqual([]);
+    expect(existsSync(outside)).toBe(true);
+  });
+
+  test("a failing HEIC conversion is a 422 with the German message, no file left", async () => {
+    const { db, dataDir } = setup();
+    const err = await addInboxFile(
+      db,
+      { name: "IMG_0002.HEIC", bytes: new Uint8Array([1, 2, 3]) },
+      {
+        dataDir,
+        convertHeic: async () => {
+          throw new Error("HEIC-Umwandlung fehlgeschlagen: kaputt");
+        },
+      },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HTTPException);
+    expect((err as HTTPException).status).toBe(422);
+    expect((err as HTTPException).message).toBe("HEIC-Umwandlung fehlgeschlagen: kaputt");
+    expect(readdirSync(join(dataDir, "receipts", "inbox"))).toEqual([]);
+  });
+
   test("HEIC is converted to JPEG via the converter", async () => {
     const { db, dataDir } = setup();
     const r = await addInboxFile(
@@ -205,6 +238,54 @@ describe("inbox items", () => {
     // converting again is refused; the same file is now a duplicate
     expect(convertInboxItems(db, [r.item.id], dataDir)).rejects.toBeInstanceOf(HTTPException);
     expect((await addInboxFile(db, { name: "x.pdf", bytes: pdf("x") }, { dataDir })).kind).toBe("duplicate");
+  });
+
+  test("concurrent adds of the same file: one is added, the other is a duplicate (no 500)", async () => {
+    const { db, dataDir } = setup();
+    const results = await Promise.all(
+      ["a.pdf", "a.pdf", "kopie.pdf"].map((name) => addInboxFile(db, { name, bytes: pdf("same") }, { dataDir })),
+    );
+    expect(results.map((r) => r.kind).sort()).toEqual(["added", "duplicate", "duplicate"]);
+    const [item] = listInboxItems(db, "all");
+    expect(readdirSync(join(dataDir, "receipts", "inbox")).map((f) => `receipts/inbox/${f}`)).toEqual([item!.storedPath!]);
+  });
+
+  test("concurrent converts of the same item create one expense; the other gets 409", async () => {
+    const { db, dataDir } = setup();
+    const r = await addInboxFile(db, { name: "beleg.pdf", bytes: pdf("race") }, { dataDir });
+    if (r.kind !== "added") throw new Error("not added");
+    const results = await Promise.allSettled([1, 2].map(() => convertInboxItems(db, [r.item.id, r.item.id], dataDir)));
+    expect(results.map((x) => x.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const rejected = results.find((x) => x.status === "rejected") as PromiseRejectedResult;
+    expect((rejected.reason as HTTPException).status).toBe(409);
+    expect(listExpenses(db)).toHaveLength(1);
+    expect(db.select().from(receiptInboxItems).get()).toMatchObject({ status: "converted" });
+  });
+
+  test("a failed convert puts the item back; a stale claim is recovered", async () => {
+    const { db, dataDir } = setup();
+    const ok = await addInboxFile(db, { name: "ok.pdf", bytes: pdf("ok") }, { dataDir });
+    const bad = await addInboxFile(db, { name: "bad.pdf", bytes: pdf("bad") }, { dataDir });
+    if (ok.kind !== "added" || bad.kind !== "added") throw new Error("not added");
+    // the receipts dir of this year is read-only: storing the second file fails
+    const yearDir = join(dataDir, "receipts", new Date().toISOString().slice(0, 4));
+    mkdirSync(yearDir, { recursive: true });
+    chmodSync(yearDir, 0o500);
+    try {
+      await expect(convertInboxItems(db, [bad.item.id], dataDir)).rejects.toThrow();
+    } finally {
+      chmodSync(yearDir, 0o700);
+    }
+    expect(listExpenses(db)).toEqual([]);
+    expect(listInboxItems(db).map((i) => [i.fileName, i.status]).sort()).toEqual([
+      ["bad.pdf", "new"],
+      ["ok.pdf", "new"],
+    ]);
+
+    db.update(receiptInboxItems).set({ status: "converting" }).where(eq(receiptInboxItems.id, ok.item.id)).run();
+    expect(recoverStaleConverting(db)).toBe(0); // fresh claim: a convert may be running
+    expect(recoverStaleConverting(db, new Date(Date.now() + 11 * 60_000))).toBe(1);
+    expect(listInboxItems(db)).toHaveLength(2);
   });
 
   test("dismiss deletes the copy; the same file dropped again comes back", async () => {
