@@ -22,10 +22,10 @@ import type { TaxStatusTimeline } from "../../shared/tax-status";
 //   Kleinunternehmer net + all VAT), bucketed by issueDate like revenue. Incomplete drafts without lines add
 //   nothing. (The EAR on /tax counts by payment date instead.)
 //   Lines with category "anlagen" are capitalized and left out; the AfA of the year from the Anlagenverzeichnis
-//   takes their place (services/assets.ts monthlyAfa): spread evenly over all 12 months of the year (annual
-//   AfA / 12, cent remainder in December), also for the current year and regardless of the month the asset was
-//   put in service, so the monthly result isn't distorted by a year-end lump. A disposal write-off counts in the
-//   month of disposal. Same split as the EAR monthly view.
+//   takes their place (services/assets.ts monthlyAfa): each half-year's AfA spread over its six months, so an
+//   asset put in service in H2 of its first year (Halbjahres-AfA) starts in July and all others are spread over
+//   the whole year – no year-end lump, and the halves match the Anlagen chart. A disposal write-off counts in
+//   the month of disposal. Same split as the EAR monthly view. Current year: only up to the current month.
 
 export interface DashboardDocRow {
   id: number;

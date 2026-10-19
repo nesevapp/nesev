@@ -182,7 +182,7 @@ describe("getDashboard", () => {
     setTaxStatus(db, { smallBusiness: false });
     expect(computeEar(db, 2026).monthly[3]!.expensesCents).toBe(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents);
   });
-  test("expenses: anlagen lines replaced by the AfA spread evenly over the year", () => {
+  test("expenses: anlagen lines replaced by the AfA; an asset put into service in H2 starts in July", () => {
     const { db } = setup();
     const e = db.insert(expenses).values({ supplierName: "Apple", issueDate: "2026-09-10", netCents: 250000, taxCents: 50000, grossCents: 300000 }).returning().get();
     db.insert(expenseLines)
@@ -195,20 +195,23 @@ describe("getDashboard", () => {
 
     const d = getDashboard(db, 2026, "2026-12-31");
     expect(d.kpis.expenses).toEqual({ cents: 10000 + 40000, previousCents: 0, receiptsCents: 10000, afaCents: 40000 });
-    expect(d.monthly[0]!.expenseCents).toBe(3333);
-    expect(d.monthly[8]).toMatchObject({ expenseCents: 10000 + 3333, afaCents: 3333, previousAfaCents: 0 });
-    expect(d.monthly[11]!.expenseCents).toBe(40000 - 3333 * 11);
+    // in service 15.09. (H2): half-year AfA 400 € spread over Jul–Dec
+    expect(d.monthly[0]!.expenseCents).toBe(0);
+    expect(d.monthly[6]!.afaCents).toBe(6666);
+    expect(d.monthly[8]).toMatchObject({ expenseCents: 10000 + 6666, afaCents: 6666, previousAfaCents: 0 });
+    expect(d.monthly[11]!.expenseCents).toBe(40000 - 6666 * 5);
     expect(d.monthly.reduce((s, m) => s + m.afaCents, 0)).toBe(d.kpis.expenses.afaCents);
     const d27 = getDashboard(db, 2027, "2027-12-31");
     expect(d27.kpis.expenses).toEqual({ cents: 80000, previousCents: 50000, receiptsCents: 0, afaCents: 80000 });
-    expect(d27.monthly[0]).toMatchObject({ afaCents: 6666, previousAfaCents: 3333, previousExpenseCents: 3333 });
+    expect(d27.monthly[0]).toMatchObject({ afaCents: 6666, previousAfaCents: 0, previousExpenseCents: 0 });
   });
   test("expenses: current year counts the AfA only up to the current month (like revenue to date)", () => {
     const { db } = setup();
     createAsset(db, { name: "MacBook", acquisitionDate: "2026-03-16", inServiceDate: "2026-03-16", costCents: 430000, usefulLifeYears: 3 });
     const d = getDashboard(db, 2026, "2026-10-19");
-    // 4.300 € / 3 = 1.433,33 €/year → 119,44 €/month, Jan–Oct
-    expect(d.kpis.expenses).toEqual({ cents: 11944 * 10, previousCents: 0, receiptsCents: 0, afaCents: 11944 * 10 });
+    // 4.300 € / 3 = 1.433,33 €/year (H1 asset: full year), 716,66 € per half → 119,44 €/month (June 119,46), Jan–Oct
+    const toDate = 71666 + 11944 * 4;
+    expect(d.kpis.expenses).toEqual({ cents: toDate, previousCents: 0, receiptsCents: 0, afaCents: toDate });
     expect(d.monthly[9]).toMatchObject({ expenseCents: 11944, afaCents: 11944 });
     expect(d.monthly[10]).toMatchObject({ expenseCents: 0, afaCents: 0 });
     // a past year keeps its full AfA

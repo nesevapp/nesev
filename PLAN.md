@@ -152,7 +152,7 @@ Last updated: 2026-10-19 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 - Chart above the register (hidden when the year has neither): Zugänge (cost by Inbetriebnahme) and AfA per half-year (`register.halves`, `shared/assets.ts` `halfYearAfa`): regular AfA split evenly, except an asset's first year when put in service in H2 (its half-year AfA all in H2); a disposal write-off in the half of the disposal date. The halves add up to the register's AfA (incl. write-off).
 - Register per year (book value 1.1., AfA, Restbuchwert-Abgang, book value 31.12., totals, CSV), detail with schedule and link to the source expense, edit / Ausscheiden / delete.
 - Expense editor: a line with category `anlagen` shows a hint with "Im Anlagenverzeichnis anlegen" (prefilled from the saved expense's `anlagen` lines, minus assets already linked) or links to the linked assets.
-- Dashboard: `anlagen` lines are left out of expenses; the year's AfA is spread evenly over the 12 months (remainder in December, also for the current year), a disposal write-off counts in its month. The EAR monthly view uses the same split.
+- Dashboard: `anlagen` lines are left out of expenses; each half-year's AfA is spread over its six months (an asset put into service in H2 of its first year starts in July, matching the Anlagen half-year chart; current year only up to the current month), a disposal write-off counts in its month. The EAR monthly view uses the same split.
 
 ### Bank
 - **Import:** camt.053/052/054 and CSV.

@@ -11,7 +11,7 @@ import {
   GWG_LIMIT_CENTS,
   halfYearAfa,
   isFirstHalf,
-  spreadOverMonths,
+  monthlyAfaOf,
 } from "../../shared/assets";
 import { formatDate, todayIso } from "../../shared/dates";
 import { deductibleTaxCents } from "../../shared/expenses";
@@ -366,6 +366,8 @@ export interface AfaEntry {
   afaCents: number;
   disposalCents: number;
   disposalDate: string | null;
+  /** afaCents + disposalCents per month (monthlyAfaOf) */
+  months: number[];
 }
 
 /** Assets with AfA or a disposal write-off in `year`. */
@@ -373,18 +375,20 @@ export function afaEntries(db: DbOrTx, year: number): AfaEntry[] {
   const out: AfaEntry[] = [];
   for (const a of db.select().from(fixedAssets).orderBy(asc(fixedAssets.number)).all()) {
     const { afaCents, disposalCents } = afaForYear(assetInput(a), year);
-    if (afaCents || disposalCents) out.push({ id: a.id, number: a.number, name: a.name, afaCents, disposalCents, disposalDate: a.disposalDate });
+    if (afaCents || disposalCents)
+      out.push({ id: a.id, number: a.number, name: a.name, afaCents, disposalCents, disposalDate: a.disposalDate, months: monthlyAfaOf(assetInput(a), year) });
   }
   return out;
 }
 
 /**
- * AfA of `year` per month (index 0 = January): the annual AfA spread evenly over all 12 months (remainder in
- * December), the disposal write-off in the month of disposal.
+ * AfA of `year` per month (index 0 = January), summed over the assets: each half-year's AfA spread over its
+ * months (an asset put into service in H2 starts in July, like the Anlagen half-year chart), the disposal
+ * write-off in the month of disposal.
  */
 export function monthlyAfa(entries: readonly AfaEntry[]): number[] {
-  const out = spreadOverMonths(entries.reduce((s, e) => s + e.afaCents, 0));
-  for (const e of entries) if (e.disposalCents && e.disposalDate) out[Number(e.disposalDate.slice(5, 7)) - 1]! += e.disposalCents;
+  const out = Array<number>(12).fill(0);
+  for (const e of entries) e.months.forEach((c, m) => (out[m]! += c));
   return out;
 }
 

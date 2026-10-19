@@ -129,6 +129,23 @@ export function halfYearAfa(a: AssetInput, year: number): [number, number] {
 }
 
 /**
+ * AfA of `year` per month (index 0 = January), consistent with halfYearAfa: each half-year's amount spread evenly
+ * over its six months (cent remainder in June / December), so an asset put into service in H2 of its first year
+ * starts in July; the disposal write-off goes into the month of disposal.
+ */
+export function monthlyAfaOf(a: AssetInput, year: number): number[] {
+  const [h1, h2] = halfYearAfa({ ...a, disposalDate: null }, year);
+  const half = (cents: number) => {
+    const m = Math.trunc(cents / 6);
+    return [m, m, m, m, m, cents - m * 5];
+  };
+  const out = [...half(h1), ...half(h2)];
+  const { disposalCents } = afaForYear(a, year);
+  if (disposalCents && a.disposalDate) out[Number(a.disposalDate.slice(5, 7)) - 1]! += disposalCents;
+  return out;
+}
+
+/**
  * An annual amount spread evenly over 12 months (index 0 = January); the cent remainder goes to December.
  * Used where AfA is shown per month (dashboard, EAR monthly view).
  */
