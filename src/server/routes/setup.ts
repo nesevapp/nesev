@@ -1,4 +1,5 @@
-import { mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -68,6 +69,9 @@ const app = new Hono()
     const check = inspectDataDir(c.req.valid("json").path);
     if (!check.ok) return c.json({ error: check.error ?? "Ordner nicht verwendbar" }, 400);
     mkdirSync(check.path, { recursive: true });
+    // an empty nesev.db marks the folder as nesev's before the config points at it: resolveDataDir() treats a configured
+    // folder without one as moved/missing. SQLite opens a 0-byte file as a new database (migrations fill it).
+    if (!check.hasData) closeSync(openSync(join(check.path, "nesev.db"), "a"));
     writeConfig({ dataDir: check.path });
     const hook = onComplete;
     onComplete = null;

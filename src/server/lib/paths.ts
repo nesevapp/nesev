@@ -8,8 +8,8 @@ export { MIGRATIONS_DIR, WEB_DIST_DIR };
 
 /**
  * The user's data dir, resolved once on import (see lib/data-location.ts). The server only imports this after the
- * first-start setup chose one; other entry points (MCP, scripts, tests) without a configured dir fall back to the
- * OS app-data dir and never create it unless they open the DB.
+ * first-start setup chose one. Without one (tests, an MCP server before the setup) DATA_DIR is just the suggested
+ * app-data dir as a placeholder: db/index.ts refuses to open a DB there, so nothing is ever written to it.
  */
 export const DATA_DIR_SOURCE = resolveDataDir();
 export const DATA_DIR = DATA_DIR_SOURCE?.dir ?? appDataDir();
