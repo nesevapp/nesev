@@ -218,7 +218,12 @@ All variables, with explanations: [.env.example](.env.example).
 
 ## Where your data lives
 
+<p align="center">
+  <img src="docs/screenshots/setup.png" alt="First-start setup: choosing the data folder" width="720">
+</p>
+
 On the first start nesev asks for a data folder and suggests:
+
 
 - the app-data folder of your system (**recommended**): macOS `~/Library/Application Support/nesev/Daten`, Linux
   `~/.local/share/nesev`, Windows `%LOCALAPPDATA%\nesev\Daten`;
