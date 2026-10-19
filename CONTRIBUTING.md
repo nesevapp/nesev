@@ -46,6 +46,13 @@ environment variables are listed in [.env.example](.env.example).
 `bun --hot` sometimes keeps stale modules (errors like "X is not defined" for an export that exists). Restart
 `bun run dev` before debugging further. Migrations apply on server start only, so restart after adding one.
 
+## Branches
+
+- `development` is the default branch: open pull requests against it.
+- `main` is what users get: the installer (`install.sh`) is served from it, and every commit on it is released. It only
+  changes when a release is cut (`development` is merged into `main` and tagged, see
+  [docs/releasing.md](docs/releasing.md)), never by direct pushes.
+
 ## Before you open a pull request
 
 - `bun run typecheck` and `bun test` pass.
