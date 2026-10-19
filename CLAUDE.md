@@ -37,6 +37,7 @@ Bun · Hono (typed RPC via `hc`, `AppType`) · SQLite (`bun:sqlite`) + Drizzle �
 - Finalized documents are immutable: gapless number from `nextNumber()` inside the finalize transaction, client/seller snapshots, frozen PDF in `data/pdfs`. Corrections go through credit notes only.
 - Credit notes store **positive** amounts. Every revenue figure has to subtract them.
 - An invoice's open amount = gross − finalized credit notes − bank allocations (`services/bank.ts` helpers). Use those helpers; don't recompute it ad hoc.
+- Kleinunternehmer and Soll/Ist are dated (`tax_status_periods`, `src/shared/tax-status.ts`): figures take them from `loadTaxStatus(db)` per document/expense date, never from `settings.smallBusiness`/`vatBasis` (that is only today's status). Past periods must not change when a new status is added.
 - Expenses: `grossCents` = amount payable to the supplier (equals net for reverse charge / ig. Erwerb). Self-assessed tax is owed and deductible (see `src/shared/expenses.ts` header).
 - Expense lines with category `anlagen` are capitalized, never expensed (EAR, dashboard): the AfA comes from `fixed_assets` via `src/shared/assets.ts` / `services/assets.ts`. Their input VAT stays deductible in the UVA at once.
 - Cropping a photo receipt keeps the original in `expenses.attachmentOriginalPath` (`attachmentPath` = crop); re-crops start from the original, and every replace/remove/delete cleans up both files.

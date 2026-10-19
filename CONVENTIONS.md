@@ -17,6 +17,8 @@ src/shared/            used by server AND web; no server- or DOM-only imports
   money.ts             cents/qty/bp helpers, de-AT formatting + parsing
   totals.ts            calcTotals(items, taxMode): the only totals function (UI, API, PDF)
   tax.ts               TaxMode, defaultTaxMode(), EU_COUNTRIES, taxNoteFor(), AT_TAX_RATES_BP
+  tax-status.ts        Steuerstatus history (Kleinunternehmer, Soll/Ist by valid-from date): TaxStatusTimeline, checks.
+                       Figures never read settings.smallBusiness/vatBasis (= today's status); use loadTaxStatus(db).
   documents.ts         DocumentType/Status, German labels, formatDocumentNumber()
   countries.ts         COUNTRY_OPTIONS (German names) for pickers
   types.ts             ClientSnapshot, SellerSnapshot
