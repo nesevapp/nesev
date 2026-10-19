@@ -42,6 +42,7 @@ import {
 } from "@/sdk";
 import { CategoryOptions } from "./components/category-select";
 import { IncompleteBadge } from "./components/expense-badges";
+import { ExpenseMonthChart } from "./components/expense-month-chart";
 import { DropOverlay, pickReceiptFiles, splitReceiptFiles, useWindowFileDrag } from "./components/file-drop";
 
 const ALL = "all";
@@ -392,6 +393,7 @@ export function ExpensesPage({
         </span>
       </div>
 
+      <ExpenseMonthChart rows={data} />
       <AnalysisToolbar state={receiptList} rows={fetched} />
       <ReceiptListScope value={receiptList} className="rounded-lg border">
         <Table>
