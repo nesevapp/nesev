@@ -18,7 +18,7 @@ export function InboxNavBadge() {
   );
 }
 
-/** "Eingang (n)" button for the expenses page header. */
+/** "Belege-Eingang (n)" button for the expenses page header. */
 export function InboxButton() {
   const { data } = useQuery(inboxCountQuery);
   const count = data?.count ?? 0;
@@ -26,7 +26,7 @@ export function InboxButton() {
     <Button asChild variant="outline" size="sm">
       <Link to="/expenses/inbox">
         <Inbox />
-        Eingang
+        Belege-Eingang
         {count > 0 && (
           <span className="rounded-full bg-primary px-1.5 text-[11px] font-medium leading-[18px] text-primary-foreground tabular">
             {count}

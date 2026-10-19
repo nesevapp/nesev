@@ -26,7 +26,7 @@ export function EarSection({ year, setYear }: { year?: number; setYear: (y: numb
         >
           Zufluss-/Abflussprinzip: Einnahmen nach Zahlungseingang, Ausgaben nach Zahlung · {amountHint}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-md border">
             <Button variant="ghost" size="icon" className="size-8 rounded-r-none" onClick={() => setYear(data.year - 1)} aria-label="Vorjahr">
               <ChevronLeft />

@@ -28,7 +28,7 @@ export function ZmSection({ period, setPeriod }: { period?: string; setPeriod: (
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <PeriodNav periodKey={data.period.key} onChange={setPeriod} />
           <Button variant="outline" size="sm" asChild>
             <a href={taxCsvUrls.zm(data.period.key)} download>

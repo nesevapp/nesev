@@ -103,7 +103,7 @@ export function PeriodNav({
 }) {
   const p = parsePeriod(periodKey)!;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {kinds.length > 1 && (
         <Segmented
           value={p.kind}
