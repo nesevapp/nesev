@@ -163,9 +163,13 @@ On the first start nesev asks for a data folder and suggests:
 - any other folder (with a folder picker).
 
 The choice is stored in a small config file (macOS `~/Library/Application Support/nesev/config.json`, Linux
-`~/.config/nesev/config.json`, Windows `%APPDATA%\nesev\config.json`). You can see the folder later in Einstellungen
-(„Datenordner“). Choosing a folder that already holds a nesev database continues with that data. Installs from before
+`~/.config/nesev/config.json`, Windows `%APPDATA%\nesev\config.json`). To find the folder later, open Einstellungen →
+Export & Backup, section „Datenordner“: it shows the path, where the setting comes from, and a button to open it in
+Finder/Explorer. Choosing a folder that already holds a nesev database continues with that data. Installs from before
 the setup existed keep using `<checkout>/data`.
+
+To move your data, quit nesev, move the folder, and start nesev again: it notices that the folder is missing and asks
+for the new location.
 
 > [!CAUTION]
 > Don't put the data folder inside a cloud-synced folder (iCloud Drive, OneDrive, Dropbox, Google Drive, also
