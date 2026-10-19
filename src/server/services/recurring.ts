@@ -24,7 +24,12 @@ import { freezeDocumentPdf } from "./pdf";
 // - A recurring invoice is a template (client, items, texts, tax mode) plus a schedule. `nextRunDate` is the
 //   issue date of the next invoice; it advances by the interval in the SAME transaction that creates the
 //   invoice, so a run is idempotent: running twice on the same day never creates a second invoice.
-// - Missed periods are caught up: one invoice per period, each with its own issue date / service period.
+// - Missed periods are caught up: one invoice per period (capped at MAX_CATCH_UP), each with the service period
+//   of its run, but ALL issued today. Backdating the issue date to the missed run date would put the invoice
+//   (and, with autoFinalize, its gapless number and VAT) into a period whose UVA may already be filed; an
+//   invoice is issued when it is written (§ 11 UStG), the Leistungszeitraum says what it covers. Without
+//   setServicePeriod a catch-up invoice records the run date as Leistungsdatum (servicePeriodStart only), so
+//   the time of supply isn't lost either. The same holds for generateNow on an overdue run.
 // - Generated invoices are ordinary documents created via services/documents (defaults, totals, numbering)
 //   with `recurringInvoiceId` set; `autoFinalize` finalizes them right away (gapless number), otherwise
 //   they stay drafts for review. A finalize error (e.g. missing UID) keeps the draft and is reported.
@@ -219,12 +224,19 @@ export function deleteRecurring(db: DbOrTx, id: number): void {
 
 // ── Generation ──────────────────────────────────────────────────────────────────
 
-/** Create one invoice for the period starting at `runDate`, issued on `issueDate`. Runs inside `tx`. */
+/**
+ * Create one invoice for the period starting at `runDate`, issued on `issueDate`. Runs inside `tx`.
+ * A catch-up (`runDate` before `issueDate`) without a service period gets the run date as Leistungsdatum.
+ */
 function generateOne(tx: DbOrTx, r: RecurringInvoice, runDate: string, issueDate: string): GeneratedInvoice {
   const items = getItems(tx, r.id).map(
     ({ id: _id, recurringInvoiceId: _r, position: _p, ...item }) => item,
   );
-  const period = r.setServicePeriod ? coveredPeriod(runDate, r.startDate, r) : null;
+  const period = r.setServicePeriod
+    ? coveredPeriod(runDate, r.startDate, r)
+    : runDate < issueDate
+      ? { start: runDate, end: null }
+      : null;
   const doc = createDocument(tx, {
     type: "invoice",
     clientId: r.clientId,
@@ -273,7 +285,8 @@ export function runDueRecurring(db: DbOrTx, today = todayIso()): GeneratedInvoic
         if (!r.active || !getClient(tx, r.clientId)) return created;
         let next = r.nextRunDate;
         while (next <= today && (!r.endDate || next <= r.endDate) && created.length < MAX_CATCH_UP) {
-          created.push(generateOne(tx, r, next, next));
+          // issued today, never backdated to the missed run date (see top of file)
+          created.push(generateOne(tx, r, next, today));
           next = nextRunAfter(next, r.startDate, r);
         }
         if (created.length) {
@@ -291,15 +304,14 @@ export function runDueRecurring(db: DbOrTx, today = todayIso()): GeneratedInvoic
 
 /**
  * "Rechnung jetzt erstellen": invoice the next scheduled period right away and advance the schedule.
- * Issue date = the scheduled date if that's already due, otherwise today (billing early).
+ * Issue date = today, also for an overdue run (no backdating, see top of file); early billing keeps today too.
  */
 export function generateNow(db: DbOrTx, id: number, today = todayIso()): GeneratedInvoice {
   return db.transaction((tx) => {
     const r = getRow(tx, id);
     if (r.endDate && r.nextRunDate > r.endDate) throw unprocessable("Die Serienrechnung ist bereits beendet");
     if (getItems(tx, id).length === 0) throw unprocessable("Mindestens eine Position ist erforderlich");
-    const issueDate = r.nextRunDate <= today ? r.nextRunDate : today;
-    const created = generateOne(tx, r, r.nextRunDate, issueDate);
+    const created = generateOne(tx, r, r.nextRunDate, today);
     tx.update(recurringInvoices)
       .set({ nextRunDate: nextRunAfter(r.nextRunDate, r.startDate, r), lastRunAt: new Date().toISOString() })
       .where(eq(recurringInvoices.id, id))

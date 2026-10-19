@@ -116,18 +116,19 @@ describe("CRUD", () => {
 });
 
 describe("generation", () => {
-  test("catches up one invoice per missed period with dates, service period and due date", () => {
+  test("catches up one invoice per missed period: issued today (never backdated), service period of the run", () => {
     const { db, client } = setup();
     const r = createRecurring(db, input(client.id));
     const created = runDueRecurring(db, "2026-04-10");
-    expect(created.map((c) => c.issueDate)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+    expect(created.map((c) => c.issueDate)).toEqual(["2026-04-10", "2026-04-10", "2026-04-10"]);
 
-    const docs = invoicesOf(db, r.id).sort((a, b) => a.issueDate.localeCompare(b.issueDate));
+    const docs = invoicesOf(db, r.id).sort((a, b) => a.id - b.id);
     expect(docs).toHaveLength(3);
+    expect(docs.map((d) => d.issueDate)).toEqual(["2026-04-10", "2026-04-10", "2026-04-10"]);
+    expect(docs.map((d) => d.servicePeriodStart)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
     expect(docs[1]!.status).toBe("draft");
-    expect(docs[1]!.servicePeriodStart).toBe("2026-02-28");
     expect(docs[1]!.servicePeriodEnd).toBe("2026-03-30");
-    expect(docs[1]!.dueDate).toBe("2026-03-14");
+    expect(docs[1]!.dueDate).toBe("2026-04-24");
     expect(docs[1]!.grossCents).toBe(6000);
 
     const after = getRecurring(db, r.id);
@@ -159,9 +160,11 @@ describe("generation", () => {
     const r = createRecurring(db, input(client.id, { autoFinalize: true, setServicePeriod: false }));
     const created = runDueRecurring(db, "2026-02-28");
     expect(created.every((c) => c.finalized)).toBe(true);
-    const docs = invoicesOf(db, r.id).sort((a, b) => a.issueDate.localeCompare(b.issueDate));
+    const docs = invoicesOf(db, r.id).sort((a, b) => a.id - b.id);
     expect(docs.map((d) => d.number)).toEqual(["RE-2026-0001", "RE-2026-0002"]);
-    expect(docs[0]!.servicePeriodStart).toBeNull();
+    expect(docs.map((d) => d.issueDate)).toEqual(["2026-02-28", "2026-02-28"]);
+    // without a service period: the missed January run keeps its date as Leistungsdatum, the due run needs none
+    expect(docs.map((d) => [d.servicePeriodStart, d.servicePeriodEnd])).toEqual([["2026-01-31", null], [null, null]]);
 
     const de = addClient(db, { country: "DE", uid: "" });
     const rc = createRecurring(db, input(de.id, { autoFinalize: true, taxMode: "EU_REVERSE_CHARGE" }));
@@ -183,6 +186,12 @@ describe("generation", () => {
     expect(doc.servicePeriodEnd).toBe("2026-05-31");
     expect(getRecurring(db, r.id).nextRunDate).toBe("2026-06-01");
     expect(runDueRecurring(db, "2026-05-15")).toEqual([]);
+
+    // an overdue run billed by hand is issued today as well, with its own service period
+    const late = generateNow(db, r.id, "2026-07-03");
+    expect(late.issueDate).toBe("2026-07-03");
+    const lateDoc = invoicesOf(db, r.id).find((d) => d.id === late.documentId)!;
+    expect([lateDoc.servicePeriodStart, lateDoc.servicePeriodEnd]).toEqual(["2026-06-01", "2026-06-30"]);
   });
 
   test("articleId is stored on items and copied to generated invoices; deleted articles drop the link", () => {
