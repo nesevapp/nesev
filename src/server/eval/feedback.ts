@@ -1,11 +1,12 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { resolveDataDir } from "../lib/data-location";
 
 // bun run eval:feedback [file] – the answers flagged "Antwort war falsch" in the app as draft eval cases (the format
 // of chat-eval.cases.ts), to stdout or into `file`. Per flag: the conversation's user messages up to the flagged
 // answer as turns, the tools that turn called, the bad answer and the user's note as comments, and an `expect` to
-// fill in. Reads <NESEV_DATA_DIR or data/>/nesev.db READ-ONLY (no migrations, no writes); doesn't import the app.
+// fill in. Reads <data dir>/nesev.db (lib/data-location.ts) READ-ONLY (no migrations, no writes); doesn't import the app.
 // The cases run on demo data (src/mcp/test/seed.ts), so names, numbers and ids have to be adapted by hand.
 
 export interface FeedbackTurn {
@@ -120,8 +121,13 @@ export function formatFeedback(cases: FeedbackCase[], today = new Date().toISOSt
 
 if (import.meta.main) {
   const out = process.argv[2];
-  const dataDir = resolve(process.env.NESEV_DATA_DIR ?? join(import.meta.dir, "../../../data"));
-  const file = process.env.NESEV_DB ?? join(dataDir, "nesev.db");
+  // the same data dir the server uses (NESEV_DATA_DIR, the configured one, or <checkout>/data), read-only
+  const dataDir = resolveDataDir()?.dir;
+  if (!dataDir && !process.env.NESEV_DB) {
+    console.error("No data dir: set NESEV_DATA_DIR (or NESEV_DB), or set up nesev first.");
+    process.exit(1);
+  }
+  const file = process.env.NESEV_DB ?? join(dataDir!, "nesev.db");
   if (!existsSync(file)) {
     console.error(`No database at ${file}`);
     process.exit(1);
