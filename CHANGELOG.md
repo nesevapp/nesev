@@ -7,6 +7,11 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
+### Changed
+
+- Dependencies: pdfme 6.2.6 (security fix GHSA-2rg9-wxfw-wrr7 and PDF fixes), React 19.3.1, TanStack Query,
+  lucide-react; CI actions checkout v7 and cache v6.
+
 ## [0.1.0] – 2026-10-19
 
 The first public release. nesev is a local, single-user invoicing and bookkeeping app for Austrian sole traders; the
