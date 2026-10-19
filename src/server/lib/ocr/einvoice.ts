@@ -1,5 +1,4 @@
 import {
-  decodePDFRawStream,
   PDFArray,
   PDFDict,
   PDFDocument,
@@ -9,6 +8,7 @@ import {
   PDFStream,
   PDFString,
 } from "@pdfme/pdf-lib";
+import { Unzlib } from "fflate";
 import type { ReceiptFields, TaxLineSuggestion } from "../../../shared/receipts";
 import { parseDate, uidCountry } from "../../services/receipt-parse";
 
@@ -27,9 +27,57 @@ function decodeName(obj: unknown): string {
   return "";
 }
 
+/** decoded size cap of one embedded file (an e-invoice XML is a few hundred KB; guards against deflate bombs) */
+export const MAX_EMBEDDED_BYTES = 10 * 1024 * 1024;
+const INFLATE_CHUNK = 16 * 1024;
+
+/** zlib-inflates `data` in chunks; null when the output would exceed `max` bytes or the data is broken. */
+export function inflateCapped(data: Uint8Array, max: number): Uint8Array | null {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let over = false;
+  const inflater = new Unzlib((chunk) => {
+    total += chunk.length;
+    if (total > max) over = true;
+    else chunks.push(chunk);
+  });
+  try {
+    for (let i = 0; i < data.length && !over; i += INFLATE_CHUNK) {
+      inflater.push(data.subarray(i, i + INFLATE_CHUNK), i + INFLATE_CHUNK >= data.length);
+    }
+  } catch {
+    return null;
+  }
+  if (over) return null;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
+
+/**
+ * Decoded bytes of an embedded file stream, at most MAX_EMBEDDED_BYTES. Only unfiltered and plain FlateDecode streams
+ * (what ZUGFeRD / Factur-X writers produce) are decoded, with a size cap; other filters (LZW, predictors …) and
+ * larger files are skipped, since pdf-lib's decoder would inflate them without a limit.
+ */
 function streamBytes(stream: unknown): Uint8Array | null {
-  if (stream instanceof PDFRawStream) return decodePDFRawStream(stream).decode();
-  if (stream instanceof PDFStream) return stream.getContents();
+  if (stream instanceof PDFRawStream) {
+    const filter = stream.dict.lookup(PDFName.of("Filter"));
+    const filters = filter instanceof PDFArray ? filter.asArray().map((f) => stream.dict.context.lookup(f)) : filter ? [filter] : [];
+    const raw = stream.getContents();
+    if (filters.length === 0) return raw.length <= MAX_EMBEDDED_BYTES ? raw : null;
+    if (filters.length === 1 && filters[0] === PDFName.of("FlateDecode") && !stream.dict.lookup(PDFName.of("DecodeParms"))) {
+      return inflateCapped(raw, MAX_EMBEDDED_BYTES);
+    }
+    return null;
+  }
+  if (stream instanceof PDFStream) {
+    const raw = stream.getContents();
+    return raw.length <= MAX_EMBEDDED_BYTES ? raw : null;
+  }
   return null;
 }
 
@@ -102,7 +150,11 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
 
 function unescapeXml(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, e: string) => {
-    if (e[0] === "#") return String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
+    if (e[0] === "#") {
+      const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
+      // only Unicode scalar values: fromCodePoint throws above 0x10FFFF, lone surrogates aren't text
+      return Number.isInteger(code) && code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : all;
+    }
     return ENTITIES[e] ?? all;
   });
 }

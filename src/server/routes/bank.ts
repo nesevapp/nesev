@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
@@ -57,6 +58,12 @@ function mappingFrom(raw: string | undefined) {
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
+/** caps the request body before the multipart form is parsed into memory (file + mapping + multipart overhead) */
+const importLimit = bodyLimit({
+  maxSize: MAX_FILE_BYTES + 1024 * 1024,
+  onError: (c) => c.json({ error: "Die Datei ist zu groß (max. 20 MB)" }, 413),
+});
+
 async function fileBytes(file: File): Promise<Uint8Array> {
   if (file.size > MAX_FILE_BYTES) throw new HTTPException(413, { message: "Die Datei ist zu groß (max. 20 MB)" });
   return new Uint8Array(await file.arrayBuffer());
@@ -80,13 +87,13 @@ const app = new Hono()
   // ── Import
   .get("/presets", (c) => c.json(CSV_PRESETS))
   /** Parse without saving: detected format/mapping, rows with duplicate flags. */
-  .post("/accounts/:id/import/preview", idParam, importForm, async (c) => {
+  .post("/accounts/:id/import/preview", idParam, importLimit, importForm, async (c) => {
     const { file, mapping, preset } = c.req.valid("form");
     const opts = { mapping: mappingFrom(mapping), preset };
     return c.json(previewImport(db, c.req.valid("param").id, await fileBytes(file), file.name, opts));
   })
   /** Import new rows, remember the CSV mapping, auto-match per the account's mode. */
-  .post("/accounts/:id/import", idParam, importForm, async (c) => {
+  .post("/accounts/:id/import", idParam, importLimit, importForm, async (c) => {
     const { file, mapping, preset } = c.req.valid("form");
     const opts = { mapping: mappingFrom(mapping), preset };
     return c.json(commitImport(db, c.req.valid("param").id, await fileBytes(file), file.name, opts), 201);

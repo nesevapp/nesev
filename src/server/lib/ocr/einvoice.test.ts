@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { PDFDocument, StandardFonts } from "@pdfme/pdf-lib";
-import { extractEmbeddedInvoiceXml, parseEInvoiceXml, parseXml } from "./einvoice";
+import { zlibSync } from "fflate";
+import { extractEmbeddedInvoiceXml, inflateCapped, MAX_EMBEDDED_BYTES, parseEInvoiceXml, parseXml, pdfEmbeddedFiles } from "./einvoice";
 
 const fixture = (name: string) => Bun.file(join(import.meta.dir, "fixtures", name)).text();
 
@@ -58,5 +59,27 @@ describe("e-invoice XML", () => {
     expect(await extractEmbeddedInvoiceXml(await pdfWith({ name: "rechnung.xml", xml }))).toBe(xml);
     expect(await extractEmbeddedInvoiceXml(await pdfWith())).toBeNull();
     expect(await extractEmbeddedInvoiceXml(new TextEncoder().encode("not a pdf"))).toBeNull();
+  });
+
+  test("character references outside Unicode don't throw", () => {
+    const text = (xml: string) => parseXml(xml).children[0]!.text;
+    expect(text("<a>&#x41;&#66;</a>")).toBe("AB");
+    expect(text("<a>x&#x110000;y</a>")).toBe("x&#x110000;y");
+    expect(text("<a>&#99999999999;</a>")).toBe("&#99999999999;");
+    expect(text("<a>&#xD800;&#0;</a>")).toBe("&#xD800;&#0;");
+  });
+
+  test("embedded files are inflated with a size cap", async () => {
+    const big = new Uint8Array(MAX_EMBEDDED_BYTES + 1); // compresses to a few KB
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]);
+    await doc.attach(big, "factur-x.xml", { mimeType: "text/xml" });
+    const bytes = await doc.save();
+    expect(bytes.length).toBeLessThan(200_000);
+    expect(await pdfEmbeddedFiles(bytes)).toEqual([]);
+    expect(await extractEmbeddedInvoiceXml(bytes)).toBeNull();
+    expect(inflateCapped(zlibSync(new Uint8Array(1000)), 999)).toBeNull();
+    expect(inflateCapped(zlibSync(new Uint8Array(1000)), 1000)?.length).toBe(1000);
+    expect(inflateCapped(new Uint8Array([1, 2, 3]), 1000)).toBeNull();
   });
 });

@@ -136,6 +136,28 @@ describe("CSV presets", () => {
   });
 });
 
+describe("George JSON dates", () => {
+  const parse = (booking: unknown) => {
+    const json = JSON.stringify([{ booking, amount: { value: 100, precision: 2, currency: "EUR" } }]);
+    return parseBankFile(new TextEncoder().encode(json)).transactions[0]?.bookingDate;
+  };
+
+  test("epoch millis and zoned timestamps are Vienna calendar days", () => {
+    // midnight 01.01.2026 in Vienna = 2025-12-31T23:00Z
+    expect(parse(Date.UTC(2025, 11, 31, 23, 0))).toBe("2026-01-01");
+    expect(parse("2025-12-31T23:00:00.000Z")).toBe("2026-01-01");
+    // summer time (UTC+2): 22:30 UTC is already the next day
+    expect(parse(Date.UTC(2026, 6, 14, 22, 30))).toBe("2026-07-15");
+    expect(parse("2026-07-14T22:30:00Z")).toBe("2026-07-15");
+    // George's own local offsets and plain dates stay as written
+    expect(parse("2026-01-02T00:00:00.000+0100")).toBe("2026-01-02");
+    expect(parse("2026-03-29T00:00:00.000+01:00")).toBe("2026-03-29");
+    expect(parse("2026-01-02")).toBe("2026-01-02");
+    expect(parse("2026-01-02T00:00:00")).toBe("2026-01-02");
+    expect(parse(Number.NaN)).toBeUndefined();
+  });
+});
+
 describe("generic CSV mapping", () => {
   test("guesses columns of an unknown Windows-1252 export with decimal comma", () => {
     const r = parseBankFile(fixture("generic-1252.csv"));
@@ -244,5 +266,16 @@ describe("import hashes", () => {
     expect(importHashes(parseBankFile(fixture("n26.csv")).transactions)).toEqual(h);
     // the overlapping part of a later export yields the same keys
     expect(importHashes(r.transactions.slice(1))).toEqual([h[1], h[2]]);
+  });
+});
+
+describe("xml entities", () => {
+  test("character references outside Unicode are kept as text instead of throwing", async () => {
+    const { parseXml } = await import("./xml");
+    const text = (xml: string) => parseXml(xml).children[0]!.text;
+    expect(text("<a>&#x41;&#66;&amp;</a>")).toBe("AB&");
+    expect(text("<a>&#x110000;</a>")).toBe("&#x110000;");
+    expect(text("<a>&#99999999999;</a>")).toBe("&#99999999999;");
+    expect(text("<a>&#xDFFF;</a>")).toBe("&#xDFFF;");
   });
 });
