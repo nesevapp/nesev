@@ -257,6 +257,7 @@ function RevenueSection({
   const isCurrentYear = data.year === Number(data.today.slice(0, 4));
   const lastMonth = isCurrentYear ? Number(data.today.slice(5, 7)) - 1 : 11;
   const { revenue, expenses: costs } = data.kpis;
+  const afa = expenses && data.monthly.some((m) => m.afaCents !== 0);
   const head = "h-8 text-right text-xs text-muted-foreground";
   const cell = "py-1.5 text-right tabular";
   const prevCell = cn(cell, "text-muted-foreground");
@@ -300,7 +301,7 @@ function RevenueSection({
         {view === "chart" ? (
           <>
             <div className="mb-2 flex justify-end">
-              <ChartLegend year={data.year} compare={compare} expenses={expenses} />
+              <ChartLegend year={data.year} compare={compare} expenses={expenses} afa={afa} />
             </div>
             <RevenueChart data={data.monthly} year={data.year} compare={compare} expenses={expenses} lastMonth={lastMonth} />
           </>
@@ -312,6 +313,7 @@ function RevenueSection({
                 <TableHead className={head}>Umsatz {data.year}</TableHead>
                 {compare && <TableHead className={head}>Umsatz {data.year - 1}</TableHead>}
                 {expenses && <TableHead className={head}>Ausgaben {data.year}</TableHead>}
+                {afa && <TableHead className={head}>davon AfA</TableHead>}
                 {expenses && compare && <TableHead className={head}>Ausgaben {data.year - 1}</TableHead>}
                 {expenses && <TableHead className={head}>Ergebnis {data.year}</TableHead>}
               </TableRow>
@@ -323,6 +325,7 @@ function RevenueSection({
                   <TableCell className={cell}>{formatCents(m.cents)}</TableCell>
                   {compare && <TableCell className={prevCell}>{formatCents(m.previousCents)}</TableCell>}
                   {expenses && <TableCell className={cell}>{formatCents(m.expenseCents)}</TableCell>}
+                  {afa && <TableCell className={prevCell}>{formatCents(m.afaCents)}</TableCell>}
                   {expenses && compare && <TableCell className={prevCell}>{formatCents(m.previousExpenseCents)}</TableCell>}
                   {expenses && <TableCell className={resultCell(m.cents - m.expenseCents)}>{formatCents(m.cents - m.expenseCents)}</TableCell>}
                 </TableRow>
@@ -332,6 +335,7 @@ function RevenueSection({
                 <TableCell className={cell}>{formatCents(revenue.cents)}</TableCell>
                 {compare && <TableCell className={prevCell}>{formatCents(revenue.previousCents)}</TableCell>}
                 {expenses && <TableCell className={cell}>{formatCents(costs.cents)}</TableCell>}
+                {afa && <TableCell className={prevCell}>{formatCents(costs.afaCents)}</TableCell>}
                 {expenses && compare && <TableCell className={prevCell}>{formatCents(costs.previousCents)}</TableCell>}
                 {expenses && <TableCell className={resultCell(revenue.cents - costs.cents)}>{formatCents(revenue.cents - costs.cents)}</TableCell>}
               </TableRow>

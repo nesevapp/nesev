@@ -4,7 +4,8 @@ import { columnPath, euroAxis as euro, niceStep, useWidth } from "@/components/c
 import { cn } from "@/lib/utils";
 
 // Net revenue (blue) and optionally net expenses (orange) per month as columns, plus the result
-// (revenue − expenses) as a line; the previous year adds lighter comparison columns. Single axis (cents),
+// (revenue − expenses) as a line; the previous year adds lighter comparison columns. The current year's expense
+// column is stacked: receipts (Belege) at the bottom, the AfA part on top in its own shade. Single axis (cents),
 // hover/focus tooltip per month, the table view lives next to it in the page.
 
 export const MONTHS = ["Jän", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -19,6 +20,8 @@ export interface MonthDatum {
   previousCents: number;
   expenseCents: number;
   previousExpenseCents: number;
+  /** AfA part of expenseCents */
+  afaCents: number;
 }
 
 type ValueKey = "cents" | "previousCents" | "expenseCents" | "previousExpenseCents";
@@ -31,6 +34,7 @@ interface Series {
 }
 
 export const REVENUE_FILL = "fill-chart-revenue";
+const AFA_FILL = "fill-chart-afa";
 const RESULT_STROKE = "stroke-chart-result";
 
 /** Columns per month, left to right: previous-year revenue, revenue, previous-year expenses, expenses. */
@@ -59,6 +63,7 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
   const [active, setActive] = useState<number | null>(null);
 
   const series = chartSeries(year, compare, expenses);
+  const hasAfa = expenses && data.some((d) => d.afaCents !== 0);
   const result = (d: MonthDatum) => d.cents - d.expenseCents;
   const values = data.flatMap((d) => [...series.map((s) => d[s.key]), ...(expenses ? [result(d)] : [])]);
   const max = Math.max(0, ...values);
@@ -81,7 +86,7 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
 
   const activeDatum = active === null ? null : data[active];
   const aria = (d: MonthDatum, i: number) =>
-    `${MONTHS[i]}: ${series.map((s) => `${s.label} ${formatCents(d[s.key])}`).join(", ")}${expenses ? `, Ergebnis ${formatCents(result(d))}` : ""}`;
+    `${MONTHS[i]}: ${series.map((s) => `${s.label} ${formatCents(d[s.key])}${s.key === "expenseCents" && d.afaCents ? ` (davon AfA ${formatCents(d.afaCents)})` : ""}`).join(", ")}${expenses ? `, Ergebnis ${formatCents(result(d))}` : ""}`;
 
   return (
     <div ref={ref} className="relative" onPointerLeave={() => setActive(null)}>
@@ -117,20 +122,26 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
                 {active === i && (
                   <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH} className="fill-muted/70" />
                 )}
-                {series.map((s, k) => (
-                  <path
-                    key={s.key}
-                    d={columnPath(x0 + k * (barW + GAP), barW, y(0), y(d[s.key]))}
-                    className={cn(s.fill, active !== null && active !== i && "opacity-60")}
-                  />
-                ))}
+                {series.map((s, k) => {
+                  const x = x0 + k * (barW + GAP);
+                  const dim = active !== null && active !== i && "opacity-60";
+                  if (s.key !== "expenseCents" || !d.afaCents)
+                    return <path key={s.key} d={columnPath(x, barW, y(0), y(d[s.key]))} className={cn(s.fill, dim)} />;
+                  const receipts = d.expenseCents - d.afaCents;
+                  return (
+                    <g key={s.key} className={cn(dim)}>
+                      <path d={columnPath(x, barW, y(0), y(receipts), 0)} className={s.fill} />
+                      <path d={columnPath(x, barW, y(receipts), y(d.expenseCents))} className={AFA_FILL} />
+                    </g>
+                  );
+                })}
                 <text
                   x={cx(i)}
                   y={HEIGHT - 8}
                   textAnchor="middle"
                   className={cn("text-[11px]", future ? "fill-muted-foreground/50" : "fill-muted-foreground")}
                 >
-                  {MONTHS[i]}
+                  {band < 32 ? MONTHS[i]!.slice(0, 1) : MONTHS[i]}
                 </text>
               </g>
             );
@@ -179,9 +190,17 @@ export function RevenueChart({ data, year, compare, expenses, lastMonth = 11 }: 
           }
         >
           <div className="mb-1 text-muted-foreground">{MONTHS[active]}</div>
-          {[...series].reverse().map((s) => (
-            <TooltipRow key={s.key} color={s.swatch} label={s.label} value={activeDatum[s.key]} />
-          ))}
+          {[...series].reverse().map((s) =>
+            s.key === "expenseCents" && hasAfa ? (
+              <div key={s.key}>
+                <TooltipRow color={s.swatch} label={`Belege ${year}`} value={activeDatum.expenseCents - activeDatum.afaCents} />
+                <TooltipRow color="bg-chart-afa" label={`AfA ${year}`} value={activeDatum.afaCents} />
+                <TooltipRow color="bg-transparent" label="Ausgaben gesamt" value={activeDatum.expenseCents} />
+              </div>
+            ) : (
+              <TooltipRow key={s.key} color={s.swatch} label={s.label} value={activeDatum[s.key]} />
+            ),
+          )}
           {expenses && (
             <div className="mt-1 border-t pt-1">
               <TooltipRow color="bg-chart-result" label={`Ergebnis ${year}`} value={result(activeDatum)} />
@@ -198,12 +217,12 @@ function TooltipRow({ color, label, value }: { color: string; label: string; val
     <div className="flex items-center gap-2">
       <span className={cn("h-0.5 w-3 rounded-full", color)} />
       <span className={cn("font-medium tabular", value < 0 ? "text-danger" : "text-foreground")}>{formatCents(value)}</span>
-      <span className="ml-auto pl-3 text-muted-foreground">{label}</span>
+      <span className="ml-auto pl-3 whitespace-nowrap text-muted-foreground">{label}</span>
     </div>
   );
 }
 
-export function ChartLegend({ year, compare, expenses }: { year: number; compare: boolean; expenses: boolean }) {
+export function ChartLegend({ year, compare, expenses, afa = false }: { year: number; compare: boolean; expenses: boolean; afa?: boolean }) {
   if (!compare && !expenses) return null;
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -213,6 +232,12 @@ export function ChartLegend({ year, compare, expenses }: { year: number; compare
           {s.label}
         </span>
       ))}
+      {expenses && afa && (
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[3px] bg-chart-afa" />
+          davon AfA
+        </span>
+      )}
       {expenses && (
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-3 rounded-full bg-chart-result" />

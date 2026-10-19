@@ -196,9 +196,12 @@ describe("getDashboard", () => {
     const d = getDashboard(db, 2026, "2026-12-31");
     expect(d.kpis.expenses).toEqual({ cents: 10000 + 40000, previousCents: 0, receiptsCents: 10000, afaCents: 40000 });
     expect(d.monthly[0]!.expenseCents).toBe(3333);
-    expect(d.monthly[8]!.expenseCents).toBe(10000 + 3333);
+    expect(d.monthly[8]).toMatchObject({ expenseCents: 10000 + 3333, afaCents: 3333, previousAfaCents: 0 });
     expect(d.monthly[11]!.expenseCents).toBe(40000 - 3333 * 11);
-    expect(getDashboard(db, 2027, "2027-12-31").kpis.expenses).toEqual({ cents: 80000, previousCents: 50000, receiptsCents: 0, afaCents: 80000 });
+    expect(d.monthly.reduce((s, m) => s + m.afaCents, 0)).toBe(d.kpis.expenses.afaCents);
+    const d27 = getDashboard(db, 2027, "2027-12-31");
+    expect(d27.kpis.expenses).toEqual({ cents: 80000, previousCents: 50000, receiptsCents: 0, afaCents: 80000 });
+    expect(d27.monthly[0]).toMatchObject({ afaCents: 6666, previousAfaCents: 3333, previousExpenseCents: 3333 });
   });
   test("expenses: current year counts the AfA only up to the current month (like revenue to date)", () => {
     const { db } = setup();
@@ -206,8 +209,8 @@ describe("getDashboard", () => {
     const d = getDashboard(db, 2026, "2026-10-19");
     // 4.300 € / 3 = 1.433,33 €/year → 119,44 €/month, Jan–Oct
     expect(d.kpis.expenses).toEqual({ cents: 11944 * 10, previousCents: 0, receiptsCents: 0, afaCents: 11944 * 10 });
-    expect(d.monthly[9]!.expenseCents).toBe(11944);
-    expect(d.monthly[10]!.expenseCents).toBe(0);
+    expect(d.monthly[9]).toMatchObject({ expenseCents: 11944, afaCents: 11944 });
+    expect(d.monthly[10]).toMatchObject({ expenseCents: 0, afaCents: 0 });
     // a past year keeps its full AfA
     expect(getDashboard(db, 2027, "2028-02-01").kpis.expenses.previousCents).toBe(143333);
   });

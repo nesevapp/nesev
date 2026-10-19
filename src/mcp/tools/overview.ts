@@ -104,7 +104,13 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
           openOffers: z.object({ count: z.number().int(), amount: Money }),
         }),
         monthly: z.array(
-          z.object({ month: z.string().describe("YYYY-MM"), revenue: Money, expenses: Money, result: Money }),
+          z.object({
+            month: z.string().describe("YYYY-MM"),
+            revenue: Money,
+            expenses: Money,
+            afa: Money.describe("AfA (depreciation) included in expenses"),
+            result: Money,
+          }),
         ),
         overdueInvoices: z.array(
           z.object({
@@ -131,6 +137,7 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
         month: `${d.year}-${String(m.month + 1).padStart(2, "0")}`,
         revenue: money(m.cents),
         expenses: money(m.expenseCents),
+        afa: money(m.afaCents),
         result: money(m.cents - m.expenseCents),
       }));
       const overdueInvoices = d.overdue.map((o) => ({
@@ -153,7 +160,10 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
         `- Offene Angebote: ${k.openOffers.count}, ${eur(k.openOffers.cents)}`,
         `Monate (Umsatz / Ausgaben / Ergebnis): ${d.monthly
           .filter((m) => m.cents || m.expenseCents)
-          .map((m) => `${MONTHS[m.month]} ${eur(m.cents)} / ${eur(m.expenseCents)} / ${eur(m.cents - m.expenseCents)}`)
+          .map(
+            (m) =>
+              `${MONTHS[m.month]} ${eur(m.cents)} / ${eur(m.expenseCents)}${m.afaCents ? ` (davon AfA ${eur(m.afaCents)})` : ""} / ${eur(m.cents - m.expenseCents)}`,
+          )
           .join("; ") || "keine Buchungen"}`,
         `Überfällige Rechnungen:`,
         bullets(

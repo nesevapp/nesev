@@ -12,6 +12,8 @@ export const CHART_COLORS = {
   revenueLight: "var(--chart-revenue-light)",
   expenses: "var(--chart-expenses)",
   expensesLight: "var(--chart-expenses-light)",
+  /** AfA (depreciation) part of expenses */
+  afa: "var(--chart-afa)",
   /** result / balance line */
   result: "var(--chart-result)",
   neutral: "var(--chart-neutral)",
@@ -23,6 +25,8 @@ export const CHART_COLORS = {
   vat: "var(--chart-vat)",
   incomeTax: "var(--chart-income-tax)",
 } as const;
+
+export const MONTHS = ["Jän", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 export const euroAxis = new Intl.NumberFormat("de-AT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 export const compactEuro = new Intl.NumberFormat("de-AT", {

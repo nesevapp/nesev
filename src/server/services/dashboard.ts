@@ -71,8 +71,16 @@ export interface DashboardData {
     paid: Figure;
     openOffers: Figure;
   };
-  /** net revenue and expense costs per month, index 0 = January */
-  monthly: { month: number; cents: number; previousCents: number; expenseCents: number; previousExpenseCents: number }[];
+  /** net revenue and expense costs per month, index 0 = January; afaCents = the AfA part of expenseCents */
+  monthly: {
+    month: number;
+    cents: number;
+    previousCents: number;
+    expenseCents: number;
+    previousExpenseCents: number;
+    afaCents: number;
+    previousAfaCents: number;
+  }[];
   overdue: OverdueRow[];
   recent: DashboardDocRow[];
   openOffers: DashboardDocRow[];
@@ -225,8 +233,9 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const expensesByYear = monthlyExpenses(db, [year, year - 1], status, today);
   const add = (e: { receipts: number[]; afa: number[] }) => e.receipts.map((c, m) => c + e.afa[m]!);
   const currentSplit = expensesByYear.get(year)!;
+  const previousSplit = expensesByYear.get(year - 1)!;
   const currentExpenses = add(currentSplit);
-  const previousExpenses = add(expensesByYear.get(year - 1)!);
+  const previousExpenses = add(previousSplit);
   const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 
   const base = () => db.select(rowColumns).from(documents).leftJoin(clients, eq(clients.id, documents.clientId));
@@ -276,6 +285,8 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
       previousCents: previous[month]!,
       expenseCents: currentExpenses[month]!,
       previousExpenseCents: previousExpenses[month]!,
+      afaCents: currentSplit.afa[month]!,
+      previousAfaCents: previousSplit.afa[month]!,
     })),
     overdue,
     recent,
