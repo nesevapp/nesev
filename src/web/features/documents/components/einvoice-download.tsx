@@ -39,7 +39,7 @@ export function EInvoiceDownloadButton({ documentId, number }: { documentId: num
 
 function EInvoiceDialogBody({ documentId, onDone }: { documentId: number; onDone: () => void }) {
   const status = useQuery(einvoiceStatusQuery(documentId));
-  if (status.isPending) return <p className="py-4 text-sm text-muted-foreground">Prüfe Daten…</p>;
+  if (status.isPending) return <p className="py-4 text-sm text-muted-foreground">Daten werden geprüft…</p>;
   if (status.isError) return <p className="py-4 text-sm text-destructive">{apiErrorMessage(status.error)}</p>;
   return <EInvoiceForm documentId={documentId} status={status.data} onDone={onDone} />;
 }

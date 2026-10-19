@@ -26,7 +26,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { apiErrorMessage, type Client, clientQuery, settingsQuery, useDeleteClient, useSetClientArchived } from "@/sdk";
+import {
+  apiErrorMessage,
+  type Client,
+  clientQuery,
+  documentsQuery,
+  settingsQuery,
+  useDeleteClient,
+  useSetClientArchived,
+} from "@/sdk";
 import { ClientDocuments } from "./components/client-documents";
 
 const route = getRouteApi("/clients/$id");
@@ -104,7 +112,6 @@ export function ClientPage() {
       )}
 
       <section className="mt-8">
-        <h2 className="mb-3 text-sm font-medium">Dokumente</h2>
         <ClientDocuments clientId={client.id} />
       </section>
     </Page>
@@ -115,6 +122,9 @@ function ClientActions({ client, onToggleArchived }: { client: Client; onToggleA
   const [confirmDelete, setConfirmDelete] = useState(false);
   const del = useDeleteClient(client.id);
   const navigate = useNavigate();
+  // same query as the "Dokumente" list below (cached); clients with documents can only be archived
+  const { data: docs } = useQuery(documentsQuery({ clientId: client.id }));
+  const docCount = docs?.length ?? 0;
 
   const onDelete = () =>
     del.mutate(undefined, {
@@ -150,26 +160,47 @@ function ClientActions({ client, onToggleArchived }: { client: Client; onToggleA
       </DropdownMenu>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Kunde löschen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              „{client.name}“ wird endgültig gelöscht. Kunden mit Belegen können nicht gelöscht, sondern nur archiviert
-              werden.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={del.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                onDelete();
-              }}
-            >
-              Löschen
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {docCount > 0 ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Kunde kann nicht gelöscht werden</AlertDialogTitle>
+                <AlertDialogDescription>
+                  „{client.name}“ wird in {docCount === 1 ? "einem Beleg" : `${docCount} Belegen`} verwendet. Belege
+                  müssen erhalten bleiben, deshalb kann der Kunde nur archiviert werden: Er verschwindet dann aus der
+                  Kundenauswahl, seine Belege bleiben unverändert.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{client.archivedAt ? "Schließen" : "Abbrechen"}</AlertDialogCancel>
+                {!client.archivedAt && (
+                  <AlertDialogAction onClick={onToggleArchived}>
+                    <Archive />
+                    Archivieren
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </>
+          ) : (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Kunde löschen?</AlertDialogTitle>
+                <AlertDialogDescription>„{client.name}“ wird endgültig gelöscht.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={del.isPending}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onDelete();
+                  }}
+                >
+                  Löschen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </>

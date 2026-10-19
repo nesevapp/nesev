@@ -17,15 +17,14 @@ export function NewClientPage() {
         pending={create.isPending}
         submitLabel="Kunde anlegen"
         onCancel={() => router.history.back()}
-        onSubmit={(values) =>
-          create.mutate(values, {
-            onSuccess: (c) => {
-              toast.success("Kunde angelegt");
-              navigate({ to: "/clients/$id", params: { id: c.id } });
-            },
-            onError: (err) => toast.error(apiErrorMessage(err)),
-          })
-        }
+        onSubmit={async (values) => {
+          const c = await create.mutateAsync(values).catch((err: unknown) => {
+            toast.error(apiErrorMessage(err));
+            throw err;
+          });
+          toast.success("Kunde angelegt");
+          void navigate({ to: "/clients/$id", params: { id: c.id } });
+        }}
       />
     </Page>
   );
@@ -47,15 +46,14 @@ export function EditClientPage() {
         pending={update.isPending}
         submitLabel="Speichern"
         onCancel={toDetail}
-        onSubmit={(values) =>
-          update.mutate(values, {
-            onSuccess: () => {
-              toast.success("Kunde gespeichert");
-              toDetail();
-            },
-            onError: (err) => toast.error(apiErrorMessage(err)),
-          })
-        }
+        onSubmit={async (values) => {
+          await update.mutateAsync(values).catch((err: unknown) => {
+            toast.error(apiErrorMessage(err));
+            throw err;
+          });
+          toast.success("Kunde gespeichert");
+          void toDetail();
+        }}
       />
     </Page>
   );

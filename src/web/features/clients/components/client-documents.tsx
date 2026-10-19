@@ -2,5 +2,5 @@ import { ClientDocumentsList } from "@/features/documents/components/client-docu
 
 /** "Dokumente" section on the client detail page: the client's offers, invoices and credit notes. */
 export function ClientDocuments({ clientId }: { clientId: number }) {
-  return <ClientDocumentsList clientId={clientId} />;
+  return <ClientDocumentsList clientId={clientId} title="Dokumente" />;
 }

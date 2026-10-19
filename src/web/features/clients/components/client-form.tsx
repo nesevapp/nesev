@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
+import { useBlocker } from "@tanstack/react-router";
 import { Building2, User } from "lucide-react";
 import { COUNTRY_OPTIONS } from "@shared/countries";
 import {
@@ -61,14 +62,31 @@ export function ClientForm({
   defaultValues: ClientFormValues;
   pending: boolean;
   submitLabel: string;
-  onSubmit: (values: ClientCreate) => void;
+  /** Saves (and navigates away on success); rejects on error, then the unsaved-changes guard is back on. */
+  onSubmit: (values: ClientCreate) => Promise<void>;
   onCancel: () => void;
 }) {
   const form = useForm<ClientFormValues, unknown, ClientCreate>({
     resolver: zodResolver(clientCreateSchema),
     defaultValues,
   });
-  const { control } = form;
+  const { control, formState } = form;
+
+  // Leaving with unsaved changes asks first (same guard as the document and expense editors).
+  const leaving = useRef(false);
+  useBlocker({
+    shouldBlockFn: () =>
+      !leaving.current && formState.isDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
+    enableBeforeUnload: () => !leaving.current && formState.isDirty,
+  });
+  const submit = form.handleSubmit(async (values) => {
+    leaving.current = true;
+    try {
+      await onSubmit(values);
+    } catch {
+      leaving.current = false;
+    }
+  });
   const [type, country, uid, taxMode] = useWatch({ control, name: ["type", "country", "uid", "defaultTaxMode"] });
   const isNew = defaultValues.number === undefined;
   const nextNumber = useQuery({ ...nextClientNumberQuery, enabled: isNew });
@@ -76,7 +94,7 @@ export function ClientForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-4xl">
+      <form onSubmit={submit} className="max-w-4xl">
         <FormSection title="Stammdaten">
           <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
             <FormField
@@ -190,7 +208,8 @@ export function ClientForm({
           <TextareaField control={control} name="notes" label="Notizen" rows={4} />
         </FormSection>
 
-        <div className="sticky bottom-0 -mx-8 -mb-8 flex justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
+        <div className="sticky bottom-0 -mx-8 -mb-8 flex items-center justify-end gap-2 border-t bg-background/90 pl-8 pr-[calc(2rem+var(--fab-space,0px))] py-3 backdrop-blur">
+          {formState.isDirty && <span className="mr-2 text-xs text-muted-foreground">Ungespeicherte Änderungen</span>}
           <Button type="button" variant="ghost" onClick={onCancel}>
             Abbrechen
           </Button>

@@ -12,16 +12,18 @@ import { StatusBadge } from "./status-badge";
 
 /**
  * All offers, invoices and credit notes of one client (newest first), for the client detail page:
- *   <ClientDocumentsList clientId={client.id} />
+ *   <ClientDocumentsList clientId={client.id} title="Dokumente" />
+ * `title` is shown on the same row as the "new offer/invoice" buttons.
  */
-export function ClientDocumentsList({ clientId }: { clientId: number }) {
+export function ClientDocumentsList({ clientId, title }: { clientId: number; title?: string }) {
   const navigate = useNavigate();
   const { data = [], isPending } = useQuery(documentsQuery({ clientId }));
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
-        <Button asChild size="sm" variant="outline">
+      <div className="flex items-center gap-2">
+        {title && <h2 className="text-sm font-medium">{title}</h2>}
+        <Button asChild size="sm" variant="outline" className="ml-auto">
           <Link to={DOC_CONFIG.offer.create} search={{ clientId }}>
             <Plus />
             Angebot
