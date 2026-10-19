@@ -7,25 +7,34 @@ the approach before you write the code.
 ## Setup
 
 ```bash
+git clone https://github.com/nesevapp/nesev.git && cd nesev
 bun install
 bun run demo                 # the app with demo data (demo-data/) on http://127.0.0.1:3999
+bun run dev                  # API on :3998 + Vite dev server (5173 or the next free port); asks for a data folder on first start
 ```
 
-Use a separate data dir and port for experiments, never your real `data/`:
+nesev finds its data dir via `NESEV_DATA_DIR`, else the folder chosen in the first-start setup (stored in a per-user
+config file), else `<checkout>/data` if it already holds a database. So a plain `bun run dev` uses **your real data**
+once you've set nesev up. For experiments, set a temporary data dir *and* config dir, a free port, and point
+`NESEV_API_URL` at a port where nothing listens:
 
 ```bash
-NESEV_DATA_DIR=/tmp/nesev-dev PORT=3990 bun run dev:api
-PORT=3990 bunx vite --port 5190 --strictPort       # Vite proxies /api to the same PORT
+export NESEV_DATA_DIR=/tmp/nesev-dev NESEV_CONFIG_DIR=/tmp/nesev-dev/cfg NESEV_API_URL=http://127.0.0.1:9 PORT=3990
+bun run dev:api
+bunx vite --port 5190 --strictPort       # same shell: Vite proxies /api to the same PORT
 ```
+
+To try the first-start setup itself, set only an empty `NESEV_CONFIG_DIR` and pick a temporary folder in the UI. All
+environment variables are listed in [.env.example](.env.example).
 
 ## Commands
 
 | | |
 |---|---|
-| `PORT=3998 bun run dev` | API (`bun --hot`) + Vite dev server proxying `/api` |
+| `bun run dev` | API (`bun --hot`, `PORT`, default 3998) + Vite dev server (5173 or the next free port) proxying `/api` |
 | `bun run typecheck` | `tsc` over everything; must be clean |
 | `bun test` | all `*.test.ts` (in-memory databases via `createTestDb`) |
-| `bun run build && bun start` | production build: Hono serves the SPA and the API on `PORT` |
+| `bun run build && bun start` | production build: Hono serves the SPA and the API on `PORT` (default 3998) |
 | `bun run db:generate` | after editing `src/server/db/schema.ts`: writes a new migration (commit it) |
 | `bun run mcp` | the MCP server over stdio, see [src/mcp/README.md](src/mcp/README.md) |
 | `bun run eval:chat` | assistant eval against a real local model, see [src/server/eval/README.md](src/server/eval/README.md) |
@@ -64,7 +73,7 @@ forms, units and colors. The short version:
   so light and dark mode both work. PDF content is the exception.
 - Receipt OCR never runs on upload and never overwrites saved data automatically.
 - Importing `src/server/app.ts` must stay side-effect free (the MCP server imports it); startup work belongs in
-  `src/server/index.ts`.
+  `src/server/main.ts` (`index.ts` only resolves the data dir or serves the first-start setup, then imports it).
 
 The full list of invariants is in [CLAUDE.md](CLAUDE.md) (written for coding agents, but it applies to everyone).
 

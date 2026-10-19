@@ -34,7 +34,7 @@ bun run eval:chat --min 80                         # exit code 1 if the pass rat
   (`[chat] conv … step …`, "forced tool call", "nudged", "not looked up", "claim-guard" → claim retry / claim reply, "offer-nudge", "number-guard" → number retry / number replaced) and from tool results (context guard,
   repeated failing call).
 - Stops its API and llama-server by PID, also on Ctrl-C and errors, and deletes its temp dirs. It never uses
-  `data/`, the default ports 3001/5173 or the example ports 3998/5174 (`RESERVED_PORTS`).
+  your data dir (it sets `NESEV_DATA_DIR`), the default port 3998, Vite's 5173, or 3001/5174 (`RESERVED_PORTS`).
 
 ## Cases (`chat-eval.cases.ts`)
 Each case has an id, one or more German turns (optionally with `contextPath`/`contextTitle`), tags, and an
@@ -63,7 +63,7 @@ turned into draft cases:
 ```bash
 bun run eval:feedback                   # draft cases to stdout
 bun run eval:feedback /tmp/drafts.ts    # … into a file
-NESEV_DATA_DIR=/tmp/nesev-x bun run eval:feedback   # another data dir (default: data/)
+NESEV_DATA_DIR=/tmp/nesev-x bun run eval:feedback   # another data dir (default: <checkout>/data)
 ```
 
 It opens `<data dir>/nesev.db` read-only and prints, per flag, a case in the format of `chat-eval.cases.ts`: the

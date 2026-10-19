@@ -16,9 +16,11 @@ NESEV_DATA_DIR=/tmp/nesev-mcp bun run mcp     # against another data dir
 
 | Env | Default | Purpose |
 |---|---|---|
-| `NESEV_DATA_DIR` | `<repo>/data` | same data dir as the app (`src/server/lib/paths.ts`) |
-| `NESEV_WEB_URL` | `http://localhost:5174` | base for the web links in tool results (set it to your web UI's URL) |
-| `NESEV_API_URL` | `http://127.0.0.1:3998` | the running nesev server, used only by `queue_receipt_analysis` |
+| `NESEV_DATA_DIR` | the app's data dir | same resolution as the server (`src/server/lib/data-location.ts`): this variable, else the folder chosen in nesev's first-start setup, else `<checkout>/data` if it holds a database. Without any of them the MCP server refuses to start: start nesev once and choose a folder. |
+| `NESEV_CONFIG_DIR` | OS config dir | where the setup's `config.json` is read from (see [.env.example](../../.env.example)) |
+| `PORT` | `3998` | port of your nesev server; the two URLs below default to it |
+| `NESEV_WEB_URL` | `http://localhost:$PORT` | base for the web links in tool results. In development set it to the Vite URL (e.g. `http://localhost:5173`) |
+| `NESEV_API_URL` | `http://127.0.0.1:$PORT` | the running nesev server, used only by `queue_receipt_analysis` |
 
 **Claude Code**, registered only for a dedicated folder (local scope), so other sessions don't see the tools.
 Replace `/path/to/nesev` with your checkout:
@@ -43,11 +45,11 @@ shell's PATH, so give the absolute path to bun (`which bun`, e.g. `~/.bun/bin/bu
 
 The entry resolves all paths from its own location, so the working directory doesn't matter.
 
-**Try it by hand** against demo data. Never point these at `data/`, and set `NESEV_API_URL` to a port where nothing
-listens, so nothing reaches your running server:
+**Try it by hand** against demo data. Never point these at your real data dir, and set `NESEV_API_URL` to a port where
+nothing listens, so nothing reaches your running server:
 ```bash
-export NESEV_DATA_DIR=/tmp/nesev-mcp NESEV_API_URL=http://127.0.0.1:9
-bun src/mcp/test/seed.ts                                           # demo data (refuses data/)
+export NESEV_DATA_DIR=/tmp/nesev-mcp NESEV_CONFIG_DIR=/tmp/nesev-mcp/cfg NESEV_API_URL=http://127.0.0.1:9
+bun src/mcp/test/seed.ts                                           # demo data (refuses <checkout>/data)
 bun src/mcp/test/client.ts                                         # list tools
 bun src/mcp/test/client.ts get_document '{"id":1}' [--modern]
 bun src/mcp/test/client.ts create_invoice_draft '{"clientName":"Alpen","items":[{"title":"Beratung","quantity":2,"unit":"Std.","unitPrice":"95,00"}]}'
@@ -62,7 +64,7 @@ bun src/mcp/test/client.ts create_invoice_draft '{"clientName":"Alpen","items":[
   because some server modules log. Diagnostics go to stderr.
 - The process exits when the client closes stdin.
 - It doesn't start the app's background work: backup and recurring schedulers, the receipt OCR worker, llama-server.
-  That work lives in `src/server/index.ts`, which the MCP never imports.
+  That work lives in `src/server/main.ts` (loaded by the entry `src/server/index.ts`), which the MCP never imports.
 - `api.ts` refuses every non-GET request to `/api/receipts` in-process (403), because `POST /analyze` would start
   the OCR worker inside the MCP process. The one exception is `POST /:id/applied` (only a timestamp), which
   `apply_receipt_analysis` needs.

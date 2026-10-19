@@ -5,8 +5,8 @@ Read [docs/architecture.md](docs/architecture.md) first for how the features wor
 ## Commands
 | | |
 |---|---|
-| `bun run dev` | API (`bun --hot`, :3001) + Vite (:5173, proxies `/api`). Override the API port with `PORT=3998 bun run dev` (Vite proxies to the same `PORT`). |
-| `bun run build` / `bun start` | Build the SPA to `dist/web`, then serve SPA + API from Hono on `PORT` (3001) |
+| `bun run dev` | API (`bun --hot`, `PORT`, default 3998) + Vite (5173 or the next free port, proxies `/api` to the same `PORT`) |
+| `bun run build` / `bun start` | Build the SPA to `dist/web`, then serve SPA + API from Hono on `PORT` (default 3998) |
 | `bun run db:generate` | After editing `src/server/db/schema.ts`, write a new migration to `src/server/db/migrations/` |
 | `bun run db:migrate` | Apply migrations. Not normally needed: the server applies them on start. |
 | `bun run typecheck` / `bun test` | `tsc` (TS 7) over everything / bun tests (`*.test.ts`) |
@@ -25,14 +25,17 @@ src/shared/            used by server AND web; no server- or DOM-only imports
   schemas/*.ts         zod DTOs (settings, client, document). Import `z` from ./zod (German messages).
 src/server/
   app.ts               Hono app; mounts routes/*; exports AppType. Do not edit to add routes.
-  index.ts             Bun entry (port, prod static/SPA fallback)
+  index.ts             Bun entry: port, data dir resolution or first-start setup (setup.ts, routes/setup.ts), then imports main.ts
+  main.ts              the app once a data dir is known: opens the DB, prod static/SPA fallback, background work (schedulers, queues)
   routes/<x>.ts        one sub-app per resource, mounted at /api/<x>
   services/<x>.ts      DB logic reused across routes (e.g. getSettings, sellerSnapshot)
   lib/numbering.ts     nextNumber(tx, type, year): gapless, must run inside the finalize transaction
   lib/validate.ts      validate(target, schema): zValidator returning a uniform 400
-  lib/paths.ts         DATA_DIR, ASSETS_DIR, PDFS_DIR, ...
+  lib/data-location.ts data dir resolution (NESEV_DATA_DIR > config file > <checkout>/data), setup folder checks
+  lib/app-files.ts     shipped files (migrations, fonts, dist/web), DEFAULT_PORT
+  lib/paths.ts         DATA_DIR, ASSETS_DIR, PDFS_DIR, ... (the user's data)
   db/schema.ts         full Drizzle schema + row types (Client, Document, ...)
-  db/index.ts          `db` singleton (data/nesev.db, auto-migrated). db/client.ts has createTestDb().
+  db/index.ts          `db` singleton (<data dir>/nesev.db, auto-migrated). db/client.ts has createTestDb().
 src/web/
   app/router.tsx       central route registry (one marked block)
   app/root-route.tsx   rootRoute (layout = app-shell.tsx sidebar)
@@ -42,7 +45,7 @@ src/web/
   sdk/                 the only API access: per-module hc clients, <resource>.ts (functions, types, queries, hooks),
                        keys.ts (query keys), invalidate.ts (cross-resource invalidation). See "Calling the API".
   features/<feature>/  routes.tsx, pages, components (API access via @/sdk only)
-data/                  nesev.db, assets/, pdfs/ (gitignored)
+<data dir>/            nesev.db, assets/, pdfs/, receipts/, backups/ (outside the repo, or a gitignored data/ in older checkouts)
 ```
 Import aliases: `@/*` → src/web, `@shared/*` → src/shared, `@server/*` → src/server (web may only `import type` from it, and only in `sdk/client.ts`). Server code imports shared modules by relative path.
 
@@ -63,7 +66,7 @@ export default app;
 ```
 - Errors are JSON `{ error: string }` with a 4xx status. `throw new HTTPException(404, { message: "..." })` also works, because app.onError turns it into JSON.
 - Use `db` from `../db`. Wrap multi-step writes in `db.transaction((tx) => ...)`. The transaction is synchronous (bun:sqlite), so don't `await` inside it. Helpers take `DbOrTx`.
-- Files: `data/assets/x.png` is served at `/api/files/assets/x.png` and `data/pdfs/y.pdf` at `/api/files/pdfs/y.pdf`. Store paths in the DB relative to data/ (`"assets/x.png"`).
+- Files: `<data dir>/assets/x.png` is served at `/api/files/assets/x.png` and `<data dir>/pdfs/y.pdf` at `/api/files/pdfs/y.pdf`. Store paths in the DB relative to the data dir (`"assets/x.png"`).
 
 ## Calling the API (web)
 **Features call the API only through `@/sdk` (`src/web/sdk/`). Add new endpoints there, never `hc`/`fetch`/query keys in a feature.**
