@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { ChatContext } from "@shared/chat";
 import {
   apiErrorMessage,
@@ -9,9 +10,11 @@ import {
   type ChatStreamTarget,
   chatApi,
   chatConversationQuery,
+  createdDraftIds,
   keys,
   streamChat,
   useChatTurnRefresh,
+  useCreateExpenseDrafts,
 } from "@/sdk";
 import { useRunUiAction } from "./chat-actions";
 import { chatUi } from "./chat-store";
@@ -180,20 +183,62 @@ export function useChatSession(conversationId: number | null) {
     }
   };
 
-  const send = async (text: string, context: ChatContext | undefined) => {
-    let id = conversationId;
-    if (id == null) {
-      try {
-        const created = await chatApi.create();
-        id = created.id;
-        qc.setQueryData(keys.chat.conversation(id), { ...created, messages: [], pending: null });
-        chatUi.select(id);
-      } catch (err) {
-        setError(apiErrorMessage(err));
-        return;
-      }
+  /** the selected conversation, created first when there is none ("Neu" only creates it on the first message) */
+  const ensureConversation = async (): Promise<number | null> => {
+    if (conversationId != null) return conversationId;
+    try {
+      const created = await chatApi.create();
+      qc.setQueryData(keys.chat.conversation(created.id), { ...created, messages: [], pending: null });
+      chatUi.select(created.id);
+      return created.id;
+    } catch (err) {
+      setError(apiErrorMessage(err));
+      return null;
     }
+  };
+
+  const send = async (text: string, context: ChatContext | undefined) => {
+    const id = await ensureConversation();
+    if (id == null) return;
     await run({ kind: "message", conversationId: id, body: { text, context } });
+  };
+
+  // receipts from the paperclip / a drop on the panel: one draft expense per file (the normal quick capture, nothing
+  // is analysed), then recorded in the conversation so the cards and the model's context survive a reload
+  const createDrafts = useCreateExpenseDrafts();
+  const [uploading, setUploading] = useState(false);
+  const upload = async (files: File[]) => {
+    if (!files.length || uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      let expenseIds: number[];
+      const failures: string[] = [];
+      try {
+        expenseIds = (await createDrafts.mutateAsync(files)).map((e) => e.id);
+      } catch (err) {
+        expenseIds = createdDraftIds(err);
+        failures.push(apiErrorMessage(err));
+        if (!expenseIds.length) {
+          toast.error(apiErrorMessage(err));
+          return;
+        }
+        toast.warning(apiErrorMessage(err));
+      }
+      const id = await ensureConversation();
+      if (id == null) return;
+      try {
+        const res = await chatApi.recordUploads(id, { expenseIds, failures });
+        qc.setQueryData<ChatConversationDetail>(keys.chat.conversation(id), (d) =>
+          d ? { ...d, ...res.conversation, messages: upsert(d.messages, res.message) } : d,
+        );
+        void qc.invalidateQueries({ queryKey: keys.chat.conversations });
+      } catch (err) {
+        setError(`Die Belege wurden als Ausgaben angelegt, aber nicht im Chat vermerkt: ${apiErrorMessage(err)}`);
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const confirm = async (approve: boolean) => {
@@ -205,5 +250,5 @@ export function useChatSession(conversationId: number | null) {
 
   const stop = () => abortRef.current?.abort();
 
-  return { detail, streaming, live, error, dismissError: () => setError(null), send, confirm, stop };
+  return { detail, streaming, live, error, dismissError: () => setError(null), send, confirm, stop, upload, uploading };
 }

@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUp, Square, X } from "lucide-react";
+import { ArrowUp, Loader2, Paperclip, Square, X } from "lucide-react";
 import type { ChatContext } from "@shared/chat";
 import { Button } from "@/components/ui/button";
 import { VoiceInput } from "./voice-input";
@@ -24,8 +24,11 @@ export const ChatComposer = forwardRef<
     blocked: { text: string; settingsLink?: boolean } | null;
     context: ChatContext | null;
     onDropContext: () => void;
+    /** paperclip: pick receipts (one draft expense per file); null = not possible right now */
+    onAttach: (() => void) | null;
+    uploading: boolean;
   }
->(function ChatComposer({ value, onChange, onSend, onStop, streaming, blocked, context, onDropContext }, ref) {
+>(function ChatComposer({ value, onChange, onSend, onStop, streaming, blocked, context, onDropContext, onAttach, uploading }, ref) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   useImperativeHandle(ref, () => ({ focus: () => textarea.current?.focus() }), []);
 
@@ -88,6 +91,17 @@ export const ChatComposer = forwardRef<
           aria-label="Nachricht an den Assistenten"
           className="max-h-[200px] min-h-6 flex-1 resize-none bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
         />
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          disabled={!onAttach || uploading}
+          onClick={() => onAttach?.()}
+          aria-label="Belege hochladen"
+          title="Belege hochladen (PDF, JPG, PNG, WebP) – oder auf den Chat ziehen"
+          className="text-muted-foreground"
+        >
+          {uploading ? <Loader2 className="animate-spin" /> : <Paperclip />}
+        </Button>
         <VoiceInput
           disabled={!!blocked && !streaming}
           onText={(text) => {

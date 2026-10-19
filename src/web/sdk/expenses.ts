@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ExpenseCreate, ExpenseListQuery, ExpenseUpdate, ReceiptCropInput } from "@shared/schemas/expense";
+import { DetailedError } from "hono/client";
 import { expenses, idParam, parseResponse } from "./client";
 import { fileUrl } from "./files";
 import { useInvalidate } from "./invalidate";
@@ -172,6 +173,16 @@ export function useRestoreReceipt() {
     mutationFn: (id: number) => expensesApi.restoreReceipt(id),
     onSuccess: onSaved,
   });
+}
+
+/**
+ * Ids of the drafts a failed quick capture still created (partial failure: "2 von 3 Belegen angelegt; …");
+ * empty when nothing was created.
+ */
+export function createdDraftIds(err: unknown): number[] {
+  if (!(err instanceof DetailedError)) return [];
+  const ids = (err.detail as { data?: { createdIds?: unknown } } | undefined)?.data?.createdIds;
+  return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
 }
 
 /** Quick capture: one draft expense per dropped receipt. */

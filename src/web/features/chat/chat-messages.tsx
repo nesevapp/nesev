@@ -8,6 +8,7 @@ import { type ChatCard, type ChatConversationDetail, type ChatMessageView, type 
 import { ActionButton } from "./chat-actions";
 import { ChatCardView, cardPaths } from "./chat-cards";
 import { FeedbackAction } from "./chat-feedback";
+import { UploadsCard } from "./chat-uploads";
 import { MarkdownView, type LinkRenderer } from "./markdown-view";
 import { appPath, isFilePath } from "./markdown";
 import { isIrreversibleTool, summarizeArgs, toolMeta } from "./tools";
@@ -244,7 +245,7 @@ export function MessageList({
   return (
     <div className="space-y-3">
       {detail.messages.map((m) => {
-        if (m.role === "user") return <UserBubble key={m.id} message={m} />;
+        if (m.role === "user") return m.uploads ? <UploadsCard key={m.id} uploads={m.uploads} /> : <UserBubble key={m.id} message={m} />;
         if (m.role === "tool") {
           if (m.toolCallId && shownCalls.has(m.toolCallId)) return null;
           // a result whose call isn't part of an assistant message (shouldn't happen): show it on its own

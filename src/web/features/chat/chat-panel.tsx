@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import { toast } from "sonner";
 import { chatApi, chatStatusQuery } from "@/sdk";
 import { cn } from "@/lib/utils";
+import { DropOverlay, pickReceiptFiles, splitReceiptFiles, useWindowFileDrag } from "@/features/expenses/components/file-drop";
 import { ChatComposer, type ComposerHandle } from "./chat-composer";
 import { ChatHeader } from "./chat-header";
 import { ConfirmCard, EmptyState, MessageList } from "./chat-messages";
@@ -116,6 +118,28 @@ function ChatPanelBody({ open }: { open: boolean }) {
           ? { text: "Bitte zuerst die Aktion oben ausführen oder abbrechen." }
           : null;
 
+  // receipts (paperclip or dropped on the panel): like a message, not while a reply runs or a confirmation waits;
+  // the model isn't needed for it
+  const dragging = useWindowFileDrag();
+  const uploadBlocked = !status.data?.enabled
+    ? "Der Assistent ist deaktiviert."
+    : pending
+      ? "Bitte zuerst die offene Aktion bestätigen oder ablehnen."
+      : session.streaming
+        ? "Der Assistent antwortet gerade noch."
+        : null;
+  const onFiles = (files: File[]) => {
+    const { accepted, rejected } = splitReceiptFiles(files);
+    if (rejected.length) toast.error(`Nicht unterstützt: ${rejected.join(", ")}`, { description: "Belege als PDF, JPG, PNG oder WebP." });
+    if (!accepted.length) return;
+    if (uploadBlocked) {
+      toast.error(uploadBlocked);
+      return;
+    }
+    stickToBottom.current = true;
+    void session.upload(accepted);
+  };
+
   const send = (text = draft) => {
     const trimmed = text.trim();
     if (!trimmed || session.streaming || blocked) return;
@@ -144,6 +168,12 @@ function ChatPanelBody({ open }: { open: boolean }) {
         !open && "hidden",
       )}
     >
+      <DropOverlay
+        active={open && dragging}
+        onFiles={onFiles}
+        label="Belege hier ablegen – je Datei wird ein Ausgaben-Entwurf angelegt"
+        className="inset-2 z-[60] px-6 text-center"
+      />
       <ChatHeader conversation={detail} status={status.data} busyText={session.streaming ? session.live.statusText : null} />
       <div
         ref={scroller}
@@ -188,6 +218,8 @@ function ChatPanelBody({ open }: { open: boolean }) {
         blocked={blocked}
         context={context}
         onDropContext={() => setDropContext(true)}
+        onAttach={uploadBlocked ? null : () => pickReceiptFiles(true, onFiles)}
+        uploading={session.uploading}
       />
     </aside>
   );

@@ -9,6 +9,8 @@ import type {
   ChatSettings,
   ChatStatus,
   ChatStreamEvent,
+  ChatUploadsInput,
+  ChatUploadsResult,
   ChatWarmState,
 } from "@shared/chat";
 import { chat, idParam, parseResponse } from "./client";
@@ -36,6 +38,9 @@ export const chatApi = {
   saveFeedback: (id: number, json: ChatFeedbackInput): Promise<ChatFeedback> => parseResponse(conversation().feedback.$post({ param: idParam(id), json })),
   removeFeedback: (id: number, messageId: number) =>
     parseResponse(conversation().feedback[":messageId"].$delete({ param: { ...idParam(id), messageId: String(messageId) } })),
+  /** records receipts uploaded in the chat (drafts created via expensesApi.createDrafts) as a message */
+  recordUploads: (id: number, json: ChatUploadsInput): Promise<ChatUploadsResult> =>
+    parseResponse(conversation().uploads.$post({ param: idParam(id), json })),
   /** starts the model and fills its prompt cache in the background (the panel opened) */
   warm: (): Promise<{ state: ChatWarmState }> => parseResponse(chat.warm.$post()),
 };
@@ -55,6 +60,8 @@ export type {
   ChatStreamEvent,
   ChatToolCall,
   ChatToolResult,
+  ChatUpload,
+  ChatUploads,
   ChatWarmState,
 } from "@shared/chat";
 
