@@ -58,6 +58,8 @@ export function DocumentView({ doc }: { doc: Document }) {
   const client = doc.clientSnapshot;
   const actions = ALLOWED_STATUS_ACTIONS[doc.type][doc.status] ?? [];
   const taxNote = settings ? taxNoteFor(doc.taxMode, settings) : null;
+  // the discount column only when a line has one (keeps the table narrow on phones)
+  const hasDiscount = doc.items.some((i) => i.discountBp);
   const busy = changeStatus.isPending || derive.isPending || remind.isPending;
 
   const runAction = (action: StatusAction, opts: { paidAt?: string; removeAllocations?: boolean } = {}) =>
@@ -141,44 +143,49 @@ export function DocumentView({ doc }: { doc: Document }) {
       {doc.introText && <p className="border-b py-6 text-sm whitespace-pre-line">{doc.introText}</p>}
 
       <section className="py-6">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-xs text-muted-foreground">
-              <th className="w-8 pb-2 text-left font-medium">#</th>
-              <th className="pb-2 text-left font-medium">Bezeichnung</th>
-              <th className="pb-2 text-right font-medium">Menge</th>
-              <th className="pb-2 text-right font-medium">Einzelpreis</th>
-              <th className="pb-2 text-right font-medium">USt.</th>
-              <th className="pb-2 text-right font-medium">Rabatt</th>
-              <th className="pb-2 text-right font-medium">Gesamt netto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {doc.items.map((item, i) => {
-              const line = calcLine(item, doc.taxMode);
-              return (
-                <tr key={item.id} className="border-b align-top">
-                  <td className="tabular py-2.5 text-muted-foreground">{i + 1}</td>
-                  <td className="py-2.5 pr-4">
-                    <div className="font-medium">{item.title}</div>
-                    {item.description && (
-                      <div className="whitespace-pre-line text-muted-foreground">{item.description}</div>
+        {/* narrow screens: the table scrolls inside its own box, the page doesn't */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs text-muted-foreground">
+                <th className="w-8 pr-2 pb-2 text-left font-medium">#</th>
+                <th className="pb-2 text-left font-medium">Bezeichnung</th>
+                <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">Menge</th>
+                <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">Einzelpreis</th>
+                <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">USt.</th>
+                {hasDiscount && <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">Rabatt</th>}
+                <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">Gesamt netto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {doc.items.map((item, i) => {
+                const line = calcLine(item, doc.taxMode);
+                return (
+                  <tr key={item.id} className="border-b align-top">
+                    <td className="tabular py-2.5 pr-2 text-muted-foreground">{i + 1}</td>
+                    <td className="min-w-32 py-2.5 pr-1">
+                      <div className="font-medium">{item.title}</div>
+                      {item.description && (
+                        <div className="whitespace-pre-line text-muted-foreground">{item.description}</div>
+                      )}
+                    </td>
+                    <td className="tabular py-2.5 pl-3 text-right whitespace-nowrap">
+                      {formatQuantity(item.quantity)} {item.unit}
+                    </td>
+                    <td className="tabular py-2.5 pl-3 text-right whitespace-nowrap">{formatCents(item.unitPriceCents)}</td>
+                    <td className="tabular py-2.5 pl-3 text-right whitespace-nowrap">{formatBp(line.taxRateBp)}</td>
+                    {hasDiscount && (
+                      <td className="tabular py-2.5 pl-3 text-right text-muted-foreground">
+                        {item.discountBp ? formatBp(item.discountBp) : "–"}
+                      </td>
                     )}
-                  </td>
-                  <td className="tabular py-2.5 text-right whitespace-nowrap">
-                    {formatQuantity(item.quantity)} {item.unit}
-                  </td>
-                  <td className="tabular py-2.5 text-right">{formatCents(item.unitPriceCents)}</td>
-                  <td className="tabular py-2.5 text-right">{formatBp(line.taxRateBp)}</td>
-                  <td className="tabular py-2.5 text-right text-muted-foreground">
-                    {item.discountBp ? formatBp(item.discountBp) : "–"}
-                  </td>
-                  <td className="tabular py-2.5 text-right">{formatCents(line.netCents)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className="tabular py-2.5 pl-3 text-right whitespace-nowrap">{formatCents(line.netCents)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <div className="mt-6 flex justify-end">
           <TotalsPanel items={doc.items} taxMode={doc.taxMode} taxNote={taxNote} />
         </div>
