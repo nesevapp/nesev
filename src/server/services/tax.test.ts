@@ -423,6 +423,18 @@ describe("EAR", () => {
     expect(r.warnings.filter((w) => w.includes("GWG-Grenze"))).toHaveLength(2); // 1.200,00 gross
   });
 
+  test("open at year end: refunds on credit notes booked by 31.12. count, later ones don't", () => {
+    const { db, doc, pay } = setup();
+    const inv = doc([{ net: 100000 }], { issueDate: "2026-10-01" });
+    const cn = doc([{ net: 20000 }], { type: "credit_note", number: "GS-1", parentId: inv.id, issueDate: "2026-10-15" });
+    pay({ documentId: inv.id }, "2026-11-02", 96000); // 1.200 − 240
+    expect(computeEar(db, 2026).unpaid).toEqual([]);
+    pay({ documentId: cn.id }, "2027-01-05", 24000); // refunded again (by mistake) next year
+    expect(computeEar(db, 2026).unpaid).toEqual([]);
+    pay({ documentId: cn.id }, "2026-12-20", 24000); // … and in December: the client owes 240 at year end
+    expect(computeEar(db, 2026).unpaid.map((u) => [u.number, u.openCents])).toEqual([[inv.number, 24000]]);
+  });
+
   test("Kleinunternehmer: expenses gross", () => {
     const { db, expense } = setup({ smallBusiness: true });
     expense("domestic", [{ net: 10000 }], { paidAt: "2026-02-01" });

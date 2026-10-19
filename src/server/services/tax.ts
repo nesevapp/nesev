@@ -916,12 +916,21 @@ export function computeEar(db: DbOrTx, year: number): EarReport {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([kz, amountCents]) => ({ kz, label: E1A_LABELS[kz] ?? kz, amountCents }));
 
-  // Items of the year still open at year end (not part of this year's EAR).
+  // Items of the year still open at year end (not part of this year's EAR). Open as of 31.12. like
+  // invoicePaymentState (services/bank.ts): gross − credit notes − payments + refunds on its credit notes, each
+  // counted only up to that date; payments include a hand-marked paidAt (the cash events above).
   const unpaid: EarOpenItem[] = [];
+  /** invoice id → credit notes issued by year end − refunds on them booked by year end */
+  const creditedNet = new Map<number, number>();
+  for (const c of docs) {
+    if (c.ref.type !== "credit_note" || c.parentId == null) continue;
+    const credited = c.ref.issueDate <= to ? c.totals.grossCents : 0;
+    const refunded = c.payments.filter((p) => p.date <= to).reduce((t, p) => t + p.amountCents, 0);
+    creditedNet.set(c.parentId, (creditedNet.get(c.parentId) ?? 0) + credited - refunded);
+  }
   for (const d of docs) {
     if (d.ref.type !== "invoice" || d.ref.issueDate < from || d.ref.issueDate > to) continue;
-    const cn = docs.filter((c) => c.parentId === d.ref.id && c.ref.type === "credit_note" && c.ref.issueDate <= to).reduce((t, c) => t + c.totals.grossCents, 0);
-    const open = d.totals.grossCents - cn - (received.get(d.ref.id) ?? 0);
+    const open = d.totals.grossCents - (creditedNet.get(d.ref.id) ?? 0) - (received.get(d.ref.id) ?? 0);
     if (open > 0) unpaid.push({ kind: "document", id: d.ref.id, docType: "invoice", number: d.ref.number, date: d.ref.issueDate, party: d.ref.clientName, openCents: open });
   }
   for (const e of expenseList) {
