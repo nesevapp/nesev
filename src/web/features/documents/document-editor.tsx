@@ -155,6 +155,42 @@ export function DocumentEditor({
     openDetail(saved);
   };
 
+  /**
+   * Validate before asking the irreversible question: the form schema plus the server's finalize checks
+   * (client, at least one line, line titles, UID for reverse charge, service period). Errors show on the fields.
+   */
+  const requestFinalize = async () => {
+    const valid = await form.trigger(undefined, { shouldFocus: true });
+    const values = form.getValues();
+    const issues = finalizeIssues(values, { clientUid: client.data?.uid });
+    for (const issue of issues) {
+      if (issue.name) form.setError(issue.name, { type: "finalize", message: issue.message });
+    }
+    if (!valid || issues.length > 0) {
+      const named = issues.find((i) => i.name);
+      if (valid && named?.name) form.setFocus(named.name);
+      toast.error(issues.find((i) => !i.name)?.message ?? "Bitte Eingaben prüfen");
+      return;
+    }
+    setConfirmFinalize(true);
+  };
+
+  // finalize errors (set by hand above) disappear as soon as their cause is fixed
+  useEffect(() => {
+    const sub = form.watch((values) => {
+      const open = new Set(finalizeIssues(values as DocumentFormValues, {}).map((i) => i.name));
+      const { errors } = form.formState;
+      const stale: FinalizeField[] = [];
+      if (errors.servicePeriodEnd?.type === "finalize" && !open.has("servicePeriodEnd")) stale.push("servicePeriodEnd");
+      (values.items ?? []).forEach((_, i) => {
+        const name = `items.${i}.title` as const;
+        if (errors.items?.[i]?.title?.type === "finalize" && !open.has(name)) stale.push(name);
+      });
+      if (stale.length > 0) form.clearErrors(stale);
+    });
+    return () => sub.unsubscribe();
+  }, [form]);
+
   const onFinalize = async () => {
     setConfirmFinalize(false);
     const saved = await save();
@@ -230,7 +266,7 @@ export function DocumentEditor({
     <Page
       title={
         <span className="flex items-center gap-3">
-          {doc ? `${config.singular} (Entwurf)` : config.newLabel}
+          {doc ? config.singular : config.newLabel}
           {doc && <StatusBadge status={doc.status} />}
         </span>
       }
@@ -427,7 +463,7 @@ export function DocumentEditor({
               Speichern
               <kbd className="ml-1 text-[10px] text-muted-foreground">⌘S</kbd>
             </Button>
-            <Button type="button" size="sm" disabled={busy} onClick={() => setConfirmFinalize(true)}>
+            <Button type="button" size="sm" disabled={busy} onClick={() => void requestFinalize()}>
               <Lock />
               Finalisieren
             </Button>
@@ -470,6 +506,27 @@ export function DocumentEditor({
 }
 
 type Control = RhfControl<DocumentFormValues, unknown, DocumentFormData>;
+type FinalizeField = "servicePeriodEnd" | `items.${number}.title`;
+
+/** The server's finalize checks (services/documents.ts finalizeDocument) that the form schema doesn't cover. */
+function finalizeIssues(
+  values: DocumentFormValues,
+  opts: { clientUid?: string },
+): { name?: FinalizeField; message: string }[] {
+  const issues: { name?: FinalizeField; message: string }[] = [];
+  const items = values.items ?? [];
+  if (items.length === 0) issues.push({ message: "Mindestens eine Position ist erforderlich" });
+  items.forEach((item, i) => {
+    if (!item?.title?.trim()) issues.push({ name: `items.${i}.title`, message: "Bezeichnung fehlt" });
+  });
+  if (requiresClientUid(values.taxMode) && opts.clientUid !== undefined && !opts.clientUid.trim()) {
+    issues.push({ message: "Reverse Charge erfordert eine UID-Nummer beim Kunden" });
+  }
+  if (values.servicePeriodStart && values.servicePeriodEnd && values.servicePeriodEnd < values.servicePeriodStart) {
+    issues.push({ name: "servicePeriodEnd", message: "Ende liegt vor dem Beginn" });
+  }
+  return issues;
+}
 type DateName = "issueDate" | "dueDate" | "validUntil" | "servicePeriodStart" | "servicePeriodEnd";
 
 function DateField({

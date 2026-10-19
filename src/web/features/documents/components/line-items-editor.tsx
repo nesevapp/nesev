@@ -21,7 +21,19 @@ export type LineItemsFormValues = { items: z.input<typeof documentItemSchema>[] 
 // The editor only touches `items.*`, so it works on the narrowed form type internally.
 type FormControl = Control<LineItemsFormValues>;
 
-export const GRID = "grid grid-cols-[28px_minmax(0,1fr)_84px_76px_112px_84px_72px_112px_60px] gap-x-2";
+/**
+ * Row grid. Wide editors (≥ 62rem, container query on the editor) use one row per line; narrower ones (e.g. a
+ * 1024 px window) put title/description on the first row and the numbers on a second row below, so the title
+ * keeps its width. DOM order (and so Tab order) is the same in both layouts.
+ */
+const GRID =
+  "grid grid-cols-[28px_repeat(6,minmax(0,1fr))_60px] gap-x-2 gap-y-1.5 @min-[62rem]/items:grid-cols-[28px_minmax(0,1fr)_84px_76px_112px_84px_72px_112px_60px]";
+/** handle column: spans both rows in the narrow layout */
+const HANDLE_CELL = "row-span-2 @min-[62rem]/items:row-span-1";
+/** title cell: the whole first row in the narrow layout */
+const TITLE_CELL = "col-span-6 @min-[62rem]/items:col-span-1";
+/** actions: top right in the narrow layout, last column otherwise */
+const ACTIONS_CELL = "col-start-8 row-start-1 @min-[62rem]/items:col-start-auto @min-[62rem]/items:row-start-auto";
 
 export function newItem(taxRateBp: number = DEFAULT_TAX_RATE_BP): DocumentItemInput {
   return { articleId: null, title: "", description: "", quantity: 1000, unit: "", unitPriceCents: 0, taxRateBp, discountBp: 0 };
@@ -58,17 +70,17 @@ export function LineItemsEditor<T extends LineItemsFormValues, TTransformed = T>
   };
 
   return (
-    <div>
-      <div className={cn(GRID, "border-b pb-2 text-xs font-medium text-muted-foreground")}>
-        <span />
-        <span>Bezeichnung</span>
+    <div className="@container/items">
+      <div className={cn(GRID, "gap-y-0.5 border-b pb-2 text-xs font-medium text-muted-foreground")}>
+        <span className={HANDLE_CELL} />
+        <span className={TITLE_CELL}>Bezeichnung</span>
         <span className="text-right">Menge</span>
         <span>Einheit</span>
         <span className="text-right">Einzelpreis</span>
         <span>USt.</span>
         <span className="text-right">Rabatt %</span>
         <span className="text-right">Gesamt netto</span>
-        <span />
+        <span className={ACTIONS_CELL} />
       </div>
 
       {fields.length === 0 && (
@@ -97,7 +109,7 @@ export function LineItemsEditor<T extends LineItemsFormValues, TTransformed = T>
                 }
               }}
             >
-              <div className="flex flex-col items-center pt-0.5 text-muted-foreground">
+              <div className={cn(HANDLE_CELL, "flex flex-col items-center pt-0.5 text-muted-foreground")}>
                 <span className="tabular text-xs leading-4 group-hover:hidden group-focus-within:hidden">{index + 1}</span>
                 <button
                   type="button"
@@ -121,7 +133,7 @@ export function LineItemsEditor<T extends LineItemsFormValues, TTransformed = T>
                 </button>
               </div>
 
-              <div className="space-y-1.5">
+              <div className={cn(TITLE_CELL, "space-y-1.5")}>
                 <TitleField control={control} index={index} taxMode={taxMode} linked={item?.articleId != null} />
                 <Controller
                   control={control}
@@ -225,7 +237,7 @@ export function LineItemsEditor<T extends LineItemsFormValues, TTransformed = T>
                   <span className="tabular text-xs text-muted-foreground line-through">{formatCents(line.grossLineCents)}</span>
                 )}
               </div>
-              <div className="flex justify-end">
+              <div className={cn(ACTIONS_CELL, "flex justify-end")}>
                 <Button
                   type="button"
                   variant="ghost"
@@ -317,6 +329,7 @@ function TitleField({
     });
   };
 
+  const error = title.fieldState.error?.message;
   return (
     <div className="relative">
       <ArticleAutocompleteInput
@@ -329,14 +342,16 @@ function TitleField({
         showTax={taxMode === "AT_DOMESTIC"}
         placeholder="Bezeichnung oder Artikel suchen…"
         aria-label={`Position ${index + 1}: Bezeichnung`}
+        aria-invalid={!!error}
         className={cn("font-medium", linked && "pr-8")}
       />
       {linked && (
         <Tag
           aria-hidden
-          className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/60"
+          className="pointer-events-none absolute top-4.5 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/60"
         />
       )}
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

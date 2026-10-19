@@ -60,7 +60,10 @@ export function formatDocumentNumber(type: NumberedType, year: number, seq: numb
 export const STATUS_ACTIONS = ["sent", "accepted", "declined", "paid", "unpaid"] as const;
 export type StatusAction = (typeof STATUS_ACTIONS)[number];
 
-/** Allowed actions per type and current status. Drafts change status only via finalize. */
+/**
+ * Allowed actions per type and current status. Drafts change status only via finalize.
+ * The first action is the primary one in the document view (for final invoices "paid" before "sent").
+ */
 export const ALLOWED_STATUS_ACTIONS: Record<DocumentType, Partial<Record<DocumentStatus, readonly StatusAction[]>>> = {
   offer: {
     final: ["sent", "accepted", "declined"],
@@ -69,7 +72,7 @@ export const ALLOWED_STATUS_ACTIONS: Record<DocumentType, Partial<Record<Documen
     declined: ["accepted"],
   },
   invoice: {
-    final: ["sent", "paid"],
+    final: ["paid", "sent"],
     sent: ["paid"],
     paid: ["unpaid"],
   },

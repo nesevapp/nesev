@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, Download, Eye, FileOutput, MoreHorizontal, ReceiptText } from "lucide-react";
+import { BellRing, Copy, Download, Eye, FileOutput, MoreHorizontal, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate, todayIso } from "@shared/dates";
 import { ALLOWED_STATUS_ACTIONS, STATUS_ACTION_LABELS, type StatusAction } from "@shared/documents";
@@ -21,12 +21,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InvoicePayments } from "@/features/bank/components/invoice-payments";
-import { CreateReminderButton, InvoiceReminders } from "@/features/reminders/components/invoice-reminders";
+import { InvoiceReminders, useRemindAndOpen } from "@/features/reminders/components/invoice-reminders";
 import {
   apiErrorMessage,
   type Document,
@@ -48,6 +49,7 @@ export function DocumentView({ doc }: { doc: Document }) {
   const { data: settings } = useQuery(settingsQuery);
   const changeStatus = useChangeDocumentStatus();
   const derive = useDeriveAndOpen();
+  const remind = useRemindAndOpen();
   const [paidOpen, setPaidOpen] = useState(false);
   const [paidAt, setPaidAt] = useState(todayIso());
   const [resetOpen, setResetOpen] = useState(false);
@@ -56,7 +58,7 @@ export function DocumentView({ doc }: { doc: Document }) {
   const client = doc.clientSnapshot;
   const actions = ALLOWED_STATUS_ACTIONS[doc.type][doc.status] ?? [];
   const taxNote = settings ? taxNoteFor(doc.taxMode, settings) : null;
-  const busy = changeStatus.isPending || derive.isPending;
+  const busy = changeStatus.isPending || derive.isPending || remind.isPending;
 
   const runAction = (action: StatusAction, opts: { paidAt?: string; removeAllocations?: boolean } = {}) =>
     changeStatus.mutate(
@@ -187,29 +189,7 @@ export function DocumentView({ doc }: { doc: Document }) {
       {doc.type === "invoice" && <InvoicePayments documentId={doc.id} />}
       {doc.type === "invoice" && <InvoiceReminders invoiceId={doc.id} />}
 
-      <ActionBar
-        left={
-          <>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => derive.run(doc, "duplicate")}>
-              <Copy />
-              Duplizieren
-            </Button>
-            {doc.type === "offer" && (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => derive.run(doc, "convert-to-invoice")}>
-                <FileOutput />
-                In Rechnung umwandeln
-              </Button>
-            )}
-            {doc.type === "invoice" && (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => derive.run(doc, "credit-note")}>
-                <ReceiptText />
-                Gutschrift erstellen
-              </Button>
-            )}
-            <CreateReminderButton invoice={doc} disabled={busy} />
-          </>
-        }
-      >
+      <ActionBar>
         <Button variant="outline" size="sm" asChild>
           <a href={documentPdfUrl(doc.id)} target="_blank" rel="noreferrer">
             <Eye />
@@ -223,22 +203,44 @@ export function DocumentView({ doc }: { doc: Document }) {
           </a>
         </Button>
         {doc.type !== "offer" && doc.number && <EInvoiceDownloadButton documentId={doc.id} number={doc.number} />}
-        {moreActions.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon-sm" aria-label="Weitere Statusaktionen" disabled={busy}>
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {moreActions.map((a) => (
-                <DropdownMenuItem key={a} onSelect={() => onAction(a)}>
-                  {STATUS_ACTION_LABELS[a]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {/* follow-ups and secondary status actions, so the bar stays one row */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon-sm" aria-label="Weitere Aktionen" title="Weitere Aktionen" disabled={busy}>
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {doc.type === "invoice" && doc.overdue && (
+              <DropdownMenuItem onSelect={() => remind.run(doc.id)}>
+                <BellRing />
+                Mahnung erstellen
+              </DropdownMenuItem>
+            )}
+            {doc.type === "offer" && (
+              <DropdownMenuItem onSelect={() => derive.run(doc, "convert-to-invoice")}>
+                <FileOutput />
+                In Rechnung umwandeln
+              </DropdownMenuItem>
+            )}
+            {doc.type === "invoice" && (
+              <DropdownMenuItem onSelect={() => derive.run(doc, "credit-note")}>
+                <ReceiptText />
+                Gutschrift erstellen
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => derive.run(doc, "duplicate")}>
+              <Copy />
+              Duplizieren
+            </DropdownMenuItem>
+            {moreActions.length > 0 && <DropdownMenuSeparator />}
+            {moreActions.map((a) => (
+              <DropdownMenuItem key={a} onSelect={() => onAction(a)}>
+                {STATUS_ACTION_LABELS[a]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {primaryAction && (
           <Button size="sm" disabled={busy} onClick={() => onAction(primaryAction)}>
             {STATUS_ACTION_LABELS[primaryAction]}
