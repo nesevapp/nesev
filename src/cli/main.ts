@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { binaryServiceSpec, installedServicePort, installService, isServiceInstalled, restartService, serviceLocation, serviceStatusLines, uninstallService } from "./service";
 import { updateBinary } from "./update";
 import { compareVersions, isCompiled, VERSION } from "./version";
@@ -20,6 +21,7 @@ Verwendung:
   nesev service status     Zustand des Hintergrunddienstes
   nesev update [--check]   auf die neueste Version aktualisieren
   nesev mcp                MCP-Server (stdio) für KI-Assistenten wie Claude
+  nesev restore <datei>    Backup (.zip oder .db) einspielen [--data-dir ORDNER] [--yes]
   nesev uninstall          Dienst und Programm entfernen (deine Daten bleiben)
   nesev --version          Version anzeigen
 
@@ -124,6 +126,48 @@ async function update(args: string[]) {
   else console.log("Läuft nesev gerade, bitte neu starten.");
 }
 
+/**
+ * Restores a backup ZIP / .db (services/restore.ts). Into a new or empty folder right away (and it becomes the data
+ * folder if none is set up yet); over existing data it's staged and applied on nesev's next start, which moves the
+ * current data to backups/before-restore-<time>/.
+ */
+async function restore(args: string[]) {
+  const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--data-dir");
+  if (!file) throw new UsageError("Verwendung: nesev restore <backup.zip|.db> [--data-dir ORDNER] [--yes]");
+  const di = args.indexOf("--data-dir");
+  const { expandHome, resolveDataDir, writeConfig } = await import("../server/lib/data-location");
+  const { restoreIntoEmptyDir, stageRestore } = await import("../server/services/restore");
+  const configured = resolveDataDir();
+  const target = di >= 0 && args[di + 1] ? resolve(expandHome(args[di + 1]!)) : configured?.dir;
+  if (!target) throw new UsageError("nesev ist noch nicht eingerichtet: Zielordner mit --data-dir ORDNER angeben.");
+  if (!existsSync(file)) throw new Error(`Datei nicht gefunden: ${file}`);
+  const bytes = new Uint8Array(readFileSync(file));
+  const describe = (s: Awaited<ReturnType<typeof stageRestore>>) =>
+    `${s.companyName || "(ohne Firmenname)"}: ${s.clients} Kunden, ${s.invoices} Rechnungen, ${s.expenses} Ausgaben` +
+    (s.latestDocumentDate ? `, letzte Rechnung ${s.latestDocumentDate}` : "");
+
+  if (!existsSync(join(target, "nesev.db"))) {
+    const summary = restoreIntoEmptyDir(target, bytes);
+    console.log(`Backup eingespielt in ${target}
+  ${describe(summary)}`);
+    if (!configured) {
+      writeConfig({ dataDir: target });
+      console.log("Dieser Ordner ist jetzt der nesev-Datenordner.");
+    }
+    return;
+  }
+  if (!args.includes("--yes")) {
+    if (!process.stdin.isTTY) throw new UsageError(`In ${target} liegen bereits Daten. Zum Ersetzen mit --yes bestätigen.`);
+    const answer = prompt(`In ${target} liegen bereits Daten. Sie werden nach backups/ verschoben und durch das Backup ersetzt. Fortfahren? [j/N]`);
+    if (!/^(j|ja|y|yes)$/i.test(answer?.trim() ?? "")) return console.log("Abgebrochen, nichts geändert.");
+  }
+  const summary = stageRestore(target, bytes, { confirmed: true });
+  console.log(`Backup vorgemerkt: ${describe(summary)}
+Die bisherigen Daten kommen beim Einspielen nach ${join(target, "backups")}/before-restore-….`);
+  if (target === configured?.dir && restartService()) console.log("Hintergrunddienst neu gestartet: das Backup wird jetzt eingespielt.");
+  else console.log("Wird beim nächsten Start von nesev eingespielt (läuft nesev gerade: bitte neu starten).");
+}
+
 async function uninstall(args: string[]) {
   const dryRun = args.includes("--dry-run");
   const { configFile, resolveDataDir } = await import("../server/lib/data-location");
@@ -163,6 +207,8 @@ export async function main(argv: string[]) {
       const { startStdio } = await import("../mcp/server");
       return startStdio();
     }
+    case "restore":
+      return restore(rest);
     case "uninstall":
       return uninstall(rest);
     case "version":
