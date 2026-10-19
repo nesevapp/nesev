@@ -1,6 +1,7 @@
 import type { McpServer, StandardSchemaWithJSON, ToolAnnotations } from "@modelcontextprotocol/server";
 import { join } from "node:path";
 import type { z } from "zod";
+import { DEFAULT_PORT } from "../server/lib/app-files";
 import { DATA_DIR } from "../server/lib/paths";
 import { TOOL_GROUP_META, type ToolGroup } from "../shared/chat";
 import { type Api, ApiError, api, createApi } from "./api";
@@ -11,7 +12,7 @@ import { type Api, ApiError, api, createApi } from "./api";
 export interface ToolContext {
   /** in-process typed API clients (see api.ts) */
   api: Api;
-  /** absolute link into the web UI, e.g. webUrl("/invoices/12") → "http://localhost:5174/invoices/12" */
+  /** absolute link into the web UI, e.g. webUrl("/invoices/12") → "http://localhost:3998/invoices/12" */
   webUrl: (path: string) => string;
   /** absolute path of a file stored relative to the data dir ("pdfs/RE-2026-0001.pdf") */
   dataPath: (relative: string) => string;
@@ -24,16 +25,18 @@ export interface ToolContext {
   inServer: boolean;
 }
 
-export const DEFAULT_WEB_URL = "http://localhost:5174";
-export const DEFAULT_API_URL = "http://127.0.0.1:3998";
+/** The nesev server serves API and web app on one port (PORT, default 3998); in dev the web app is Vite's URL. */
+export const DEFAULT_WEB_URL = `http://localhost:${DEFAULT_PORT}`;
+export const DEFAULT_API_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
 export function createContext(env: Record<string, string | undefined> = process.env): ToolContext {
-  const base = (env.NESEV_WEB_URL?.trim() || DEFAULT_WEB_URL).replace(/\/+$/, "");
+  const port = env.PORT?.trim();
+  const base = (env.NESEV_WEB_URL?.trim() || (port ? `http://localhost:${port}` : DEFAULT_WEB_URL)).replace(/\/+$/, "");
   return {
     api,
     webUrl: (path) => `${base}${path.startsWith("/") ? path : `/${path}`}`,
     dataPath: (relative) => join(DATA_DIR, relative),
-    apiUrl: (env.NESEV_API_URL?.trim() || DEFAULT_API_URL).replace(/\/+$/, ""),
+    apiUrl: (env.NESEV_API_URL?.trim() || (port ? `http://127.0.0.1:${port}` : DEFAULT_API_URL)).replace(/\/+$/, ""),
     inServer: false,
   };
 }
