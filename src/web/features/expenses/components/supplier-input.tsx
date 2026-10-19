@@ -10,6 +10,7 @@ import { type SupplierSuggestion, supplierSuggestionsQuery } from "@/sdk";
 /**
  * Free-text supplier name with suggestions from previous expenses.
  * ↑/↓ + Enter (or click) picks a suggestion, which calls onPick so the caller can prefill.
+ * The list opens on typing, ↓ or a click into the field, not on focus alone (the editor autofocuses it).
  */
 export function SupplierInput({
   value,
@@ -64,7 +65,7 @@ export function SupplierInput({
           onChange(e.target.value);
           setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
+        onMouseDown={() => setOpen(true)}
         onBlur={() => {
           setOpen(false);
           onBlur?.();

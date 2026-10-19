@@ -396,8 +396,8 @@ export function ExpenseEditor({
         </span>
       }
     >
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-6 lg:h-[calc(100vh-7rem)] lg:self-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)] lg:self-start">
           <ReceiptPane
             receipt={receipt}
             onFile={onFile}
@@ -742,32 +742,33 @@ function PaidField({ form }: { form: Form }) {
       name="paidAt"
       render={({ field }) => (
         <FormItem>
-          <FormLabel>Bezahlt am</FormLabel>
-          <div className="flex gap-2">
-            <FormControl>
-              <Input
-                type="date"
-                {...field}
-                value={field.value ?? ""}
-                onChange={(e) => field.onChange(e.target.value || null)}
-                className={cn("tabular", field.value && "border-success-border")}
-              />
-            </FormControl>
+          {/* quick "paid" next to the label, so the date input keeps its full width in narrow columns */}
+          <div className="flex items-center justify-between gap-2">
+            <FormLabel>Bezahlt am</FormLabel>
             {!field.value && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-9 shrink-0"
+                className="-my-1 h-6 gap-1 px-1.5 text-xs text-muted-foreground"
                 tabIndex={-1}
                 onClick={() => field.onChange(form.getValues("issueDate") || todayIso())}
                 title="Als bezahlt am Rechnungsdatum markieren"
               >
-                <CircleCheck />
+                <CircleCheck className="size-3.5" />
                 Bezahlt
               </Button>
             )}
           </div>
+          <FormControl>
+            <Input
+              type="date"
+              {...field}
+              value={field.value ?? ""}
+              onChange={(e) => field.onChange(e.target.value || null)}
+              className={cn("tabular", field.value && "border-success-border")}
+            />
+          </FormControl>
           <FormMessage />
         </FormItem>
       )}

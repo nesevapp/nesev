@@ -1,5 +1,15 @@
 import { useState } from "react";
 import { Crop, ExternalLink, FileUp, Loader2, Replace, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DropOverlay, pickReceiptFiles, useWindowFileDrag } from "./file-drop";
@@ -46,6 +56,7 @@ export function ReceiptPane({
   const dragging = useWindowFileDrag();
   // "Original anzeigen" on a cropped receipt; resets when the receipt changes
   const [originalFor, setOriginalFor] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const pick = () => pickReceiptFiles(false, (files) => files[0] && onFile(files[0]));
   const onFiles = (files: File[]) => files[0] && onFile(files[0]);
 
@@ -106,7 +117,8 @@ export function ReceiptPane({
             size="icon"
             className="size-7 text-muted-foreground hover:text-destructive"
             title="Beleg entfernen"
-            onClick={onRemove}
+            aria-label="Beleg entfernen"
+            onClick={() => setConfirmRemove(true)}
             disabled={busy}
           >
             <Trash2 />
@@ -145,6 +157,25 @@ export function ReceiptPane({
         )}
       </div>
       <DropOverlay active={dragging} onFiles={onFiles} label="Beleg ersetzen" />
+      {onRemove && (
+        <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Beleg entfernen?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Die Belegdatei{receipt.name ? ` „${receipt.name}“` : ""} wird von der Ausgabe entfernt und gelöscht. Die
+                übrigen Angaben der Ausgabe bleiben erhalten.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={onRemove}>
+                Entfernen
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

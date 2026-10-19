@@ -21,7 +21,17 @@ import { CategorySelect } from "./category-select";
 type Form = UseFormReturn<ExpenseFormValues, unknown, ExpenseFormData>;
 type Line = ExpenseFormValues["lines"][number];
 
-const GRID = "grid grid-cols-[minmax(0,1fr)_92px_74px_84px_96px_58px_28px] gap-x-1.5";
+/**
+ * Row grid. A wide editor (≥ 40rem, container query) has one row per line; a narrower one (the right column
+ * of the expense editor on most screens) puts category + description on the first row and the amounts on a
+ * second row, so nothing overflows. DOM (and Tab) order is the same in both.
+ */
+const GRID =
+  "grid grid-cols-[repeat(5,minmax(0,1fr))_28px] gap-x-1.5 gap-y-1.5 @min-[40rem]/lines:grid-cols-[minmax(0,1fr)_92px_74px_84px_96px_58px_28px]";
+/** category/description: the whole first row in the narrow layout */
+const TEXT_CELL = "col-span-5 @min-[40rem]/lines:col-span-1";
+/** delete button: top right in the narrow layout, last column otherwise */
+const ACTIONS_CELL = "col-start-6 row-start-1 @min-[40rem]/lines:col-start-auto @min-[40rem]/lines:row-start-auto";
 
 export function newLine(category: string = DEFAULT_EXPENSE_CATEGORY, taxRateBp = 2000): ExpenseLineInput {
   const cat = getExpenseCategory(category);
@@ -96,9 +106,9 @@ export function ExpenseLinesEditor({
   };
 
   return (
-    <div>
-      <div className={cn(GRID, "border-b pb-2 text-xs font-medium text-muted-foreground")}>
-        <span>Kategorie / Beschreibung</span>
+    <div className="@container/lines">
+      <div className={cn(GRID, "gap-y-0.5 border-b pb-2 text-xs font-medium text-muted-foreground")}>
+        <span className={TEXT_CELL}>Kategorie / Beschreibung</span>
         <span className="text-right">Netto</span>
         <span>USt.</span>
         <span className="text-right" title={selfAssessed ? "selbst berechnete Steuer (Reverse Charge / ig. Erwerb)" : undefined}>
@@ -108,7 +118,7 @@ export function ExpenseLinesEditor({
         <span className="text-right" title="Vorsteuer abzugsfähig in %">
           VSt. %
         </span>
-        <span />
+        <span className={ACTIONS_CELL} />
       </div>
 
       {fields.length === 0 && (
@@ -126,7 +136,12 @@ export function ExpenseLinesEditor({
           const taxOverridden = !noVat && l.taxCents !== expected;
           return (
             <li key={field.id} className={cn(GRID, "group items-start border-b py-2")}>
-              <div className="space-y-1.5">
+              <div
+                className={cn(
+                  TEXT_CELL,
+                  "grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-1.5 @min-[40rem]/lines:grid-cols-1",
+                )}
+              >
                 <CategorySelect
                   value={l.category ?? DEFAULT_EXPENSE_CATEGORY}
                   onChange={(key) => {
@@ -143,9 +158,9 @@ export function ExpenseLinesEditor({
                   {...form.register(`lines.${i}.description`)}
                   placeholder="Beschreibung (optional)"
                   aria-label={`Position ${i + 1}: Beschreibung`}
-                  className="h-8 text-muted-foreground focus-visible:text-foreground"
+                  className="h-9 text-muted-foreground focus-visible:text-foreground @min-[40rem]/lines:h-8"
                 />
-                {cat?.hint && <p className="text-[11px] leading-tight text-muted-foreground">{cat.hint}</p>}
+                {cat?.hint && <p className="col-span-full text-[11px] leading-tight text-muted-foreground">{cat.hint}</p>}
               </div>
               <NumericInput
                 value={l.netCents}
@@ -202,7 +217,10 @@ export function ExpenseLinesEditor({
                 variant="ghost"
                 size="icon"
                 tabIndex={-1}
-                className="size-9 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-destructive"
+                className={cn(
+                  ACTIONS_CELL,
+                  "size-9 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-destructive",
+                )}
                 aria-label={`Position ${i + 1} entfernen`}
                 onClick={() => remove(i)}
               >
