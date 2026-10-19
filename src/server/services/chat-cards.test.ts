@@ -213,7 +213,7 @@ describe("confirmation summaries: bank and recurring", () => {
       "Serienrechnung „Wartung“ (Alpen Software GmbH) pausieren – es werden keine Rechnungen mehr erstellt, bis sie fortgesetzt wird",
     );
     expect(sp(await confirmSummary("set_recurring_invoice_active", { id: 2, active: true }, lookups))).toBe(
-      "Serienrechnung „Wartung“ (Alpen Software GmbH) fortsetzen – versäumte Termine seit 01.01.2026 werden nachgeholt",
+      "Serienrechnung „Wartung“ (Alpen Software GmbH) fortsetzen – versäumte Termine seit 01.01.2026 werden nachgeholt (mit heutigem Rechnungsdatum)",
     );
     expect(sp(await confirmSummary("generate_recurring_invoice", { id: 2 }, lookups))).toBe(
       "Rechnung aus Serienrechnung „Wartung“ für Alpen Software GmbH jetzt erstellen (€ 120,00, wird sofort finalisiert (Nummer und PDF, unveränderbar))",

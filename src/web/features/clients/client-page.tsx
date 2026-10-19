@@ -245,7 +245,7 @@ function AddressLines({ client }: { client: Client }) {
 
 function Conditions({ client }: { client: Client }) {
   const settings = useQuery(settingsQuery);
-  const derived = defaultTaxMode({ ...client, defaultTaxMode: null }, { smallBusiness: false });
+  const derived = defaultTaxMode({ ...client, defaultTaxMode: null }, { smallBusiness: settings.data?.smallBusiness ?? false, uid: settings.data?.uid });
   const taxMode = client.defaultTaxMode ? (
     TAX_MODE_LABELS[client.defaultTaxMode]
   ) : (
@@ -270,7 +270,7 @@ function Conditions({ client }: { client: Client }) {
       <Row label="Steuermodus" value={taxMode} />
       <Row label="Zahlungsziel" value={terms} />
       {settings.data?.smallBusiness && (
-        <p className="col-span-2 text-xs text-muted-foreground">Kleinunternehmerregelung aktiv: Belege ohne USt.</p>
+        <p className="col-span-2 text-xs text-muted-foreground">Kleinunternehmerregelung aktiv: Inlandsbelege ohne USt.</p>
       )}
     </dl>
   );

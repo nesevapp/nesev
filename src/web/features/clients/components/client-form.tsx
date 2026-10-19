@@ -199,7 +199,7 @@ export function ClientForm({
               description="Leer = Standard aus den Einstellungen."
             />
           </div>
-          <TaxModeField control={control} smallBusiness={settings.data?.smallBusiness ?? false} />
+          <TaxModeField control={control} smallBusiness={settings.data?.smallBusiness ?? false} ownUid={settings.data?.uid ?? ""} />
         </FormSection>
 
         <ClientEInvoiceSection control={control} />
@@ -259,10 +259,10 @@ function uidHint(country: string, uid: string, mode: TaxMode | null | undefined)
 
 const AUTO = "auto";
 
-function TaxModeField({ control, smallBusiness }: { control: Control<ClientFormValues>; smallBusiness: boolean }) {
-  const [country = "AT", uid = ""] = useWatch({ control, name: ["country", "uid"] });
-  // Derived without the small-business override: that's a global setting, shown separately below.
-  const derived = defaultTaxMode({ country, uid }, { smallBusiness: false });
+function TaxModeField({ control, smallBusiness, ownUid }: { control: Control<ClientFormValues>; smallBusiness: boolean; ownUid: string }) {
+  const [country = "AT", uid = "", type] = useWatch({ control, name: ["country", "uid", "type"] });
+  // what new documents for this client get (a Kleinunternehmer's foreign B2B clients aren't SMALL_BUSINESS)
+  const derived = defaultTaxMode({ country, uid, type }, { smallBusiness, uid: ownUid });
 
   return (
     <FormField
@@ -291,7 +291,7 @@ function TaxModeField({ control, smallBusiness }: { control: Control<ClientFormV
           </Select>
           <FormDescription>
             {smallBusiness
-              ? "Kleinunternehmerregelung ist aktiv – neue Belege sind unabhängig davon umsatzsteuerfrei."
+              ? "Kleinunternehmerregelung ist aktiv: Inlandsbelege sind umsatzsteuerfrei; ausländische Firmenkunden werden mit Reverse Charge bzw. als Drittland abgerechnet."
               : "Automatisch: aus Land und UID abgeleitet."}
           </FormDescription>
           <FormMessage />

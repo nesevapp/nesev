@@ -502,7 +502,7 @@ export async function confirmSummary(name: string, args: Record<string, unknown>
       const what = r ? `Serienrechnung „${r.name}“${r.client ? ` (${r.client})` : ""}` : `Serienrechnung id ${id ?? "?"}`;
       if (args.active === false) return `${what} pausieren – es werden keine Rechnungen mehr erstellt, bis sie fortgesetzt wird`;
       const today = todayIso();
-      const catchUp = r && r.nextRunDate && r.nextRunDate < today ? ` – versäumte Termine seit ${deDate(r.nextRunDate)} werden nachgeholt` : "";
+      const catchUp = r && r.nextRunDate && r.nextRunDate < today ? ` – versäumte Termine seit ${deDate(r.nextRunDate)} werden nachgeholt (mit heutigem Rechnungsdatum)` : "";
       return `${what} fortsetzen${catchUp}`;
     }
     case "generate_recurring_invoice": {

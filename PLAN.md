@@ -53,6 +53,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 | `THIRD_COUNTRY` | e.g. CH | 0 %, "nicht im Inland steuerbar" note |
 | `SMALL_BUSINESS` | Kleinunternehmer (setting) | 0 %, §6 Abs 1 Z 27 note |
 
+  As Kleinunternehmer, `defaultTaxMode` still gives EU business clients `EU_REVERSE_CHARGE` (only if our own UID is set) and non-EU companies `THIRD_COUNTRY`: the place of supply of B2B services is abroad (§3a Abs 6), so the exemption doesn't apply. `finalizeWarnings` (`GET /api/documents/:id/finalize-warnings`, shown in the finalize dialog) flags RC without own UID, Kleinunternehmer mode for a foreign business and AT invoices > 10.000 € to a company without UID. Credit notes must use their invoice's tax mode and may not exceed its gross in total. Only domestic (AT-taxable) revenue counts towards the Kleinunternehmer limit.
+
 - **Lifecycle:**
   - Offer: draft → final → sent → accepted / declined.
   - Invoice: draft → final → sent → paid. Overdue is derived from the due date.
@@ -243,7 +245,8 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 
 ### Data, export & backups
 - Everything lives in `data/` (gitignored).
-- Daily automatic DB snapshot to `data/backups/` (newest 14 kept), plus a manual backup ZIP (DB snapshot + assets + PDFs).
+- Daily automatic DB snapshot to `data/backups/` (newest 14 kept, database only – the UI says so), plus a manual backup ZIP (DB snapshot + assets + PDFs + receipts), streamed with fflate.
+- **Security** (details in SECURITY.md): `lib/origin-guard.ts` (loopback Host only against DNS rebinding, no foreign Origin / cross-site writes; `NESEV_ALLOWED_HOSTS`), `lib/security-headers.ts` (CSP for the SPA, nosniff, frame-ancestors), files from `data/` served with nosniff and svg/xml/html sandboxed, logo type sniffed from content and SVGs with scripts/external refs refused, CSV/BMD text cells neutralised against formula injection, body limits on uploads, capped inflate for embedded e-invoice files. Every DB transaction is `BEGIN IMMEDIATE` (default set in `db/client.ts`) so the MCP process can write concurrently. Missing frozen PDFs are re-frozen at startup (`services/pdf-refreeze.ts`).
 - Accountant export: CSV (BOM, `;`, decimal comma) and a ZIP with all PDFs for a period.
 - **Steuerberatung export** (`services/export-accounting.ts`, `/api/export/accounting/{summary,bmd.csv,belege.csv}`, `/api/export/accounting.zip`, mapping `GET/PUT /api/export/accounting-settings` → `settings.accountingExport`, shape and EKR defaults in `src/shared/accounting-export.ts`). Best effort after public BMD interface descriptions (BMD 5.5 pr08 guide by simplesoft, dvo „BuErf-Import“ manual 2021), not tested against BMD:
   - BMD CSV (`satzart;konto;gkonto;belegnr;belegdatum;buchsymbol;buchcode;prozent;steuercode;betrag;steuer;text;extbelegnr;uidnr;gegenbuchkz;verbuchkz;dokument`): konto = Erlös/Aufwand/Anlage, gkonto = Debitor (Sammelkonto or base + Kundennr.) / Kreditor (Sammelkonto); betrag net, signed (Erlöse Haben −, Gutschriften and Ausgaben Soll +), steuer separate with the same sign, self-assessed tax opposite. One line per document tax rate and per expense line; partly deductible Vorsteuer is split into a line with code 2 and a gross line without tax. Steuercodes: 1 USt, 2 VSt, 77 EU-Leistung, 16 Kleinunternehmer, 79/78 RC EU, 19/18 RC Drittland, 9/8 ig. Erwerb, 34 EUSt, 81 Drittland-Erlös (nicht steuerbar), empty = ohne USt. belegnr = digits of the number (RE-2026-0042 → 20260042; credit notes use symbol GU by default, or a leading 9 when they share the invoice symbol); the full number is `extbelegnr` (OP-Nummer) and names the file in `dokument`. Optional bank payments (BK, matched bank transactions, gkonto = Debitor/Kreditor, extbelegnr clears the OP). Windows-1252 (default) or UTF-8, CRLF, TT.MM.JJJJ, decimal comma; text sanitized (no `;`/quotes), ≤ 60 chars.
@@ -263,10 +266,14 @@ Last updated: 2026-10-14 · Commits: `5ce3215` (base app), `b7d5a36` + `b409092`
 6. **Optional DB constraint patch** for the two FK columns without `ON DELETE SET NULL` (handled in code today).
 7. **For the tax advisor (BMD export):** Kontenplan (defaults: EKR 4000/4010/4013/4111/4210/4062, expenses 5000/5700/7xxx, SVS 6580, Anlagen 0620, Debitoren 20000, Kreditoren 33000, Bank 2800), Personenkonten-Stelligkeit, Buchungssymbole (GU vs AG for credit notes), Steuercodes (77 vs 21 for EU services, 81 vs 20 for Drittland, EUSt 34; BMD can remap them per client), 13 % revenue account (4013 vs 4011), receipt column name (`dokument`), sign of `steuer` for self-assessed tax, Istbesteuerung (BMD codes 903/904 not used), whether bank payments should be booked, encoding. Do one test import.
 8. **4,9 % rate (KZ 124/125, from 07/2026)** isn't supported in nesev (no rate, no KZ); the U30 XML would need it if the rate is ever used.
+9. **Kleinunternehmer status and Ist/Soll have no valid-from date** (settings are global): switching them rewrites past UVA/EAR figures. Options: (a) dated history (migration + small UI), (b) use each document's own tax mode (expenses still follow the current setting). Decision pending.
+10. **Goods vs. services:** documents are treated as services (no ig. Lieferung KZ 017, Ausfuhr KZ 011, no goods flag in the ZM, no domestic reverse charge §19 Abs 1a). Third-country private persons default to `THIRD_COUNTRY` in regular mode, although for most B2C services the place of supply is Austria (§3a Abs 7; catalogue services §3a Abs 14 excepted).
+11. **Sollbesteuerung by invoice date:** the UVA uses the issue date, not the end of the month of supply (§19 Abs 2 Z 1 lit a; late invoices shift by at most one month).
 
 ---
 
 ## 4. Roadmap (in order)
+0. **Before the open-source release (from the audit, 2026-10-19):** data safety – DB snapshot before pending migrations, restore („Backup einspielen“ + documented CLI path), offsite backup folder and long-term rotation (weekly/monthly; records are kept 7 years, §132 BAO); then an audit log (append-only before/after for expenses, bank allocations, status changes) and a period lock for filed UVA periods (§131 BAO). Then email sending (item 3). Packaging after that: data dir outside the repo by default, Docker, Linux service, OS feature matrix in the README.
 1. **Test receipt OCR with real receipts.** nesev starts llama.cpp itself; it needs a GGUF on disk (run `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` once).
 2. **Verify bank presets with real exports** (George / ELBA / …) and fix the presets.
 3. **Email sending** (SMTP): PDF attachment, text templates per document type, auto-mark as sent, send log.
