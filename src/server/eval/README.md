@@ -63,7 +63,7 @@ turned into draft cases:
 ```bash
 bun run eval:feedback                   # draft cases to stdout
 bun run eval:feedback /tmp/drafts.ts    # … into a file
-NESEV_DATA_DIR=/tmp/nesev-x bun run eval:feedback   # another data dir (default: <checkout>/data)
+NESEV_DATA_DIR=/tmp/nesev-x bun run eval:feedback   # another data dir (default: the one the server uses)
 ```
 
 It opens `<data dir>/nesev.db` read-only and prints, per flag, a case in the format of `chat-eval.cases.ts`: the
