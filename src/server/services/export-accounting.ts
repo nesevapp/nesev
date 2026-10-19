@@ -18,7 +18,7 @@ import { calcTotals } from "../../shared/totals";
 import type { DbOrTx } from "../db/client";
 import { bankMatches, bankTransactions, clients, documentItems, documents, expenseLines, expenses, settings } from "../db/schema";
 import { DATA_DIR } from "../lib/paths";
-import { csvAmount, csvRate, type ExportRange, listExportDocuments, rangeLabel, toCsv } from "./export";
+import { csvAmount, csvRate, type ExportRange, listExportDocuments, neutralizeFormula, rangeLabel, toCsv } from "./export";
 import { documentPdfFileName, renderDocumentPdfWith } from "./pdf";
 import { getSettings } from "./settings";
 
@@ -289,9 +289,12 @@ const REVENUE_STEUERCODE: Record<TaxMode, string> = {
   SMALL_BUSINESS: "16",
 };
 
-/** Text for BMD: no separators, quotes or line breaks (BMD's CSV reader doesn't unquote), max. 60 characters. */
+/**
+ * Text for BMD: no separators, quotes or line breaks (BMD's CSV reader doesn't unquote), max. 60 characters, and no
+ * leading formula character (the file is often opened in Excel first, see neutralizeFormula).
+ */
 export function bmdText(...parts: string[]): string {
-  return parts
+  const text = parts
     .map((p) => p.trim())
     .filter(Boolean)
     .join(" ")
@@ -299,6 +302,8 @@ export function bmdText(...parts: string[]): string {
     .replace(/\s+/g, " ")
     .slice(0, 60)
     .trim();
+  const safe = neutralizeFormula(text);
+  return safe.length <= 60 ? safe : neutralizeFormula(text.slice(0, 59).trimEnd());
 }
 
 function pct(rateBp: number): number {
@@ -429,12 +434,12 @@ export function bmdRow(b: BmdBooking): string[] {
     b.steuercode,
     csvAmount(b.betragCents),
     b.steuerCents === 0 && b.prozent == null ? "" : csvAmount(b.steuerCents),
-    b.text,
-    b.extbelegnr,
-    b.uid,
+    neutralizeFormula(b.text),
+    neutralizeFormula(b.extbelegnr),
+    neutralizeFormula(b.uid),
     "E",
     "A",
-    b.dokument,
+    neutralizeFormula(b.dokument),
   ];
 }
 

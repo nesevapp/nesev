@@ -82,7 +82,17 @@ export function csvRate(bp: number): string {
   return String(bp / 100).replace(".", ",");
 }
 
-function csvField(value: string): string {
+/**
+ * Spreadsheet formula injection: a cell starting with = + - @, tab or CR is a formula in Excel / LibreOffice
+ * (e.g. a supplier name `=HYPERLINK(…)` from a receipt). Such text gets a leading `'`, so it shows as text. Plain
+ * numbers ("-12,50", "+43") are left alone, so amounts and rates stay numeric; dates never start with these.
+ */
+export function neutralizeFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) && !/^[+-]?\d+(?:[.,]\d+)*$/.test(value) ? `'${value}` : value;
+}
+
+function csvField(raw: string): string {
+  const value = neutralizeFormula(raw);
   return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 

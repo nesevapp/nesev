@@ -64,6 +64,12 @@ describe("formatting", () => {
     expect(csv).toBe('﻿a;b\r\n"x;y";"say ""hi"""\r\n"line\nbreak";plain\r\n');
   });
 
+  test("formula injection: text cells starting with = + - @ tab CR get a leading quote, numbers don't", () => {
+    const csv = toCsv(["a"], [["=1+2"], ["+43 1 234"], ["-cmd|' /C calc'!A0"], ["@SUM(A1)"], ["\tx"], ["\rx"], ["-12,50"], ["+43"], ["1234,56"], ["01.02.2026"], ["Muster GmbH"]]);
+    const cells = csv.replace(/^\uFEFF/, "").split("\r\n").slice(1, -1);
+    expect(cells).toEqual(["'=1+2", "'+43 1 234", "'-cmd|' /C calc'!A0", "'@SUM(A1)", "'\tx", "\"'\rx\"", "-12,50", "+43", "1234,56", "01.02.2026", "Muster GmbH"]);
+  });
+
   test("range labels", () => {
     expect(rangeLabel({ from: "2026-07-01", to: "2026-09-30" })).toBe("2026-Q3");
     expect(rangeLabel({ from: "2026-02-01", to: "2026-02-28" })).toBe("2026-02");

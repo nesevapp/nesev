@@ -118,6 +118,11 @@ describe("BMD helpers", () => {
   test("text drops separators and quotes, max 60 characters", () => {
     expect(bmdText('Muster; "Test"\nGmbH', "Hosting")).toBe("Muster Test GmbH Hosting");
     expect(bmdText("x".repeat(80))).toHaveLength(60);
+    // formula injection: a leading = + - @ becomes text, still max. 60 characters
+    expect(bmdText("=HYPERLINK(\"http://x\")")).toBe("'=HYPERLINK( http://x )");
+    expect(bmdText("@SUM(A1)", "Miete")).toBe("'@SUM(A1) Miete");
+    expect(bmdText(`-${"x".repeat(80)}`)).toBe(`'-${"x".repeat(58)}`);
+    expect(bmdText("x".repeat(60))).toBe("x".repeat(60));
   });
 
   test("Windows-1252 encoding incl. umlauts and €", () => {
