@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { todayIso } from "../../shared/dates";
 import type { DocumentStatus, DocumentType } from "../../shared/documents";
+import { deductibleTaxCents, type VatTreatment } from "../../shared/expenses";
 import type { SmallBusinessLimit } from "../../shared/small-business";
 import type { DbOrTx } from "../db/client";
 import { clients, documents, expenseLines, expenses, settings } from "../db/schema";
@@ -15,8 +16,9 @@ import { getSmallBusinessLimit } from "./small-business";
 //   overdue = those with dueDate < today (see isOverdue). Their sums are that open amount.
 // - Paid = invoices by paidAt, gross minus credit notes (an invoice settled by credit note brought in nothing).
 // - Open offers = final/sent offers (neither accepted nor declined).
-// - Expenses = net of expenses (sum of their lines), bucketed by issueDate like revenue. Incomplete drafts
-//   without lines have net 0 and so add nothing. (The EAR on /tax counts by payment date instead.)
+// - Expenses = cost of the expense lines on the EAR basis (net + non-deductible VAT, e.g. KFZ; for a
+//   Kleinunternehmer net + all VAT), bucketed by issueDate like revenue. Incomplete drafts without lines add
+//   nothing. (The EAR on /tax counts by payment date instead.)
 //   Lines with category "anlagen" are capitalized and left out; the AfA of the year from the Anlagenverzeichnis
 //   takes their place (services/assets.ts monthlyAfa): spread evenly over all 12 months of the year (annual
 //   AfA / 12, cent remainder in December), also for the current year and regardless of the month the asset was
@@ -60,13 +62,13 @@ export interface DashboardData {
     overdue: Figure;
     /** net revenue in `year` */
     revenue: { cents: number; previousCents: number };
-    /** net expenses in `year` */
+    /** expense costs in `year` (net + non-deductible VAT, EAR basis) */
     expenses: { cents: number; previousCents: number };
     /** gross received in `year` (invoices by paidAt) */
     paid: Figure;
     openOffers: Figure;
   };
-  /** net revenue and net expenses per month, index 0 = January */
+  /** net revenue and expense costs per month, index 0 = January */
   monthly: { month: number; cents: number; previousCents: number; expenseCents: number; previousExpenseCents: number }[];
   overdue: OverdueRow[];
   recent: DashboardDocRow[];
@@ -132,32 +134,39 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
-/** Net expenses per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
-function monthlyExpenses(db: DbOrTx, years: number[]): Map<number, number[]> {
+/**
+ * Expense cost of one line, same basis as the EAR (services/tax.ts computeEar): net plus the VAT that is not
+ * deductible (e.g. KFZ); for a Kleinunternehmer (no Vorsteuer) all VAT is cost. Treatment "none" has no VAT.
+ */
+function lineCostCents(
+  line: { netCents: number; taxCents: number; deductibleBp: number },
+  treatment: VatTreatment,
+  smallBusiness: boolean,
+): number {
+  if (treatment === "none") return line.netCents;
+  return line.netCents + line.taxCents - (smallBusiness ? 0 : deductibleTaxCents(line));
+}
+
+/** Expense costs per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
+function monthlyExpenses(db: DbOrTx, years: number[], smallBusiness: boolean): Map<number, number[]> {
   const from = `${Math.min(...years)}-01-01`;
   const to = `${Math.max(...years) + 1}-01-01`;
-  const ym = sql<string>`substr(${expenses.issueDate}, 1, 7)`;
-  const inRange = and(gte(expenses.issueDate, from), lt(expenses.issueDate, to));
-  const rows = db
-    .select({ ym, cents: sql<number>`coalesce(sum(${expenses.netCents}), 0)` })
-    .from(expenses)
-    .where(inRange)
-    .groupBy(ym)
-    .all();
-  const capitalized = db
-    .select({ ym, cents: sql<number>`coalesce(sum(${expenseLines.netCents}), 0)` })
+  const lines = db
+    .select({
+      issueDate: expenses.issueDate,
+      treatment: expenses.vatTreatment,
+      netCents: expenseLines.netCents,
+      taxCents: expenseLines.taxCents,
+      deductibleBp: expenseLines.deductibleBp,
+    })
     .from(expenseLines)
     .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
-    .where(and(inRange, eq(expenseLines.category, ASSET_CATEGORY)))
-    .groupBy(ym)
+    .where(and(gte(expenses.issueDate, from), lt(expenses.issueDate, to), ne(expenseLines.category, ASSET_CATEGORY)))
     .all();
   const out = new Map(years.map((y) => [y, monthlyAfa(afaEntries(db, y))]));
-  for (const [list, sign] of [[rows, 1], [capitalized, -1]] as const) {
-    for (const r of list) {
-      const [y, m] = r.ym.split("-").map(Number);
-      const bucket = out.get(y!);
-      if (bucket) bucket[m! - 1]! += sign * r.cents;
-    }
+  for (const l of lines) {
+    const bucket = out.get(Number(l.issueDate.slice(0, 4)));
+    if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += lineCostCents(l, l.treatment as VatTreatment, smallBusiness);
   }
   return out;
 }
@@ -200,7 +209,11 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const monthlyByYear = monthlyRevenue(db, [year, year - 1]);
   const current = monthlyByYear.get(year)!;
   const previous = monthlyByYear.get(year - 1)!;
-  const expensesByYear = monthlyExpenses(db, [year, year - 1]);
+  const company = db
+    .select({ name: settings.companyName, street: settings.street, city: settings.city, smallBusiness: settings.smallBusiness })
+    .from(settings)
+    .get();
+  const expensesByYear = monthlyExpenses(db, [year, year - 1], !!company?.smallBusiness);
   const currentExpenses = expensesByYear.get(year)!;
   const previousExpenses = expensesByYear.get(year - 1)!;
   const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
@@ -228,10 +241,6 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
   const years = [...new Set([thisYear, year, ...yearRows.map((r) => Number(r.y))])].sort((a, b) => b - a);
 
   const clientCount = db.select({ n: figure }).from(clients).get()!.n;
-  const company = db
-    .select({ name: settings.companyName, street: settings.street, city: settings.city, smallBusiness: settings.smallBusiness })
-    .from(settings)
-    .get();
 
   return {
     year,

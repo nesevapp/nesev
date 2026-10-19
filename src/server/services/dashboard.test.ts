@@ -5,6 +5,7 @@ import { clients, documents, expenseLines, expenses, type NewDocument } from "..
 import { createAsset } from "./assets";
 import { getDashboard } from "./dashboard";
 import { updateSettings } from "./settings";
+import { computeEar } from "./tax";
 
 const TODAY = "2026-06-15";
 
@@ -128,8 +129,10 @@ describe("getDashboard", () => {
   test("expenses: net per month by issueDate with previous year; years include expense-only years", () => {
     const { db, add } = setup();
     add({ type: "invoice", issueDate: "2026-02-10", netCents: 50000 });
-    const exp = (issueDate: string, netCents: number) =>
-      db.insert(expenses).values({ supplierName: "Lieferant", issueDate, netCents, taxCents: 0, grossCents: netCents }).run();
+    const exp = (issueDate: string, netCents: number) => {
+      const e = db.insert(expenses).values({ supplierName: "Lieferant", issueDate, netCents, taxCents: 0, grossCents: netCents }).returning().get();
+      if (netCents) db.insert(expenseLines).values({ expenseId: e.id, position: 0, category: "buero", netCents, taxRateBp: 0, taxCents: 0 }).run();
+    };
     exp("2026-02-03", 12000);
     exp("2026-02-28", 3000);
     exp("2026-11-30", 7000);
@@ -142,6 +145,41 @@ describe("getDashboard", () => {
     expect(d.monthly[1]).toMatchObject({ cents: 50000, expenseCents: 15000, previousExpenseCents: 4000 });
     expect(d.monthly[10]!.expenseCents).toBe(7000);
     expect(d.years).toContain(2024);
+  });
+  test("expenses: cost basis like the EAR – non-deductible VAT counts, Kleinunternehmer count all VAT", () => {
+    const { db } = setup();
+    const e = db
+      .insert(expenses)
+      .values({ supplierName: "Autohaus", issueDate: "2026-04-10", netCents: 30000, taxCents: 6000, grossCents: 36000 })
+      .returning()
+      .get();
+    db.insert(expenseLines)
+      .values([
+        // KFZ: Vorsteuer not deductible → net + tax is cost
+        { expenseId: e.id, position: 0, category: "kfz", netCents: 10000, taxRateBp: 2000, taxCents: 2000, deductibleBp: 0 },
+        // half deductible → net + half the tax
+        { expenseId: e.id, position: 1, category: "kfz", netCents: 10000, taxRateBp: 2000, taxCents: 2000, deductibleBp: 5000 },
+        // fully deductible → net only
+        { expenseId: e.id, position: 2, category: "buero", netCents: 10000, taxRateBp: 2000, taxCents: 2000 },
+      ])
+      .run();
+    // reverse charge: the self-assessed tax is deductible again → net only
+    const rc = db
+      .insert(expenses)
+      .values({ supplierName: "EU Ltd", issueDate: "2026-04-11", vatTreatment: "reverse_charge", netCents: 5000, taxCents: 1000, grossCents: 5000 })
+      .returning()
+      .get();
+    db.insert(expenseLines).values({ expenseId: rc.id, position: 0, category: "buero", netCents: 5000, taxRateBp: 2000, taxCents: 1000 }).run();
+
+    expect(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents).toBe(12000 + 11000 + 10000 + 5000);
+    // Kleinunternehmer: no Vorsteuer at all, every VAT amount is cost (as in the EAR)
+    updateSettings(db, { smallBusiness: true });
+    expect(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents).toBe(12000 + 12000 + 12000 + 6000);
+    // paid in the same month → the EAR shows the same amount
+    db.update(expenses).set({ paidAt: "2026-04-20" }).run();
+    expect(computeEar(db, 2026).monthly[3]!.expensesCents).toBe(42000);
+    updateSettings(db, { smallBusiness: false });
+    expect(computeEar(db, 2026).monthly[3]!.expensesCents).toBe(getDashboard(db, 2026, TODAY).monthly[3]!.expenseCents);
   });
   test("expenses: anlagen lines replaced by the AfA spread evenly over the year", () => {
     const { db } = setup();
