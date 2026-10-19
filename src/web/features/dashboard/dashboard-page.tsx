@@ -130,7 +130,7 @@ function Kpis({ data }: { data: Dashboard }) {
           }
         />
         <Tile
-          label={`Ausgaben ${year} (netto)`}
+          label={`Ausgaben ${year}`}
           value={formatCents(kpis.expenses.cents)}
           sub={
             <Delta

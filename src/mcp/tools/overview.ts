@@ -147,7 +147,7 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
       const result = k.revenue.cents - k.expenses.cents;
       const text = [
         `Dashboard ${d.year} (Stand ${deDate(d.today)}):`,
-        `- Umsatz netto ${eur(k.revenue.cents)} (Vorjahr ${eur(k.revenue.previousCents)}), Ausgaben netto ${eur(k.expenses.cents)} (Vorjahr ${eur(k.expenses.previousCents)}), Ergebnis ${eur(result)}`,
+        `- Umsatz netto ${eur(k.revenue.cents)} (Vorjahr ${eur(k.revenue.previousCents)}), Ausgaben (Kosten inkl. nicht abziehbarer USt.) ${eur(k.expenses.cents)} (Vorjahr ${eur(k.expenses.previousCents)}), Ergebnis ${eur(result)}`,
         `- Bezahlt: ${k.paid.count} Rechnungen, ${eur(k.paid.cents)}`,
         `- Offene Rechnungen: ${k.openInvoices.count}, ${eur(k.openInvoices.cents)}; davon überfällig: ${k.overdue.count}, ${eur(k.overdue.cents)}`,
         `- Offene Angebote: ${k.openOffers.count}, ${eur(k.openOffers.cents)}`,
