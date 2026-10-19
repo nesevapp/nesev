@@ -1,7 +1,18 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@shared/dates";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiErrorMessage, bankImportsQuery, useUndoBankImport } from "@/sdk";
@@ -20,6 +31,7 @@ export function ImportsDialog({
 }) {
   const { data = [] } = useQuery({ ...bankImportsQuery(accountId), enabled: open });
   const undo = useUndoBankImport();
+  const [confirmUndo, setConfirmUndo] = useState<{ id: number; count: number } | null>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -47,14 +59,7 @@ export function ImportsDialog({
                 variant="outline"
                 size="sm"
                 disabled={undo.isPending || imp.remainingCount === imp.matchedCount}
-                onClick={() => {
-                  const n = imp.remainingCount - imp.matchedCount;
-                  if (!window.confirm(`${n} nicht zugeordnete Buchung(en) dieses Imports löschen?`)) return;
-                  undo.mutate(imp.id, {
-                    onSuccess: (r) => toast.success(r.kept ? `${r.deleted} entfernt, ${r.kept} zugeordnete behalten` : `${r.deleted} Buchungen entfernt`),
-                    onError: (err) => toast.error(apiErrorMessage(err)),
-                  });
-                }}
+                onClick={() => setConfirmUndo({ id: imp.id, count: imp.remainingCount - imp.matchedCount })}
               >
                 <Undo2 />
                 Rückgängig
@@ -64,6 +69,35 @@ export function ImportsDialog({
           {data.length === 0 && <li className="px-3 py-8 text-center text-muted-foreground">Noch keine Importe.</li>}
         </ul>
       </DialogContent>
+      <AlertDialog open={!!confirmUndo} onOpenChange={(o) => !o && setConfirmUndo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import rückgängig machen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmUndo?.count === 1
+                ? "1 nicht zugeordnete Buchung dieses Imports wird gelöscht."
+                : `${confirmUndo?.count ?? 0} nicht zugeordnete Buchungen dieses Imports werden gelöscht.`}{" "}
+              Zugeordnete Buchungen bleiben erhalten.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!confirmUndo) return;
+                undo.mutate(confirmUndo.id, {
+                  onSuccess: (r) =>
+                    toast.success(r.kept ? `${r.deleted} entfernt, ${r.kept} zugeordnete behalten` : `${r.deleted} Buchungen entfernt`),
+                  onError: (err) => toast.error(apiErrorMessage(err)),
+                });
+              }}
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

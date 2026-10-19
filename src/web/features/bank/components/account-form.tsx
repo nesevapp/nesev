@@ -4,6 +4,16 @@ import { Archive, ArchiveRestore, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AUTO_MATCH_MODE_LABELS, AUTO_MATCH_MODES, type AutoMatchMode, formatIban, isValidIban } from "@shared/bank";
 import { formatDate } from "@shared/dates";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -129,6 +139,7 @@ export function AccountsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const [editing, setEditing] = useState<BankAccount | "new" | null>(null);
   const archive = useSetBankAccountArchived();
   const remove = useDeleteBankAccount();
+  const [confirmDelete, setConfirmDelete] = useState<BankAccount | null>(null);
 
   return (
     <Dialog
@@ -187,13 +198,7 @@ export function AccountsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                     size="icon-sm"
                     aria-label="Löschen"
                     title="Löschen"
-                    onClick={() => {
-                      if (!window.confirm(`Konto „${a.name}" mit ${a.transactionCount} Buchungen löschen?`)) return;
-                      remove.mutate(a.id, {
-                        onSuccess: () => toast.success("Konto gelöscht"),
-                        onError: (err) => toast.error(apiErrorMessage(err)),
-                      });
-                    }}
+                    onClick={() => setConfirmDelete(a)}
                   >
                     <Trash2 />
                   </Button>
@@ -210,6 +215,33 @@ export function AccountsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           </>
         )}
       </DialogContent>
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Konto „{confirmDelete?.name}“ löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDelete?.transactionCount
+                ? `Das Konto wird mit ${confirmDelete.transactionCount === 1 ? "seiner Buchung" : `seinen ${confirmDelete.transactionCount} Buchungen`} endgültig gelöscht.`
+                : "Das Konto wird endgültig gelöscht."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!confirmDelete) return;
+                remove.mutate(confirmDelete.id, {
+                  onSuccess: () => toast.success("Konto gelöscht"),
+                  onError: (err) => toast.error(apiErrorMessage(err)),
+                });
+              }}
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
