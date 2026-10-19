@@ -83,9 +83,9 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
       title: "Dashboard",
       group: "core",
       description:
-        "Business overview for one calendar year (default: current year): KPIs (net revenue and net expenses vs. previous " +
+        "Business overview for one calendar year (default: current year): KPIs (net revenue and business expenses vs. previous " +
         "year, result, received payments, open and overdue invoices, open offers), net revenue/expenses/result per month, " +
-        "and the overdue invoices with their open amounts. Revenue is net of credit notes; expenses count by document date.",
+        "and the overdue invoices with their open amounts. Revenue is net of credit notes; expenses = receipts at cost (non-deductible VAT included) by document date plus AfA (current year: only up to the current month).",
       input: z.object({
         year: z.number().int().min(2000).max(2100).optional().describe("calendar year, default current year"),
       }),
@@ -147,7 +147,7 @@ export function registerOverviewTools(server: McpServer, ctx: ToolContext) {
       const result = k.revenue.cents - k.expenses.cents;
       const text = [
         `Dashboard ${d.year} (Stand ${deDate(d.today)}):`,
-        `- Umsatz netto ${eur(k.revenue.cents)} (Vorjahr ${eur(k.revenue.previousCents)}), Ausgaben (Kosten inkl. nicht abziehbarer USt.) ${eur(k.expenses.cents)} (Vorjahr ${eur(k.expenses.previousCents)}), Ergebnis ${eur(result)}`,
+        `- Umsatz netto ${eur(k.revenue.cents)} (Vorjahr ${eur(k.revenue.previousCents)}), Betriebsausgaben ${eur(k.expenses.cents)} (Belege ${eur(k.expenses.receiptsCents)} inkl. nicht abziehbarer USt., AfA bis heute ${eur(k.expenses.afaCents)}) (Vorjahr ${eur(k.expenses.previousCents)}), Ergebnis ${eur(result)}`,
         `- Bezahlt: ${k.paid.count} Rechnungen, ${eur(k.paid.cents)}`,
         `- Offene Rechnungen: ${k.openInvoices.count}, ${eur(k.openInvoices.cents)}; davon überfällig: ${k.overdue.count}, ${eur(k.overdue.cents)}`,
         `- Offene Angebote: ${k.openOffers.count}, ${eur(k.openOffers.cents)}`,

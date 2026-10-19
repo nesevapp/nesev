@@ -142,7 +142,7 @@ describe("getDashboard", () => {
     exp("2026-05-01", 0); // incomplete draft without lines
 
     const d = getDashboard(db, 2026, TODAY);
-    expect(d.kpis.expenses).toEqual({ cents: 22000, previousCents: 4000 });
+    expect(d.kpis.expenses).toEqual({ cents: 22000, previousCents: 4000, receiptsCents: 22000, afaCents: 0 });
     expect(d.monthly[1]).toMatchObject({ cents: 50000, expenseCents: 15000, previousExpenseCents: 4000 });
     expect(d.monthly[10]!.expenseCents).toBe(7000);
     expect(d.years).toContain(2024);
@@ -193,11 +193,22 @@ describe("getDashboard", () => {
       .run();
     createAsset(db, { name: "MacBook", expenseId: e.id, acquisitionDate: "2026-09-10", inServiceDate: "2026-09-15", costCents: 240000, usefulLifeYears: 3 });
 
-    const d = getDashboard(db, 2026, TODAY);
-    expect(d.kpis.expenses.cents).toBe(10000 + 40000);
+    const d = getDashboard(db, 2026, "2026-12-31");
+    expect(d.kpis.expenses).toEqual({ cents: 10000 + 40000, previousCents: 0, receiptsCents: 10000, afaCents: 40000 });
     expect(d.monthly[0]!.expenseCents).toBe(3333);
     expect(d.monthly[8]!.expenseCents).toBe(10000 + 3333);
     expect(d.monthly[11]!.expenseCents).toBe(40000 - 3333 * 11);
-    expect(getDashboard(db, 2027, TODAY).kpis.expenses).toEqual({ cents: 80000, previousCents: 50000 });
+    expect(getDashboard(db, 2027, "2027-12-31").kpis.expenses).toEqual({ cents: 80000, previousCents: 50000, receiptsCents: 0, afaCents: 80000 });
+  });
+  test("expenses: current year counts the AfA only up to the current month (like revenue to date)", () => {
+    const { db } = setup();
+    createAsset(db, { name: "MacBook", acquisitionDate: "2026-03-16", inServiceDate: "2026-03-16", costCents: 430000, usefulLifeYears: 3 });
+    const d = getDashboard(db, 2026, "2026-10-19");
+    // 4.300 € / 3 = 1.433,33 €/year → 119,44 €/month, Jan–Oct
+    expect(d.kpis.expenses).toEqual({ cents: 11944 * 10, previousCents: 0, receiptsCents: 0, afaCents: 11944 * 10 });
+    expect(d.monthly[9]!.expenseCents).toBe(11944);
+    expect(d.monthly[10]!.expenseCents).toBe(0);
+    // a past year keeps its full AfA
+    expect(getDashboard(db, 2027, "2028-02-01").kpis.expenses.previousCents).toBe(143333);
   });
 });

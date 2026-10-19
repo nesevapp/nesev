@@ -466,7 +466,7 @@ export function ExpensesPage({
             <TableFooter className="bg-transparent">
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={4} className="py-2.5 text-xs font-normal text-muted-foreground">
-                  Summe{filtered ? " (gefiltert)" : ""}
+                  Summe brutto{filtered ? " (gefiltert)" : ""}
                 </TableCell>
                 <TableCell className={NARROW} />
                 <TableCell className={cn("tabular py-2.5 text-right", NARROW)}>{formatCents(sum("netCents"))}</TableCell>

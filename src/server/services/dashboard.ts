@@ -65,7 +65,8 @@ export interface DashboardData {
     /** net revenue in `year` */
     revenue: { cents: number; previousCents: number };
     /** expense costs in `year` (net + non-deductible VAT, EAR basis) */
-    expenses: { cents: number; previousCents: number };
+    /** EAR costs (receipts + AfA); current year: AfA only up to the current month. receipts/afa = the split of `cents` */
+    expenses: { cents: number; previousCents: number; receiptsCents: number; afaCents: number };
     /** gross received in `year` (invoices by paidAt) */
     paid: Figure;
     openOffers: Figure;
@@ -136,8 +137,12 @@ function monthlyRevenue(db: DbOrTx, years: number[]): Map<number, number[]> {
   return out;
 }
 
-/** Expense costs per month for the given years, "anlagen" lines replaced by AfA: Map<year, cents[12]>. */
-function monthlyExpenses(db: DbOrTx, years: number[], status: TaxStatusTimeline): Map<number, number[]> {
+/**
+ * Expense costs per month for the given years, "anlagen" lines replaced by AfA, split into receipts and AfA:
+ * Map<year, { receipts, afa }> (cents[12] each). The AfA of the year whose months come after `today` is left out,
+ * so the current year shows costs to date like revenue does (the EAR keeps the full annual AfA).
+ */
+function monthlyExpenses(db: DbOrTx, years: number[], status: TaxStatusTimeline, today: string): Map<number, { receipts: number[]; afa: number[] }> {
   const from = `${Math.min(...years)}-01-01`;
   const to = `${Math.max(...years) + 1}-01-01`;
   const lines = db
@@ -152,9 +157,15 @@ function monthlyExpenses(db: DbOrTx, years: number[], status: TaxStatusTimeline)
     .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
     .where(and(gte(expenses.issueDate, from), lt(expenses.issueDate, to), ne(expenseLines.category, ASSET_CATEGORY)))
     .all();
-  const out = new Map(years.map((y) => [y, monthlyAfa(afaEntries(db, y))]));
+  const todayMonth = today.slice(0, 7);
+  const out = new Map(
+    years.map((y) => {
+      const afa = monthlyAfa(afaEntries(db, y)).map((c, m) => (`${y}-${String(m + 1).padStart(2, "0")}` > todayMonth ? 0 : c));
+      return [y, { receipts: Array<number>(12).fill(0), afa }];
+    }),
+  );
   for (const l of lines) {
-    const bucket = out.get(Number(l.issueDate.slice(0, 4)));
+    const bucket = out.get(Number(l.issueDate.slice(0, 4)))?.receipts;
     if (bucket) bucket[Number(l.issueDate.slice(5, 7)) - 1]! += expenseCostCents({ ...l, deductibleCents: deductibleTaxCents(l) }, l.treatment as VatTreatment, status.smallBusinessAt(l.issueDate));
   }
   return out;
@@ -211,9 +222,11 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
     .get();
   const status = loadTaxStatus(db);
   // Kleinunternehmer by the Belegdatum of each expense (no Vorsteuer → gross cost)
-  const expensesByYear = monthlyExpenses(db, [year, year - 1], status);
-  const currentExpenses = expensesByYear.get(year)!;
-  const previousExpenses = expensesByYear.get(year - 1)!;
+  const expensesByYear = monthlyExpenses(db, [year, year - 1], status, today);
+  const add = (e: { receipts: number[]; afa: number[] }) => e.receipts.map((c, m) => c + e.afa[m]!);
+  const currentSplit = expensesByYear.get(year)!;
+  const currentExpenses = add(currentSplit);
+  const previousExpenses = add(expensesByYear.get(year - 1)!);
   const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 
   const base = () => db.select(rowColumns).from(documents).leftJoin(clients, eq(clients.id, documents.clientId));
@@ -248,7 +261,12 @@ export function getDashboard(db: DbOrTx, year: number, today = todayIso()): Dash
       openInvoices,
       overdue: overdueFig,
       revenue: { cents: sum(current), previousCents: sum(previous) },
-      expenses: { cents: sum(currentExpenses), previousCents: sum(previousExpenses) },
+      expenses: {
+        cents: sum(currentExpenses),
+        previousCents: sum(previousExpenses),
+        receiptsCents: sum(currentSplit.receipts),
+        afaCents: sum(currentSplit.afa),
+      },
       paid,
       openOffers: openOffersFig,
     },

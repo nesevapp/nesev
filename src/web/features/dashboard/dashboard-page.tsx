@@ -130,16 +130,24 @@ function Kpis({ data }: { data: Dashboard }) {
           }
         />
         <Tile
-          label={`Ausgaben ${year}`}
+          label={`Betriebsausgaben ${year}`}
           value={formatCents(kpis.expenses.cents)}
           sub={
-            <Delta
-              current={kpis.expenses.cents}
-              previous={comparable.reduce((s, m) => s + m.previousExpenseCents, 0)}
-              label={deltaLabel}
-              fallback="nach Belegdatum"
-              lowerIsBetter
-            />
+            <>
+              <Delta
+                current={kpis.expenses.cents}
+                previous={comparable.reduce((s, m) => s + m.previousExpenseCents, 0)}
+                label={deltaLabel}
+                fallback="nach Belegdatum"
+                lowerIsBetter
+              />
+              {kpis.expenses.afaCents > 0 && (
+                <span className="block">
+                  Belege {formatCents(kpis.expenses.receiptsCents)} · AfA {formatCents(kpis.expenses.afaCents)}
+                  {isCurrentYear ? " (bis heute)" : ""}
+                </span>
+              )}
+            </>
           }
           link={<Link to="/expenses" className="absolute inset-0" aria-label="Ausgaben anzeigen" />}
         />
