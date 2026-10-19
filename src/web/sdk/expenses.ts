@@ -179,6 +179,7 @@ export function useCreateExpenseDrafts() {
   const onSaved = useOnSaved();
   return useMutation({
     mutationFn: (files: File[]) => expensesApi.createDrafts(files),
-    onSuccess: () => onSaved(),
+    // also on error: a partial failure ("N von M Belegen angelegt …") has still created drafts
+    onSettled: () => onSaved(),
   });
 }

@@ -131,7 +131,7 @@ function BackupSection() {
     <>
       <FormSection
         title="Backup"
-        description="Datenbank, Logo/Briefpapier, alle gespeicherten PDFs und die Ausgabenbelege in einer ZIP-Datei."
+        description="Vollständige Sicherung: Datenbank, Logo/Briefpapier, alle gespeicherten PDFs und die Ausgabenbelege in einer ZIP-Datei."
       >
         <div>
           <Button asChild>
@@ -143,7 +143,7 @@ function BackupSection() {
       </FormSection>
       <FormSection
         title="Automatische Backups"
-        description="Beim Serverstart und einmal täglich wird die Datenbank nach data/backups gesichert. Die letzten 14 bleiben erhalten."
+        description="Beim Serverstart und einmal täglich wird nur die Datenbank nach data/backups gesichert, ohne Logo, PDFs und Belegdateien. Die letzten 14 bleiben erhalten. Für eine vollständige Sicherung „Backup herunterladen“ verwenden."
       >
         <div className="overflow-hidden rounded-lg border">
           <Table>
@@ -165,10 +165,15 @@ function BackupSection() {
               ) : (
                 backups.map((b) => (
                   <TableRow key={b.name}>
-                    <TableCell className="font-medium tabular">{formatDate(b.date)}</TableCell>
+                    <TableCell>
+                      <div className="font-medium tabular">{formatDate(b.date)}</div>
+                      {/* local backups are always database snapshots (contents: "database") */}
+                      <div className="text-xs text-muted-foreground">Nur Datenbank</div>
+                    </TableCell>
                     <TableCell className="text-muted-foreground tabular">
                       {new Date(b.createdAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })} Uhr
                     </TableCell>
+
                     <TableCell className="text-right text-muted-foreground tabular">{formatBytes(b.sizeBytes)}</TableCell>
                     <TableCell className="py-1 text-right">
                       <Button variant="ghost" size="icon" className="size-8" asChild>
