@@ -45,11 +45,17 @@ Contents: [Server, data dir and first start](#server-data-dir-and-first-start) �
   about non-empty folders and about cloud-synced locations (iCloud Drive, `~/Library/CloudStorage`, Dropbox,
   OneDrive, Google Drive, Nextcloud, and `~/Documents`/`~/Desktop` when iCloud "Desktop & Documents" is on): syncing a
   live SQLite database with its `-wal`/`-shm` files can corrupt it. Picking a folder that already holds `nesev.db`
-  continues with that data. Completing writes the config file and loads `main.ts` in-process, no restart.
+  continues with that data. Completing creates an empty `nesev.db` in a new folder (it marks the folder as nesev's),
+  writes the config file and loads `main.ts` in-process, no restart. `POST /api/setup/restore` does the same from a
+  backup (`restoreIntoEmptyDir`). A configured folder without `nesev.db` (moved, drive not connected) counts as not
+  set up: the setup names it (`missingDataDir`) instead of the app silently creating empty books.
 - **Shipped files vs. data.** `lib/app-files.ts` locates what ships with nesev (migrations, fonts, `dist/web`);
   `lib/paths.ts` the user's data (`DATA_DIR`, `ASSETS_DIR`, `PDFS_DIR`, `RECEIPTS_DIR`, `DB_PATH`; `NESEV_DB`
-  overrides the database file). Other entry points without a configured dir (MCP, scripts) fall back to the app-data
-  dir; the MCP server refuses to start before the setup.
+  overrides the database file). Without a resolved dir, `DATA_DIR` is only a placeholder: `db/index.ts` refuses to
+  open a database (nothing is ever written there), and the MCP server refuses to start before the setup.
+- **Release binary.** `scripts/build-binary.ts` compiles `src/cli/main.ts` with the shipped files embedded; at start
+  they are extracted once per build to the cache dir and `NESEV_APP_ROOT` points `APP_ROOT` there. Details:
+  [releasing.md](releasing.md).
 
 ## Core rules
 - **Units:** money in integer cents, quantity in milli-units (1000 = 1), rates in basis points (2000 = 20 %). Dates
@@ -69,7 +75,7 @@ Contents: [Server, data dir and first start](#server-data-dir-and-first-start) �
   set) and non-EU companies `THIRD_COUNTRY`: the place of supply of B2B services is abroad (§3a Abs 6), so the
   exemption doesn't apply. Only domestic (AT-taxable) revenue counts towards the Kleinunternehmer limit.
 - **Finalize warnings** (`finalizeWarnings`, `GET /api/documents/:id/finalize-warnings`, shown in the finalize
-  dialog): reverse charge without own UID, Kleinunternehmer mode for a foreign business, AT invoices > 10.000 € to a
+  dialog): AT VAT over 400 € gross without own UID (§ 11 Abs. 1 Z 2), reverse charge without own UID, Kleinunternehmer mode for a foreign business, AT invoices > 10.000 € to a
   company without UID, Kleinunternehmer mode without that status at the issue date (e.g. recurring invoices after a
   change), VAT charged while Kleinunternehmer (§ 11 Abs. 12). Credit notes must use their invoice's tax mode and may
   not exceed its gross in total.
@@ -458,6 +464,18 @@ the link on the empty dashboard.
   can write concurrently. Migrations run when the server (or MCP server) opens the DB.
 - Daily automatic DB snapshot to `backups/` (newest 14 kept, database only – the UI says so), plus a manual backup ZIP
   (DB snapshot + assets + PDFs + receipts), streamed with fflate.
+- **Before migrations** (`db/migration-state.ts`, `runMigrations(db, { backupDir })`): an existing DB with pending
+  migrations gets a `VACUUM INTO` snapshot `backups/pre-migration-<stamp>.db` (newest 5 kept, ignored by the daily
+  pruning); no snapshot, no migration. Applied migrations unknown to this version (a newer nesev) → refuse to start.
+- **Restore** (`services/restore.ts`, no `lib/paths`/DB import; data dir as a parameter): `inspectBackupZip` validates
+  a backup ZIP or bare `.db` (own central-directory reader: no absolute/`..`/duplicate paths, sizes and CRC checked
+  while streaming, limits, SQLite + `__drizzle_migrations`, not newer than this version). The app stages it in
+  `<data>/restore-pending/` (READY marker last, atomic rename), the user confirms, and `applyPendingRestore` runs in
+  `index.ts` before the DB opens: current data → `backups/before-restore-<stamp>/`, staged files in, journaled in
+  `APPLYING.json` so a crash resumes. Unconfirmed staged restores are discarded at start. `POST /api/export/restart`
+  exits with 75 only under the service (`NESEV_SERVICE=1`, the unit restarts it).
+- **Finalize needs the seller** (`src/shared/seller.ts`): name or owner, street, PLZ, city; else 422 (documents and
+  reminders). Tests that finalize call `seedSeller(db)` (`services/test-seller.ts`).
 - Missing frozen PDFs are re-frozen at startup (`services/pdf-refreeze.ts`).
 - CSV exports (BOM, `;`, decimal comma) and a ZIP with all PDFs for a period.
 - **Accountant export** (`services/export-accounting.ts`, `/api/export/accounting/{summary,bmd.csv,belege.csv}`,
@@ -489,8 +507,10 @@ Details and the threat model are in [SECURITY.md](../SECURITY.md). In code:
 - CSV/BMD text cells neutralised against formula injection, body limits on uploads, capped inflate for embedded
   e-invoice files.
 
-## Background service (macOS)
-`bun run service:install [--port 3998] [--skip-build]` (`scripts/service.ts`) builds the SPA, writes
+## Background service (macOS, Linux)
+The binary installs it with `nesev service install` (`src/cli/service.ts`, shared with the checkout installer):
+launchd agent on macOS, systemd user unit on Linux (`Restart=always`), both with `NESEV_SERVICE=1`. From a checkout,
+`bun run service:install [--port 3998] [--skip-build]` (`scripts/service.ts`) builds the SPA and, on macOS, writes
 `~/Library/LaunchAgents/at.nesev.plist` (label `at.nesev`: `bun src/server/index.ts` with NODE_ENV=production, PORT,
 PATH = bun dir + Homebrew + system, NESEV_DATA_DIR if set at install time; WorkingDirectory = the checkout; RunAtLoad,
 KeepAlive) and loads it with `launchctl bootstrap`. Logs: `~/Library/Logs/nesev/nesev.log` / `nesev.err.log`.

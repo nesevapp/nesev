@@ -90,14 +90,16 @@ All screenshots show demo data.
 | Receipt OCR | Apple Vision | Tesseract, if installed | untested |
 | Crop/straighten photo receipts, HEIC conversion | ✓ | – | – |
 | Assistant (llama.cpp), voice input (whisper.cpp) | ✓ | ✓ | untested |
-| Background service | launchd (`bun run service:install`) | – | – |
+| Background service | launchd (`nesev service install`) | systemd user unit (`nesev service install`) | – |
+| Release binary + one-line installer | ✓ (Apple silicon, Intel) | ✓ (x64, arm64) | – |
 
-The core app is plain TypeScript and SQLite and is tested on macOS and Linux in CI. Apple Vision OCR and receipt
-cropping need the Xcode command line tools (`swiftc`); the helper is compiled on first use.
+The core app is plain TypeScript and SQLite and is tested on macOS and Linux in CI. The macOS release binary ships
+the Apple Vision helper precompiled; from source, OCR and receipt cropping need the Xcode command line tools
+(`swiftc`) and the helper is compiled on first use.
 
 ## Requirements
 
-- [Bun](https://bun.sh) 1.3.13 or newer (when running from source). No Node.js needed.
+- Nothing for the release binary. From source: [Bun](https://bun.sh) 1.3.13 or newer (no Node.js needed).
 - Optional, for the assistant and receipt recognition: [llama.cpp](https://github.com/ggml-org/llama.cpp)
   (`llama-server`) and a GGUF model, e.g. run `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` once to download
   it. nesev starts and stops `llama-server` itself and never downloads anything.
@@ -128,7 +130,8 @@ The installer downloads the latest release for your computer (macOS on Apple sil
 checks its SHA-256 checksum. It installs a single program to `~/.local/bin/nesev` (no admin rights needed) and sets up
 a background service that starts nesev when you log in. Then it opens <http://localhost:3998>, where nesev asks where
 to keep your data (see [Where your data lives](#where-your-data-lives)). Before writing the first invoice, fill in
-Einstellungen → Unternehmen (company, UID, Steuernummer, IBAN).
+Einstellungen → Unternehmen (company, UID, Steuernummer, IBAN): nesev doesn't finalize a document without your name
+and full address, because finalized documents can't be changed.
 
 You don't need Bun or Node.js. Everything is in that one file, including the Apple Vision helper for receipt OCR on
 macOS. The optional extras (llama.cpp, whisper.cpp, Tesseract) are installed separately, see
@@ -225,8 +228,9 @@ On the first start nesev asks for a data folder and suggests:
 The choice is stored in a small config file (macOS `~/Library/Application Support/nesev/config.json`, Linux
 `~/.config/nesev/config.json`, Windows `%APPDATA%\nesev\config.json`). To find the folder later, open Einstellungen →
 Export & Backup, section „Datenordner“: it shows the path, where the setting comes from, and a button to open it in
-Finder/Explorer. Choosing a folder that already holds a nesev database continues with that data. Installs from before
-the setup existed keep using `<checkout>/data`.
+Finder/Explorer. Choosing a folder that already holds a nesev database continues with that data. Moving to a new
+computer: in the setup, pick a new folder and choose „Backup einspielen…“ with a backup ZIP from the old one (or
+`nesev restore <backup.zip>`). Installs from before the setup existed keep using `<checkout>/data`.
 
 To move your data, quit nesev, move the folder, and start nesev again: it notices that the folder is missing and asks
 for the new location.
@@ -242,7 +246,8 @@ for the new location.
   pdfs/         frozen PDFs of finalized documents
   receipts/     expense receipts by year
   assets/       logo, letterhead
-  backups/      daily database snapshots (newest 14 kept)
+  backups/      daily database snapshots (nesev-<date>.db, newest 14 kept), pre-migration-*.db (newest 5),
+                before-restore-*/ (your data as it was before a restore; never deleted automatically)
   bin/          helpers compiled on first use (Apple Vision OCR)
 ```
 
@@ -255,18 +260,26 @@ PDFs, receipts), CSV exports and an accountant export (BMD CSV, generic CSV, all
 Copy the backup ZIP, or the whole data folder while nesev is stopped, to another disk or an encrypted offsite
 location regularly. Austrian law requires you to keep your records for seven years (§ 132 BAO).
 
+**Restoring:** Einstellungen → Export & Backup → „Backup einspielen“ takes a backup ZIP (replaces the database,
+assets, PDFs and receipts) or a single `.db` snapshot from `backups/` (replaces only the database). nesev shows what
+the backup contains, and after you confirm it swaps it in on the next start; your current data is moved to
+`backups/before-restore-<time>/` first. With the background service, „Jetzt neu starten“ does the restart; otherwise
+quit and start nesev. Close MCP clients (Claude Desktop/Code) before that restart. A backup from a newer nesev
+version is refused: update nesev first. On the command line: `nesev restore <backup.zip>`.
+
 ## Updating
 
 1. **Back up first**: download a backup ZIP or copy the data folder.
-2. Update the code (`git pull && bun install && bun run build` for a source install; rerun `bun run service:install`
-   if you use the macOS service) and restart nesev.
+2. Release binary: `nesev update` (or run the one-line installer again). From source: `git pull && bun install &&
+   bun run build`, then restart (rerun `bun run service:install` if you use the background service).
 
-Database migrations run automatically on start, and nesev takes a snapshot of the database before it applies pending
-migrations. What changed is listed in the [changelog](CHANGELOG.md).
+Database migrations run automatically on start. Before it applies pending migrations, nesev writes a snapshot of the
+database to `backups/pre-migration-<time>.db`; if that fails, nothing is migrated. A database written by a newer nesev
+version is not opened. What changed is listed in the [changelog](CHANGELOG.md).
 
 ## MCP server
 
-`bun run mcp` starts a stdio [MCP](https://modelcontextprotocol.io) server with read and write tools (search,
+`nesev mcp` (from source: `bun run mcp`) starts a stdio [MCP](https://modelcontextprotocol.io) server with read and write tools (search,
 dashboard, documents, expenses, tax reports, drafts, finalizing with confirmation in the client, …). It uses the same
 data folder as the app, calls nesev's API in-process and opens no network port. Setup for Claude Code and Claude
 Desktop: [src/mcp/README.md](src/mcp/README.md).

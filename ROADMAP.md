@@ -4,15 +4,6 @@ What's planned for nesev, roughly in order. Priorities can change; for anything 
 you start so we can agree on the approach. What already exists is listed in the [README](README.md#features) and the
 [changelog](CHANGELOG.md); open tax questions are in [docs/tax-notes.md](docs/tax-notes.md).
 
-## In progress: first public release (0.1.0)
-
-- **First-start setup:** choose the data folder on the first start (app-data folder recommended, warnings for
-  cloud-synced folders) instead of a folder inside the checkout.
-- **Restore from backup** in the app, plus a documented command-line path.
-- **Database snapshot before migrations**, so an update can always be rolled back.
-- **Seller details checked on finalize**, so an invoice can't be finalized with missing company data.
-- **Release binaries and a one-line installer**, so nesev runs without a source checkout.
-
 ## Next
 
 1. **Data safety:** an offsite backup folder and long-term rotation (weekly/monthly snapshots; Austrian records are
@@ -22,7 +13,8 @@ you start so we can agree on the approach. What already exists is listed in the 
 3. **Email sending (SMTP):** PDF attachment, text templates per document type, mark as sent automatically, send log.
    The MCP server gets an email tool once this exists.
 4. **Down payment and final invoices** (Anzahlungs- & Schlussrechnung) from accepted offers.
-5. **Packaging:** Docker image and a Linux background service (the macOS launchd service exists).
+5. **Packaging:** notarized macOS binaries (no Gatekeeper step for browser downloads), Windows support, a Docker
+   image.
 
 ## Needs real-world testing
 

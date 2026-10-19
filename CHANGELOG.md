@@ -43,17 +43,19 @@ user interface is German.
 - **MCP server** (`bun run mcp`) so external AI clients can work with your data over stdio.
 - Global search (⌘K), keyboard shortcuts, dark mode, guided tour, CSV/ZIP export, backup ZIP and daily database
   snapshots.
-- macOS background service (`bun run service:install`).
+- **Release binaries** for macOS (Apple silicon, Intel) and Linux (x64, arm64): one file with the web app, Apple
+  Vision helper included on macOS; a **one-line installer** (`install.sh`, checksum-verified, no admin rights) and the
+  `nesev` command (`start`, `service install|uninstall|status`, `update`, `restore`, `mcp`, `uninstall`).
+- **Background service** on macOS (launchd) and Linux (systemd user unit), from the binary or a checkout.
 - **First-start setup:** the data folder is chosen on the first start (OS app-data folder recommended, warning for
-  cloud-synced folders) and stored in a per-user config file; one default port (3998) for the server, the dev proxy,
-  the service and the MCP server.
-
-Coming in this release (in progress):
-
-- Restore from a backup in the app, plus a documented command-line path.
-- A database snapshot before pending migrations run.
-- Seller details checked before a document is finalized.
-- Release binaries and a one-line installer.
+  cloud-synced folders) and stored in a per-user config file; a moved or disconnected data folder brings back the
+  setup instead of starting with empty books. One default port (3998) for the server, the dev proxy, the service and
+  the MCP server.
+- **Restore from a backup:** „Backup einspielen“ in the app (ZIP or `.db`, applied on the next start, previous data
+  kept in `backups/before-restore-*`), in the first-start setup (moving to a new computer) and `nesev restore`.
+- **Database snapshot before migrations** (`backups/pre-migration-*.db`); a database from a newer version is refused.
+- **Seller details required on finalize:** documents and reminders can't be finalized without the seller's name and
+  full address; a hint for invoices over 400 € with VAT but without own UID.
 
 ### Security
 

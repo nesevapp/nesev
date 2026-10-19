@@ -28,7 +28,8 @@ Replace `/path/to/nesev` with your checkout:
 mkdir -p ~/nesev-ai && cd ~/nesev-ai                # any folder you open Claude Code in for bookkeeping
 claude mcp add --scope local nesev -- "$(which bun)" /path/to/nesev/src/mcp/server.ts
 ```
-(`--scope user` would make it available in every project.)
+(`--scope user` would make it available in every project.) With the release binary instead of a checkout:
+`claude mcp add --scope local nesev -- ~/.local/bin/nesev mcp`.
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`). Desktop doesn't use your
 shell's PATH, so give the absolute path to bun (`which bun`, e.g. `~/.bun/bin/bun` or `/opt/homebrew/bin/bun`):
@@ -42,6 +43,7 @@ shell's PATH, so give the absolute path to bun (`which bun`, e.g. `~/.bun/bin/bu
   }
 }
 ```
+With the release binary: `"command": "/Users/<you>/.local/bin/nesev"`, `"args": ["mcp"]`.
 
 The entry resolves all paths from its own location, so the working directory doesn't matter.
 

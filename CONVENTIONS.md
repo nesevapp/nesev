@@ -35,7 +35,7 @@ src/server/
   lib/app-files.ts     shipped files (migrations, fonts, dist/web), DEFAULT_PORT
   lib/paths.ts         DATA_DIR, ASSETS_DIR, PDFS_DIR, ... (the user's data)
   db/schema.ts         full Drizzle schema + row types (Client, Document, ...)
-  db/index.ts          `db` singleton (<data dir>/nesev.db, auto-migrated). db/client.ts has createTestDb().
+  db/index.ts          `db` singleton (<data dir>/nesev.db, auto-migrated). db/client.ts has createTestDb(); tests that finalize call seedSeller(db) (services/test-seller.ts).
 src/web/
   app/router.tsx       central route registry (one marked block)
   app/root-route.tsx   rootRoute (layout = app-shell.tsx sidebar)
