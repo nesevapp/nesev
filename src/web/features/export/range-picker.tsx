@@ -89,7 +89,7 @@ export function useRangePicker(idPrefix: string, initial: Exclude<Preset, "custo
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="icon" className="size-8" onClick={() => step(-1)} aria-label="Zurück">
             <ChevronLeft />
           </Button>
@@ -97,7 +97,7 @@ export function useRangePicker(idPrefix: string, initial: Exclude<Preset, "custo
           <Button variant="outline" size="icon" className="size-8" onClick={() => step(1)} aria-label="Weiter">
             <ChevronRight />
           </Button>
-          <span className="ml-2 text-sm text-muted-foreground tabular">
+          <span className="ml-2 text-sm whitespace-nowrap text-muted-foreground tabular">
             {formatDate(range.from)} – {formatDate(range.to)}
           </span>
         </div>

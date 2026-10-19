@@ -29,20 +29,23 @@ export function ExportPage() {
   return (
     <SettingsAreaPage>
       <SettingsTabs value="export" />
-      <p className="mt-6 text-sm text-muted-foreground">Belege für die Steuerberatung exportieren und Daten sichern.</p>
-      <DocumentsExport />
-      <AccountantExport />
-      <FormSection title="Kunden" description="Alle Kunden inkl. archivierter als CSV.">
-        <div>
-          <Button variant="outline" asChild>
-            <a href={exportUrls.clientsCsv} download>
-              <FileSpreadsheet /> Kunden-CSV herunterladen
-            </a>
-          </Button>
-        </div>
-      </FormSection>
-      <BackupSection />
-      <RestoreSection />
+      {/* same content width as the settings tabs */}
+      <div className="max-w-4xl">
+        <p className="mt-6 text-sm text-muted-foreground">Belege für die Steuerberatung exportieren und Daten sichern.</p>
+        <DocumentsExport />
+        <AccountantExport />
+        <FormSection title="Kunden" description="Alle Kunden inkl. archivierter als CSV.">
+          <div>
+            <Button variant="outline" asChild>
+              <a href={exportUrls.clientsCsv} download>
+                <FileSpreadsheet /> Kunden-CSV herunterladen
+              </a>
+            </Button>
+          </div>
+        </FormSection>
+        <BackupSection />
+        <RestoreSection />
+      </div>
     </SettingsAreaPage>
   );
 }

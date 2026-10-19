@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { getRouteApi, Link, useBlocker } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import type { Plugins, Schema, Template } from "@pdfme/common";
 import type { Designer } from "@pdfme/ui";
 import { ArrowLeft, Eye, FileUp, Loader2, Save, Star, Trash2 } from "lucide-react";
@@ -155,10 +156,6 @@ export function TemplateDesignerPage() {
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  useBlocker({
-    shouldBlockFn: () => hasChanges && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => hasChanges,
-  });
 
   const preview = async () => {
     const designer = designerRef.current;
@@ -214,6 +211,7 @@ export function TemplateDesignerPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <UnsavedChangesGuard when={hasChanges} />
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="size-8" asChild>
           <Link to="/templates" aria-label="Zurück">

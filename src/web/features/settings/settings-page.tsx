@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useBlocker, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
+import { useLocation, useNavigate, useSearch } from "@tanstack/react-router";
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { ImageUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { COUNTRY_OPTIONS } from "@shared/countries";
@@ -55,11 +56,6 @@ export function SettingsPage() {
   });
   const { control, formState } = form;
   // tab switches stay on /settings and keep the edits; leaving (also via the PDF-Vorlagen / Export tabs) asks first
-  useBlocker({
-    shouldBlockFn: ({ next }) =>
-      formState.isDirty && next.pathname !== "/settings" && !window.confirm("Ungespeicherte Änderungen verwerfen?"),
-    enableBeforeUnload: () => formState.isDirty,
-  });
   const dirtyTabs = tabsOfFields(Object.keys(formState.dirtyFields));
   const errorTabs = tabsOfFields(Object.keys(formState.errors));
 
@@ -102,6 +98,7 @@ export function SettingsPage() {
 
   return (
     <SettingsAreaPage>
+      <UnsavedChangesGuard when={formState.isDirty} shouldBlock={({ next }) => next.pathname !== "/settings"} />
       <SettingsTabs
         value={tab}
         onTabChange={setTab}
@@ -222,8 +219,8 @@ export function SettingsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="accrual">Sollbesteuerung (nach Rechnungsdatum)</SelectItem>
-                            <SelectItem value="cash">Istbesteuerung (nach Zahlungseingang)</SelectItem>
+                            <SelectItem value="accrual">Soll (nach Rechnungsdatum)</SelectItem>
+                            <SelectItem value="cash">Ist (nach Zahlungseingang)</SelectItem>
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Page } from "@/components/page";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,10 +20,7 @@ const LINK_TABS = Object.keys(SETTINGS_LINK_TABS) as SettingsLinkTab[];
 /** Page frame of the settings area (title, description). */
 export function SettingsAreaPage({ children }: { children: ReactNode }) {
   return (
-    <Page
-      title="Einstellungen"
-      description="Unternehmensdaten, Belege, Mahnwesen, Prognose, Belegerkennung, Assistent, Darstellung, PDF-Vorlagen sowie Export & Backup."
-    >
+    <Page title="Einstellungen" description="Ihre Firmendaten, Belegtexte und wie nesev arbeitet.">
       {children}
     </Page>
   );
@@ -47,6 +44,11 @@ export function SettingsTabs({
   children?: ReactNode;
 }) {
   const navigate = useNavigate();
+  // on narrow screens the tab bar scrolls sideways: keep the current tab in view
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('[data-state="active"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [value]);
   const change = (next: string) => {
     if (isLinkTab(next)) void navigate({ to: SETTINGS_LINK_TABS[next].to });
     else if (onTabChange) onTabChange(next as SettingsTab);
@@ -54,7 +56,7 @@ export function SettingsTabs({
   };
   return (
     <Tabs value={value} onValueChange={change} activationMode="manual" className="gap-6">
-      <TabsList variant="line" className="w-full flex-wrap justify-start border-b pb-1 group-data-[orientation=horizontal]/tabs:h-auto">
+      <TabsList ref={listRef} variant="line" className="w-full justify-start border-b pb-1 group-data-[orientation=horizontal]/tabs:h-auto max-sm:overflow-x-auto max-sm:overflow-y-hidden sm:flex-wrap">
         {SETTINGS_TABS.map((t) => (
           <TabsTrigger key={t} value={t} className="flex-none px-3">
             {SETTINGS_TAB_LABELS[t]}

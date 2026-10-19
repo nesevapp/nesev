@@ -73,7 +73,7 @@ export function UnitSettingsSection() {
           ))}
           {units.length === 0 && <li className="px-3 py-3 text-sm text-muted-foreground">Keine Einheiten – das Dropdown bietet dann nur „–“.</li>}
         </ul>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -85,13 +85,13 @@ export function UnitSettingsSection() {
             }}
             placeholder="Neue Einheit, z. B. Lizenz"
             maxLength={20}
-            className="max-w-xs"
+            className="max-w-xs min-w-0 flex-1"
           />
           <Button type="button" variant="outline" onClick={add} disabled={!draft.trim()}>
             <Plus className="size-4" /> Hinzufügen
           </Button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={save} disabled={!dirty || update.isPending}>
             Einheiten speichern
           </Button>
