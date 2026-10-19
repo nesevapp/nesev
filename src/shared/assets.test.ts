@@ -5,6 +5,7 @@ import {
   bookValueAt,
   bookValueAtYearEnd,
   formatAssetNumber,
+  halfYearAfa,
   parseAssetNumber,
   spreadOverMonths,
 } from "./assets";
@@ -104,6 +105,19 @@ describe("helpers", () => {
     expect(m[0]).toBe(3333);
     expect(m[11]).toBe(40000 - 3333 * 11);
     expect(sum(m)).toBe(40000);
+  });
+  test("halfYearAfa: even split, H2-first-year asset all in H2, write-off in its half; halves sum to the year", () => {
+    const mac = { costCents: 430000, usefulLifeYears: 3, inServiceDate: "2026-03-16" };
+    expect(halfYearAfa(mac, 2026)).toEqual([71666, 71667]);
+    const late = { costCents: 240000, usefulLifeYears: 3, inServiceDate: "2026-07-01" };
+    expect(halfYearAfa(late, 2026)).toEqual([0, 40000]);
+    expect(halfYearAfa(late, 2027)).toEqual([40000, 40000]);
+    expect(halfYearAfa({ ...late, disposalDate: "2027-10-01" }, 2027)).toEqual([40000, 40000 + 120000]);
+    expect(halfYearAfa(late, 2030)).toEqual([0, 0]);
+    for (const y of [2026, 2027, 2028, 2029]) {
+      const { afaCents, disposalCents } = afaForYear(late, y);
+      expect(sum(halfYearAfa(late, y))).toBe(afaCents + disposalCents);
+    }
   });
   test("asset numbers", () => {
     expect(formatAssetNumber(1)).toBe("AV-0001");

@@ -114,6 +114,21 @@ export function bookValueAt(a: AssetInput, date: string): number {
 }
 
 /**
+ * AfA of `year` split into the two half-years [Jän–Jun, Jul–Dez], for the Anlagen chart. The regular AfA is split
+ * evenly (cent remainder in H2), except in the first year of an asset put in service in H2: its (half-year) AfA
+ * falls entirely into H2. A disposal write-off falls into the half of the disposal date. The two halves always
+ * add up to afaForYear (afaCents + disposalCents).
+ */
+export function halfYearAfa(a: AssetInput, year: number): [number, number] {
+  const { afaCents, disposalCents } = afaForYear(a, year);
+  const h2Only = yearOf(a.inServiceDate) === year && !isFirstHalf(a.inServiceDate);
+  const h1 = h2Only ? 0 : Math.trunc(afaCents / 2);
+  const out: [number, number] = [h1, afaCents - h1];
+  if (disposalCents && a.disposalDate) out[isFirstHalf(a.disposalDate) ? 0 : 1] += disposalCents;
+  return out;
+}
+
+/**
  * An annual amount spread evenly over 12 months (index 0 = January); the cent remainder goes to December.
  * Used where AfA is shown per month (dashboard, EAR monthly view).
  */

@@ -9,6 +9,8 @@ import {
   bookValueAtYearEnd,
   formatAssetNumber,
   GWG_LIMIT_CENTS,
+  halfYearAfa,
+  isFirstHalf,
   spreadOverMonths,
 } from "../../shared/assets";
 import { formatDate, todayIso } from "../../shared/dates";
@@ -64,6 +66,11 @@ export interface AssetRegister {
   totals: { costCents: number; startCents: number; afaCents: number; disposalCents: number; endCents: number; proceedsCents: number };
   /** assets not in this year's register (put in service later or disposed earlier) */
   hiddenCount: number;
+  /**
+   * [Jän–Jun, Jul–Dez]: Zugänge = cost of assets put in service in that half; AfA = AfA incl. disposal write-off
+   * (shared/assets.ts halfYearAfa), so both halves add up to totals.afaCents + totals.disposalCents.
+   */
+  halves: { additionsCents: number; afaCents: number }[];
 }
 
 export function assetInput(a: Pick<FixedAsset, "costCents" | "usefulLifeYears" | "inServiceDate" | "disposalDate">): AssetInput {
@@ -196,9 +203,12 @@ function inRegister(a: FixedAsset, year: number): boolean {
 export function assetRegister(db: DbOrTx, year: number, today = todayIso()): AssetRegister {
   const all = loadAssets(db);
   const rows: AssetRegisterRow[] = [];
+  const halves = [0, 1].map(() => ({ additionsCents: 0, afaCents: 0 }));
   for (const a of all) {
     if (!inRegister(a, year)) continue;
     const input = assetInput(a);
+    if (yearOf(a.inServiceDate) === year) halves[isFirstHalf(a.inServiceDate) ? 0 : 1]!.additionsCents += a.costCents;
+    halfYearAfa(input, year).forEach((c, h) => (halves[h]!.afaCents += c));
     const { afaCents, disposalCents } = afaForYear(input, year);
     const startCents = yearOf(a.inServiceDate) === year ? a.costCents : bookValueAtYearEnd(input, year - 1);
     const endCents = bookValueAtYearEnd(input, year);
@@ -229,6 +239,7 @@ export function assetRegister(db: DbOrTx, year: number, today = todayIso()): Ass
       proceedsCents: sum((r) => (r.disposedThisYear ? (r.disposalProceedsCents ?? 0) : 0)),
     },
     hiddenCount: all.length - rows.length,
+    halves,
   };
 }
 

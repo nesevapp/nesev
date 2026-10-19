@@ -118,6 +118,16 @@ describe("assets service", () => {
     expect(months.reduce((s, x) => s + x, 0)).toBe(80000 + 40000 + 120000);
     expect(months[3]! - months[0]!).toBe(120000); // write-off in April
 
+    // half-years: 2026 the H2 laptop's half-year AfA all in H2; 2027 the laptop's AfA split evenly plus the
+    // write-off in H1 (April), the camera (put in service in Feb.) as H1 Zugang with its full AfA split evenly
+    expect(r26.halves).toEqual([{ additionsCents: 0, afaCents: 0 }, { additionsCents: 240000, afaCents: 40000 }]);
+    expect(r27.halves).toEqual([
+      { additionsCents: 120000, afaCents: 40000 + 20000 + 120000 },
+      { additionsCents: 0, afaCents: 40000 + 20000 },
+    ]);
+    const halvesTotal = r27.halves.reduce((s, h) => s + h.afaCents, 0);
+    expect(halvesTotal).toBe(r27.totals.afaCents + r27.totals.disposalCents);
+
     undoDisposal(db, a.id);
     expect(assetRegister(db, 2027, "2026-10-14").totals.disposalCents).toBe(0);
     deleteAsset(db, a.id);

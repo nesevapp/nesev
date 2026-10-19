@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Download, Plus } from "lucide-react";
 import { formatAssetNumber } from "@shared/assets";
 import { formatDate } from "@shared/dates";
 import { formatCents } from "@shared/money";
+import { ColumnChart, ColumnLegend, type ColumnSeries } from "@/components/charts/column-chart";
 import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -56,6 +57,8 @@ export function AssetsPage({ year, setYear }: { year?: number; setYear: (year: n
           <Figure label={`Buchwert 31.12.${data.year}`} cents={t.endCents} />
         </div>
       </div>
+
+      <HalfYearChart year={data.year} halves={data.halves} />
 
       <div className={cn("rounded-lg border transition-opacity", isFetching && "opacity-70")}>
         <Table>
@@ -146,6 +149,30 @@ export function AssetsPage({ year, setYear }: { year?: number; setYear: (year: n
 
       <AssetFormDialog open={creating} onOpenChange={setCreating} onSaved={(a) => void navigate({ to: "/assets/$id", params: { id: a.id } })} />
     </Page>
+  );
+}
+
+const HALF_SERIES: ColumnSeries[] = [
+  { key: "additions", label: "Zugänge", fill: "fill-chart-neutral", swatch: "bg-chart-neutral" },
+  { key: "afa", label: "AfA", fill: "fill-chart-afa", swatch: "bg-chart-afa" },
+];
+
+/** Zugänge (cost by Inbetriebnahme) and AfA per half-year; hidden when the year has neither. */
+function HalfYearChart({ year, halves }: { year: number; halves: { additionsCents: number; afaCents: number }[] }) {
+  if (!halves.some((h) => h.additionsCents || h.afaCents)) return null;
+  const groups = halves.map((h, i) => ({
+    label: i === 0 ? "1. Halbjahr" : "2. Halbjahr",
+    title: i === 0 ? `1. Halbjahr ${year} (Jän–Jun)` : `2. Halbjahr ${year} (Jul–Dez)`,
+    values: { additions: h.additionsCents, afa: h.afaCents },
+  }));
+  return (
+    <div className="mb-4 rounded-lg border p-4 pb-2">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        <p className="text-xs text-muted-foreground">Zugänge nach Inbetriebnahme, AfA {year} je Halbjahr</p>
+        <ColumnLegend series={HALF_SERIES} />
+      </div>
+      <ColumnChart groups={groups} series={HALF_SERIES} height={150} barMax={40} ariaLabel={`Zugänge und AfA ${year} pro Halbjahr`} />
+    </div>
   );
 }
 
