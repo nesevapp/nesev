@@ -99,7 +99,8 @@ function compile(target: Target, entry: string): string {
     process.execPath,
     "build",
     "--compile",
-    `--target=bun-${target}`,
+    // x64: the baseline runtime runs on CPUs without AVX2 (older Intel Macs/PCs, Rosetta)
+    `--target=bun-${target}${target.endsWith("-x64") ? "-baseline" : ""}`,
     "--define",
     'process.env.NODE_ENV="production"',
     "--minify-syntax",
