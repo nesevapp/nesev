@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import { z } from "zod";
 import {
   defaultVatTreatment,
@@ -35,18 +35,26 @@ function sniff(bytes: Uint8Array): string | null {
   return null;
 }
 
-/** Reads and checks a local receipt file like the UI does (PDF/JPG/PNG/WebP, ≤ 20 MB, not empty). */
-export async function readReceiptFile(path: string): Promise<File> {
-  const full = path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
+/**
+ * Reads and checks a local receipt file like the UI does (PDF/JPG/PNG/WebP by content, ≤ 20 MB, not empty). Only
+ * files inside the user's home folder (after resolving symlinks): the path comes from a model, so it must not reach
+ * system files. Offered to stdio MCP clients only, never to the in-app assistant (see create_expense).
+ */
+export async function readReceiptFile(path: string, home = homedir()): Promise<File> {
+  const full = path.startsWith("~/") ? join(home, path.slice(2)) : path;
   if (!isAbsolute(full)) throw new ToolError(`receiptPath muss ein absoluter Pfad sein: ${path}`);
   const info = await stat(full).catch(() => null);
   if (!info?.isFile()) throw new ToolError(`Belegdatei nicht gefunden: ${full}`);
+  const [real, realHome] = await Promise.all([realpath(full), realpath(home).catch(() => home)]);
+  if (!real.startsWith(realHome.endsWith(sep) ? realHome : realHome + sep)) {
+    throw new ToolError(`Nur Belegdateien im Benutzerordner (${realHome}) sind erlaubt: ${full}`);
+  }
   if (info.size === 0) throw new ToolError("Belegdatei ist leer");
   if (info.size > RECEIPT_MAX_BYTES) throw new ToolError("Belegdatei ist zu groß (max. 20 MB)");
   const extRaw = full.toLowerCase().split(".").pop() ?? "";
   const ext = extRaw === "jpeg" ? "jpg" : extRaw;
   if (!MIME_BY_EXT[ext]) throw new ToolError("Nur PDF, JPG, PNG oder WebP erlaubt");
-  const bytes = new Uint8Array(await Bun.file(full).arrayBuffer());
+  const bytes = new Uint8Array(await Bun.file(real).arrayBuffer());
   const actual = sniff(bytes);
   if (actual !== ext) throw new ToolError(`Der Inhalt von ${basename(full)} ist kein gültiges ${ext.toUpperCase()}`);
   return new File([bytes], basename(full), { type: MIME_BY_EXT[ext] });
@@ -65,6 +73,38 @@ export function lineAmounts(net: number | undefined, gross: number | undefined, 
 }
 
 export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
+  // receiptPath (a local file read) only for stdio MCP clients: the in-app assistant's arguments come from a small
+  // model that reads untrusted text (receipts, e-mails), so it gets no file access; z.object drops the key there
+  const input = z.object({
+    supplierName: z.string().trim().min(1).max(200),
+    supplierCountry: z.string().trim().length(2).default("AT").describe("ISO alpha-2"),
+    supplierUid: z.string().trim().max(30).optional(),
+    supplierInvoiceNumber: z.string().trim().max(100).optional(),
+    issueDate: isoDate.describe("invoice date"),
+    dueDate: isoDate.optional(),
+    paidAt: isoDate.optional().describe("date fully paid; omit if still open"),
+    vatTreatment: z.enum(VAT_TREATMENTS).optional().describe("default from country/UID"),
+    description: z.string().trim().max(500).optional().describe("short, e.g. 'Internet Oktober'"),
+    notes: z.string().max(5000).optional(),
+    lines: z
+      .array(
+        z.object({
+          category: z.enum(EXPENSE_CATEGORY_KEYS).describe("EAR category key"),
+          description: z.string().trim().max(500).optional(),
+          net: euroAmount.optional().describe("net amount in euros (give net or gross)"),
+          gross: euroAmount.optional().describe("gross amount in euros incl. VAT (give net or gross)"),
+          taxRate: taxRateInput.default(20),
+          tax: euroAmount.optional().describe("VAT in euros as printed on the receipt; default computed"),
+          deductiblePercent: z.number().min(0).max(100).default(100).describe("deductible share of the VAT"),
+        }),
+      )
+      .min(1)
+      .max(200),
+    receiptPath: z.string().trim().max(1000).optional().describe("absolute local file path of the receipt"),
+    fixedCostId: z.number().int().positive().optional().describe("Fixkosten entry to link"),
+    fixedCostSlot: isoDate.optional().describe("scheduled payment date of that Fixkosten entry"),
+  });
+
   defineTool(
     server,
     "create_expense",
@@ -77,44 +117,17 @@ export function registerExpenseWriteTools(server: McpServer, ctx: ToolContext) {
         "net = amount payable) and the " +
         "deductible share in % (default 100). VAT treatment defaults from supplier country and UID like in the UI " +
         "(AT → domestic, EU with UID → reverse_charge, non-EU → reverse_charge). paidAt marks it paid. Optional: " +
-        "receiptPath = absolute path of a local PDF/JPG/PNG/WebP (≤ 20 MB) that is attached as the receipt; " +
+        (ctx.inServer ? "" : "receiptPath = absolute path of a local PDF/JPG/PNG/WebP (≤ 20 MB, inside the user's home folder) that is attached as the receipt; ") +
         "fixedCostId + fixedCostSlot link it to a scheduled Fixkosten payment (see list_fixed_costs). Receipt analysis " +
         "(OCR) is never started automatically; use queue_receipt_analysis for that.",
-      input: z.object({
-        supplierName: z.string().trim().min(1).max(200),
-        supplierCountry: z.string().trim().length(2).default("AT").describe("ISO alpha-2"),
-        supplierUid: z.string().trim().max(30).optional(),
-        supplierInvoiceNumber: z.string().trim().max(100).optional(),
-        issueDate: isoDate.describe("invoice date"),
-        dueDate: isoDate.optional(),
-        paidAt: isoDate.optional().describe("date fully paid; omit if still open"),
-        vatTreatment: z.enum(VAT_TREATMENTS).optional().describe("default from country/UID"),
-        description: z.string().trim().max(500).optional().describe("short, e.g. 'Internet Oktober'"),
-        notes: z.string().max(5000).optional(),
-        lines: z
-          .array(
-            z.object({
-              category: z.enum(EXPENSE_CATEGORY_KEYS).describe("EAR category key"),
-              description: z.string().trim().max(500).optional(),
-              net: euroAmount.optional().describe("net amount in euros (give net or gross)"),
-              gross: euroAmount.optional().describe("gross amount in euros incl. VAT (give net or gross)"),
-              taxRate: taxRateInput.default(20),
-              tax: euroAmount.optional().describe("VAT in euros as printed on the receipt; default computed"),
-              deductiblePercent: z.number().min(0).max(100).default(100).describe("deductible share of the VAT"),
-            }),
-          )
-          .min(1)
-          .max(200),
-        receiptPath: z.string().trim().max(1000).optional().describe("absolute local file path of the receipt"),
-        fixedCostId: z.number().int().positive().optional().describe("Fixkosten entry to link"),
-        fixedCostSlot: isoDate.optional().describe("scheduled payment date of that Fixkosten entry"),
-      }),
+      input: ctx.inServer ? (input.omit({ receiptPath: true }) as unknown as typeof input) : input,
       output: ExpenseDetail,
       annotations: CREATES,
     },
     async ({ lines, receiptPath, fixedCostId, fixedCostSlot, ...fields }) => {
       if (!!fixedCostId !== !!fixedCostSlot) throw new ToolError("fixedCostId und fixedCostSlot nur gemeinsam angeben");
       // validate everything before anything is created
+      if (receiptPath && ctx.inServer) throw new ToolError("Belege bitte in der App an die Ausgabe hängen (der Assistent liest keine lokalen Dateien)");
       const file = receiptPath ? await readReceiptFile(receiptPath) : null;
       if (fixedCostId) await call(ctx.api.recurringExpenses[":id"].$get({ param: idParam(fixedCostId) }));
       const vatTreatment = fields.vatTreatment ?? defaultVatTreatment(fields.supplierCountry, fields.supplierUid);

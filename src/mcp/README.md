@@ -103,7 +103,7 @@ returns the tools in registration order (`TOOL_MODULES` in `server.ts`): the rea
 | `create_article` | Unit must be one of the configured units; net price in euros; rate 20/13/10/0 % |
 | `create_invoice_draft` / `create_offer_draft` | Client by `clientId` or `clientName` (must match exactly one client; otherwise the error lists the candidates). Each item has a `title` (required in the schema, so grammar-constrained local models can't drop it; `""` takes the article's title), quantity, a configured unit (the error lists them), a net `unitPrice` in euros, a rate and optionally an `articleId` for defaults. Tax mode, texts and dates default like in the UI. Returns the draft with totals. |
 | `update_document_draft` | Drafts only. Changes the given fields; `items` replaces all lines |
-| `create_expense` | Lines with net or gross, rate and deductible %; the VAT treatment defaults from country and UID. For reverse charge / ig. Erwerb a gross amount is the amount payable (= net), the VAT is self-assessed on top. Optional: `receiptPath` (a local file, checked like the UI: PDF/JPG/PNG/WebP, ≤ 20 MB, plus the file content) and `fixedCostId` + `fixedCostSlot` |
+| `create_expense` | Lines with net or gross, rate and deductible %; the VAT treatment defaults from country and UID. For reverse charge / ig. Erwerb a gross amount is the amount payable (= net), the VAT is self-assessed on top. Optional: `receiptPath` (a local file inside the user's home folder, symlinks resolved; checked like the UI: PDF/JPG/PNG/WebP, ≤ 20 MB, plus the file content; stdio clients only, the in-app assistant doesn't get this parameter) and `fixedCostId` + `fixedCostSlot` |
 | `queue_receipt_analysis` | Queues OCR on the running nesev server over HTTP (`NESEV_API_URL`). It first checks that the server uses the same data (each expense must match on number, supplier and receipt). Fails clearly when the server isn't running. |
 | `create_expense_from_inbox` | One expense draft per inbox item, the file attached as receipt (no supplier/lines yet). Never analyses; the folder scan stays in the nesev server. |
 | `create_fixed_cost` | Fixkosten: gross per payment in euros, the contained VAT rate, interval (`intervalCount` × month/year), first payment date. Refuses likely duplicates (an active entry with the same name, or the same supplier and amount) unless `allowDuplicate: true` |
@@ -214,8 +214,10 @@ mcp.test.ts       end-to-end: the real entry as a subprocess in both eras; every
   - **Usually fine to allow:** `create_client`, `create_article`, `create_invoice_draft`, `create_offer_draft`,
     `update_document_draft`, `queue_receipt_analysis`, `create_fixed_cost` and `create_asset`. These only add
     records or edit drafts, and any of it can be fixed or deleted in the web app.
-  - `create_expense` is in the same category, but it copies a local file into `data/receipts`. Allow it if that's
-    fine.
+  - `create_expense` is in the same category, but with `receiptPath` it reads a local file (only inside your home
+    folder, only PDF/JPG/PNG/WebP by content) and copies it into `data/receipts`. Allow it if that's fine.
+  - The in-app assistant asks for a click on `update_document_draft` too (it may replace all line items), and its
+    `create_expense` has no `receiptPath`.
   - **Always confirm:** `finalize_document`, `create_reminder` (finalizes by default), `mark_invoice_paid`,
     `mark_document_sent`, `convert_offer_to_invoice`, `create_credit_note`, `generate_recurring_invoice` (may
     finalize), and the bank matching tools (`match_bank_transaction`, `unmatch_bank_transaction`,

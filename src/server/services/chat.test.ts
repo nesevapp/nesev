@@ -17,6 +17,7 @@ import {
   ChatConflictError,
   type ChatDeps,
   confirmToolCall,
+  INTERRUPTED_TEXT,
   conversationDetail,
   createConversation,
   deleteConversation,
@@ -31,7 +32,7 @@ import {
 } from "./chat";
 import { primeCache, repetitionCut, samplingTemperature } from "./chat-llm";
 import { getChatSettings, updateChatSettings } from "./chat-settings";
-import { type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
+import { ASSISTANT_CONFIRM_TOOLS, type ChatTool, confirmSummary, extractLinks, selectTools, selectToolsDetailed, textGroups, type ToolHost, toChatToolResult, toolTokens } from "./chat-tools";
 import { withUiTools } from "./chat-ui-tools";
 
 // The agent loop against a fake OpenAI-compatible streaming server (Bun.serve emitting SSE chunks like
@@ -303,6 +304,43 @@ describe("agent loop", () => {
     ]);
     expect(conversationDetail(db, c.id).pending).toBeNull();
     expect(() => assertCanConfirm(db, c.id, confirm.messageId)).toThrow("bereits beantwortet");
+  });
+
+  test("confirm flow: the call is consumed before it runs (a crash meanwhile can't lead to a second run)", async () => {
+    const c = createConversation(db);
+    scripts.push(toolCall("finalize_document", '{"id":2}'));
+    const events = await collect((emit) => sendMessage(deps, c.id, { text: "Finalisiere die Rechnung id 2" }, emit));
+    const confirm = events.at(-1) as Extract<ChatStreamEvent, { type: "confirm" }>;
+    const during: unknown[] = [];
+    const crashing: ToolHost = {
+      tools: host.tools,
+      async call(name, args) {
+        if (name !== "finalize_document") return host.call(name, args);
+        // what a restart at this point would find in the DB
+        const row = conversationDetail(db, c.id).messages.find((m) => m.id === confirm.messageId)!;
+        during.push(row.status, row.content, conversationDetail(db, c.id).pending);
+        // a restarted process has no running turns: only the row's status guards it
+        const active = (globalThis as Record<symbol, Set<number>>)[Symbol.for("nesev.chatActive")]!;
+        active.delete(c.id);
+        try {
+          assertCanConfirm(db, c.id, confirm.messageId);
+          during.push("confirmable");
+        } catch (err) {
+          during.push((err as Error).message);
+        }
+        active.add(c.id);
+        throw new Error("host crashed");
+      },
+    };
+    scripts.push(text("Das hat nicht geklappt."));
+    const after = await collect((emit) => confirmToolCall({ ...deps, host: async () => crashing }, c.id, confirm.messageId, true, emit));
+    expect(during).toEqual(["error", INTERRUPTED_TEXT, null, "Diese Aktion wurde bereits beantwortet"]);
+    const r = after[0] as Extract<ChatStreamEvent, { type: "tool_result" }>;
+    expect(r.message.status).toBe("error");
+    expect(r.message.content).toContain("host crashed");
+    // nothing pending any more: a second confirm is refused
+    expect(() => assertCanConfirm(db, c.id, confirm.messageId)).toThrow("bereits beantwortet");
+    expect(calls.filter((x) => x.name === "finalize_document")).toEqual([]);
   });
 
   test("confirm flow: reject → cancelled and a fixed reply, no model call; the model sees the rejection later", async () => {
@@ -873,6 +911,7 @@ process.stdout.write(JSON.stringify({
   names: host.tools.map((t) => t.name),
   confirm: host.tools.filter(needsConfirm).map((t) => t.name),
   destructive: host.tools.filter((t) => t.destructive).map((t) => t.name),
+  createExpenseArgs: Object.keys(host.tools.find((t) => t.name === "create_expense").inputSchema.properties),
   search: toChatToolResult(search),
   queue: { isError: queue.isError, text: queue.text },
   bad: bad.isError,
@@ -884,7 +923,10 @@ process.exit(0);`,
       const r = JSON.parse(out.stdout.toString());
       expect(r.names.length).toBeGreaterThanOrEqual(28);
       expect([...r.destructive].sort()).toEqual([...CONFIRM_TOOLS].sort());
-      expect([...r.confirm].sort()).toEqual([...CONFIRM_TOOLS].sort());
+      expect([...r.confirm].sort()).toEqual([...CONFIRM_TOOLS, ...ASSISTANT_CONFIRM_TOOLS].sort());
+      // no local file access for the assistant (receiptPath is for stdio MCP clients only)
+      expect(r.createExpenseArgs).toContain("supplierName");
+      expect(r.createExpenseArgs).not.toContain("receiptPath");
       expect(r.search.ok).toBe(true);
       expect(r.search.links.length).toBeGreaterThan(0);
       for (const l of r.search.links) expect(l.path.startsWith("/")).toBe(true);

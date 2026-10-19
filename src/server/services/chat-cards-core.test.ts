@@ -335,6 +335,17 @@ describe("record tools: confirmation summaries", () => {
     },
     get_receipt_analysis: { analysis: { suggestions: [{ field: "supplierName", value: "A1 Telekom Austria AG" }, { field: "issueDate", value: "04.10.2026" }] } },
     list_fixed_costs: { fixedCosts: [{ id: 1, name: "Büromiete" }] },
+    get_document: {
+      id: 12,
+      typeLabel: "Rechnung",
+      client: { id: 1, name: "Alpen Software GmbH" },
+      issueDate: "2026-10-01",
+      dueDate: "2026-10-15",
+      title: "Wartung",
+      taxMode: "AT_DOMESTIC",
+      net: m(19000),
+      items: [{ title: "Wartung" }],
+    },
   };
   const lookups: ConfirmLookups = { document: async () => null, read: async (tool) => reads[tool] ?? null };
   const summary = async (name: string, args: Record<string, unknown>) => sp(await confirmSummary(name, args, lookups));
@@ -351,6 +362,25 @@ describe("record tools: confirmation summaries", () => {
       "Ausgabe ER-2026-0002 A1 Telekom ändern: Datum: 04.10.2026 → 05.10.2026; USt-Behandlung: Inland → Reverse Charge; " +
         "Kategorie aller Positionen: Telefon und Internet → Telefon & Internet; Positionen ersetzen: 1 Position(en), brutto € 60,00 → 2 neue Position(en)",
     );
+  });
+
+  test("update_document_draft: changed fields and the replaced items", async () => {
+    expect(
+      await summary("update_document_draft", {
+        id: 12,
+        title: "Wartung",
+        dueDate: "2026-10-31",
+        taxMode: "EU_REVERSE_CHARGE",
+        items: [{ title: "Wartung Oktober", quantity: 2.5, unit: "Std.", unitPrice: "95,00" }, { title: "Hosting", quantity: 1, unit: "Pauschal", unitPrice: 20 }],
+      }),
+    ).toBe(
+      "Rechnung (Entwurf, id 12) für Alpen Software GmbH ändern: Fällig am: 15.10.2026 → 31.10.2026; Steuermodus: Inland (AT) → EU Reverse Charge; " +
+        "alle Positionen ersetzen: 1 Position(en), netto € 190,00 → 2 neue (Wartung Oktober 2,5 Std. × € 95,00, Hosting 1 Pauschal × € 20,00)",
+    );
+    expect(await summary("update_document_draft", { id: 12, clientName: "Berlin Digital" })).toBe(
+      "Rechnung (Entwurf, id 12) für Alpen Software GmbH ändern: Kunde: Alpen Software GmbH → Berlin Digital",
+    );
+    expect(sp(await confirmSummary("update_document_draft", { id: 7, issueDate: "2026-10-02" }, { document: async () => null }))).toBe("Entwurf id 7 ändern: Datum → 02.10.2026");
   });
 
   test("mark_expense_paid, apply_receipt_analysis, link_expense_to_fixed_cost", async () => {

@@ -47,6 +47,10 @@ const RECENT_TURNS = 2;
 /** what the model reads (in later turns) for a declined confirmation */
 export const REJECTED_TEXT = "Der Nutzer hat die Aktion abgelehnt; es wurde nichts ausgeführt oder geändert.";
 
+/** a confirmed call whose execution started but never recorded a result (crash / restart while it ran) */
+export const INTERRUPTED_TEXT =
+  "Die Aktion wurde gestartet, aber ihr Ergebnis wurde nicht gespeichert (Abbruch oder Neustart). Ob sie ausgeführt wurde, ist unbekannt – bitte in der App prüfen, nicht einfach wiederholen.";
+
 /** what stays as it was, per declined tool (the reply is fixed text, no model call) */
 const REJECTED_EFFECT: Record<string, string> = {
   finalize_document: "der Entwurf bleibt unverändert und wird nicht finalisiert",
@@ -61,6 +65,7 @@ const REJECTED_EFFECT: Record<string, string> = {
   set_recurring_invoice_active: "die Serienrechnung bleibt, wie sie ist",
   generate_recurring_invoice: "es wurde keine Rechnung erstellt",
   update_client: "die Kundendaten bleiben unverändert",
+  update_document_draft: "der Entwurf bleibt unverändert",
   update_expense: "die Ausgabe bleibt unverändert",
   mark_expense_paid: "der Zahlungsstatus der Ausgabe bleibt unverändert",
   apply_receipt_analysis: "die Ausgabe bleibt unverändert, die Erkennung wurde nicht übernommen",
@@ -406,7 +411,21 @@ export async function confirmToolCall(deps: ChatDeps, conversationId: number, me
     let done: ChatMessage;
     if (approve) {
       const host = await deps.host();
-      const outcome = await host.call(call.name, call.arguments);
+      // consumed before it runs (status no longer "pending"): a crash or restart during host.call, or a second
+      // confirm, can't execute it twice; if the process dies here, the row says the outcome is unknown
+      const claimed = db
+        .update(chatMessages)
+        .set({ content: INTERRUPTED_TEXT, status: "error", toolResult: { ok: false, summary: "Ausführung unterbrochen – Ergebnis bitte prüfen", links: [] } satisfies ChatToolResult })
+        .where(and(eq(chatMessages.id, row.id), eq(chatMessages.status, "pending")))
+        .returning()
+        .get();
+      if (!claimed) throw new ChatConflictError("Diese Aktion wurde bereits beantwortet");
+      let outcome: Awaited<ReturnType<ToolHost["call"]>>;
+      try {
+        outcome = await host.call(call.name, call.arguments);
+      } catch (err) {
+        outcome = { isError: true, text: `Fehler: ${(err as Error).message}`, structured: null };
+      }
       const result = toChatToolResult(outcome, call.name);
       done = updateMessage(db, row.id, { content: toolContent(outcome, result), toolResult: result, status: outcome.isError ? "error" : "done" });
     } else {

@@ -100,9 +100,16 @@ async function connectMcpHost(): Promise<ToolHost> {
 
 // --- definitions & selection --------------------------------------------------------------------------------
 
-/** Needs confirmation: listed in CONFIRM_TOOLS or annotated destructive (the MCP's CHANGES_STATE tools). */
+/**
+ * Confirmed in the assistant only: tools that MCP clients (Claude Desktop) may allow permanently (annotated CREATES,
+ * nothing is lost there), but that change an existing record the user can't see the model change: a small model
+ * may edit the wrong draft or drop line items (`items` replaces all of them).
+ */
+export const ASSISTANT_CONFIRM_TOOLS = ["update_document_draft"] as const;
+
+/** Needs confirmation: listed in CONFIRM_TOOLS / ASSISTANT_CONFIRM_TOOLS or annotated destructive (the MCP's CHANGES_STATE tools). */
 export const needsConfirm = (tool: Pick<ChatTool, "name" | "destructive">) =>
-  tool.destructive || (CONFIRM_TOOLS as readonly string[]).includes(tool.name);
+  tool.destructive || (CONFIRM_TOOLS as readonly string[]).includes(tool.name) || (ASSISTANT_CONFIRM_TOOLS as readonly string[]).includes(tool.name);
 
 export function toLlmTool(tool: ChatTool): LlmTool {
   const { $schema: _schema, ...parameters } = tool.inputSchema;
@@ -506,6 +513,7 @@ export async function confirmSummary(name: string, args: Record<string, unknown>
       return `Rechnung aus Serienrechnung „${r.name}“${r.client ? ` für ${r.client}` : ""} jetzt erstellen (${formatCents(r.grossCents)}, ${mode})`;
     }
     case "update_client":
+    case "update_document_draft":
     case "update_expense":
     case "mark_expense_paid":
     case "apply_receipt_analysis":
@@ -516,7 +524,7 @@ export async function confirmSummary(name: string, args: Record<string, unknown>
   }
 }
 
-// --- record changes (update_client, update_expense, expense payment, receipt analysis, Fixkosten link) -----------
+// --- record changes (update_client, update_document_draft, update_expense, expense payment, receipt analysis, Fixkosten link) -----------
 
 type Read = NonNullable<ConfirmLookups["read"]>;
 
@@ -536,6 +544,19 @@ const CLIENT_FIELDS: Record<string, string> = {
   defaultTaxMode: "Steuermodus",
   notes: "Notizen",
 };
+/** update_document_draft argument → label (the get_document result has the same field names) */
+const DOCUMENT_FIELDS: Record<string, string> = {
+  issueDate: "Datum",
+  servicePeriodStart: "Leistung von",
+  servicePeriodEnd: "Leistung bis",
+  dueDate: "Fällig am",
+  validUntil: "Gültig bis",
+  title: "Betreff",
+  introText: "Einleitungstext",
+  closingText: "Schlusstext",
+  taxMode: "Steuermodus",
+};
+const MAX_ITEMS_SHOWN = 4;
 /** update_expense argument → [label, field of the get_expense result] */
 const EXPENSE_FIELDS: Record<string, [string, string]> = {
   supplierName: ["Lieferant", "supplier"],
@@ -587,6 +608,36 @@ async function recordSummary(name: string, args: Record<string, unknown>, read: 
           return c ? `${label}: ${show(c[field])} → ${show(args[field])}` : `${label} → ${show(args[field])}`;
         });
       return `Kunde ${c?.name ?? `id ${id ?? "?"}`} ändern: ${diffText(diffs)}`;
+    }
+    case "update_document_draft": {
+      const id = num(args.id);
+      const d = id ? await read("get_document", { id }) : null;
+      const what = d ? `${d.typeLabel ?? "Dokument"} (Entwurf, id ${d.id})${d.client?.name ? ` für ${d.client.name}` : ""}` : `Entwurf id ${id ?? "?"}`;
+      const diffs: string[] = [];
+      if (args.clientId !== undefined || args.clientName !== undefined) {
+        const cid = num(args.clientId);
+        const c = cid ? await read("get_client", { id: cid }) : null;
+        const to = c?.name ?? (typeof args.clientName === "string" && args.clientName.trim() ? args.clientName.trim() : `Kunde id ${cid ?? "?"}`);
+        if (!d || d.client?.name !== to) diffs.push(d?.client?.name ? `Kunde: ${d.client.name} → ${to}` : `Kunde → ${to}`);
+      }
+      const show = (field: string, v: unknown) => (field === "taxMode" && v ? (TAX_MODE_LABELS[v as TaxMode] ?? String(v)) : clip(shown(v)));
+      for (const [field, label] of Object.entries(DOCUMENT_FIELDS)) {
+        if (args[field] === undefined || (d && (args[field] ?? null) === (d[field] ?? null))) continue;
+        diffs.push(d ? `${label}: ${show(field, d[field])} → ${show(field, args[field])}` : `${label} → ${show(field, args[field])}`);
+      }
+      if (Array.isArray(args.items)) {
+        const items = args.items as Record<string, unknown>[];
+        const before = d && Array.isArray(d.items) ? `${d.items.length} Position(en), netto ${d.net?.formatted ?? "?"} → ` : "";
+        const lines = items.slice(0, MAX_ITEMS_SHOWN).map((it) => {
+          const title = typeof it.title === "string" && it.title.trim() ? clip(it.title.trim()) : it.articleId ? `Artikel id ${it.articleId}` : "?";
+          const qty = typeof it.quantity === "number" ? String(it.quantity).replace(".", ",") : "?";
+          const price = it.unitPrice !== undefined ? ` × ${euroInput(it.unitPrice)}` : "";
+          return `${title} ${qty}${typeof it.unit === "string" ? ` ${it.unit}` : ""}${price}`;
+        });
+        const more = items.length > MAX_ITEMS_SHOWN ? `, … (+${items.length - MAX_ITEMS_SHOWN})` : "";
+        diffs.push(`alle Positionen ersetzen: ${before}${items.length} neue (${lines.join(", ")}${more})`);
+      }
+      return `${what} ändern: ${diffText(diffs)}`;
     }
     case "update_expense": {
       const id = num(args.id);

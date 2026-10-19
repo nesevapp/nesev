@@ -1,8 +1,8 @@
 import type { Client } from "@modelcontextprotocol/client";
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { PROJECT_ROOT } from "../server/lib/paths";
 import { addDays, todayIso } from "../shared/dates";
@@ -472,6 +472,17 @@ describe("write tools", () => {
     expect(missing.text).toContain("Belegdatei nicht gefunden");
     const fake = await callTool("create_expense", { supplierName: "X", issueDate: slot, lines: [{ category: "buero", net: 1 }], receiptPath: join(FIXTURES, "not-a-pdf.pdf") });
     expect(fake.text).toContain("kein gültiges PDF");
+    // only files inside the home folder (symlinks resolved): a copy of a valid receipt in the temp dir is refused
+    const outside = mkdtempSync(join(tmpdir(), "nesev-receipt-"));
+    try {
+      if (realpathSync(outside).startsWith(realpathSync(homedir()))) return; // temp dir inside home: nothing to check
+      copyFileSync(join(FIXTURES, "receipt.png"), join(outside, "beleg.png"));
+      const notHome = await callTool("create_expense", { supplierName: "X", issueDate: slot, lines: [{ category: "buero", net: 1 }], receiptPath: join(outside, "beleg.png") });
+      expect(notHome.isError).toBe(true);
+      expect(notHome.text).toContain("Nur Belegdateien im Benutzerordner");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
     const both = await callTool("create_expense", { supplierName: "X", issueDate: slot, lines: [{ category: "buero", net: 1, gross: 1 }] });
     expect(both.text).toContain("net oder gross");
     // failed calls created nothing
