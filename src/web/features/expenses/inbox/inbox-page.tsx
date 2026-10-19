@@ -116,7 +116,7 @@ export function InboxPage() {
   return (
     <Page
       title="Belege-Eingang"
-      description="Belege aus dem Eingangsordner oder hier abgelegt. Daraus werden Ausgaben – analysiert wird nur, wenn du es auswählst."
+      description="Belege aus dem Eingangsordner oder hier abgelegt. Daraus werden Ausgaben – analysiert wird nur, wenn Sie es auswählen."
       actions={
         <>
           {status?.path && (

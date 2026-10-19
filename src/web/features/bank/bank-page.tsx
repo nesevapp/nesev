@@ -440,7 +440,7 @@ function Transactions({
         </Table>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Tastatur: ↑ ↓ wählen · Enter/Z Vorschlag zuordnen · M manuell zuordnen · I ignorieren · U Zuordnung lösen · / suchen
+        Tastatur: ↑ ↓ oder j k wählen · Enter/Z Vorschlag zuordnen · M manuell zuordnen · I ignorieren · U Zuordnung lösen · / suchen
         {counts.open > 0 && status !== "open" && ` · ${counts.open} offen in dieser Ansicht`}
       </p>
 

@@ -56,8 +56,8 @@ export function ChatSettingsSection() {
           title="Assistent"
           description={
             <>
-              Chat über deine Buchhaltung (⌘J). Läuft vollständig lokal mit llama.cpp und teilt sich den llama-server mit der
-              Belegerkennung. Alles, was Belege verändert, wird erst nach deiner Bestätigung ausgeführt.
+              Chat über Ihre Buchhaltung (⌘J). Läuft vollständig lokal mit llama.cpp und teilt sich den llama-server mit der
+              Belegerkennung. Alles, was Belege verändert, wird erst nach Ihrer Bestätigung ausgeführt.
             </>
           }
         >

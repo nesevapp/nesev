@@ -54,6 +54,15 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
                 </Row>
               ))}
             </Section>
+            <Section title="Bank-Liste">
+              <Row keys={["/"]}>Suche fokussieren</Row>
+              <Row keys={["j", "k"]}>Nächste / vorige Buchung (auch ↓ ↑)</Row>
+              <Row keys={["↵"]}>Vorschlag zuordnen, sonst manuell</Row>
+              <Row keys={["z"]}>Vorschlag zuordnen</Row>
+              <Row keys={["m"]}>Manuell zuordnen</Row>
+              <Row keys={["i"]}>Ignorieren / wieder öffnen</Row>
+              <Row keys={["u"]}>Zuordnung lösen</Row>
+            </Section>
           </div>
           <Section title="Gehe zu">
             {PAGES.filter((p) => p.key).map((p) => (
@@ -63,9 +72,6 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
             ))}
           </Section>
         </div>
-        <p className="text-xs text-muted-foreground">
-          In der Bank-Liste: <Kbd>/</Kbd> fokussiert die Suche, <Kbd>j</Kbd>/<Kbd>k</Kbd> wechseln die Zeile, <Kbd>↵</Kbd> ordnet zu.
-        </p>
       </DialogContent>
     </Dialog>
   );

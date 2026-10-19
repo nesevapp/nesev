@@ -63,7 +63,7 @@ export function RecurringListPage() {
       }
       actions={
         <>
-          <Button variant="outline" size="sm" disabled={run.isPending} onClick={onRun}>
+          <Button variant="outline" size="sm" disabled={run.isPending || !data.some((r) => r.active)} onClick={onRun}>
             <Play />
             Jetzt ausführen
             {dueCount > 0 && <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{dueCount}</span>}

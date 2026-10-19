@@ -85,7 +85,7 @@ export function FixedCostsPage() {
       {data.length === 0 ? (
         <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
           <CalendarClock className="mx-auto mb-3 size-6 text-muted-foreground/60" />
-          <p>Noch keine Fixkosten. Trag regelmäßige Zahlungen ein, damit die Prognose deinen Kontostand vorausrechnen kann.</p>
+          <p>Noch keine Fixkosten. Tragen Sie regelmäßige Zahlungen ein, damit die Prognose Ihren Kontostand vorausrechnen kann.</p>
           <Button size="sm" variant="outline" className="mt-4" onClick={newItem}>
             <Plus />
             Erste Fixkosten anlegen

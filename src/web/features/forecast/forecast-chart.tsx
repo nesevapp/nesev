@@ -23,6 +23,10 @@ export const SOURCE_META: Record<ForecastSource, { label: string; color: string;
   income_tax: { label: "ESt-Vorauszahlung", color: CHART_COLORS.incomeTax, bg: "bg-chart-income-tax" },
 };
 
+/** Label of a source on the in- or outflow side: VAT appears on both (refund vs. payment), so it needs two names. */
+export const sourceLabel = (s: ForecastSource, dir: "in" | "out") =>
+  s === "vat" ? (dir === "in" ? "USt-Gutschrift" : "USt-Zahllast") : SOURCE_META[s].label;
+
 export interface ChartColumn {
   key: string;
   label: string;
@@ -274,7 +278,7 @@ export function ForecastChart({
           }
         >
           <div className="mb-1.5 font-medium text-foreground">{activeCol.title}</div>
-          <TooltipGroup label="Eingänge" total={activeCol.inCents} bySource={activeCol.inBySource} order={IN_SOURCES} empty="Keine Eingänge erwartet" />
+          <TooltipGroup label="Eingänge" total={activeCol.inCents} bySource={activeCol.inBySource} order={IN_SOURCES} dir="in" empty="Keine Eingänge erwartet" />
           {activeCol.taxCents > 0 && (
             <div className="flex justify-between text-muted-foreground">
               <span>davon USt.</span>
@@ -283,7 +287,7 @@ export function ForecastChart({
           )}
           {showOut && (
             <div className="mt-1.5">
-              <TooltipGroup label="Ausgänge" total={activeCol.outCents} bySource={activeCol.outBySource} order={OUT_SOURCES} empty="Keine Ausgänge erwartet" />
+              <TooltipGroup label="Ausgänge" total={activeCol.outCents} bySource={activeCol.outBySource} order={OUT_SOURCES} dir="out" empty="Keine Ausgänge erwartet" />
             </div>
           )}
           <div className="mt-1.5 space-y-0.5 border-t pt-1.5">
@@ -304,12 +308,14 @@ function TooltipGroup({
   total,
   bySource,
   order,
+  dir,
   empty,
 }: {
   label: string;
   total: number;
   bySource: Partial<Record<ForecastSource, number>>;
   order: ForecastSource[];
+  dir: "in" | "out";
   empty: string;
 }) {
   const rows = order.filter((s) => (bySource[s] ?? 0) > 0);
@@ -322,7 +328,7 @@ function TooltipGroup({
       {rows.map((s) => (
         <div key={s} className="flex items-center gap-2">
           <span className={cn("size-2 rounded-[2px]", SOURCE_META[s].bg)} />
-          <span className="text-muted-foreground">{SOURCE_META[s].label}</span>
+          <span className="text-muted-foreground">{sourceLabel(s, dir)}</span>
           <span className="ml-auto pl-3 tabular text-foreground">{formatCents(bySource[s]!)}</span>
         </div>
       ))}
@@ -341,17 +347,17 @@ function TooltipTotal({ label, cents, strong }: { label: string; cents: number; 
 }
 
 export function SourceLegend({ inSources, outSources, line }: { inSources: ForecastSource[]; outSources: ForecastSource[]; line: string }) {
-  const item = (s: ForecastSource) => (
+  const item = (dir: "in" | "out") => (s: ForecastSource) => (
     <span key={s} className="flex items-center gap-1.5">
       <span className={cn("size-2.5 rounded-[3px]", SOURCE_META[s].bg)} />
-      {SOURCE_META[s].label}
+      {sourceLabel(s, dir)}
     </span>
   );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      {inSources.map(item)}
+      {inSources.map(item("in"))}
       {outSources.length > 0 && <span className="h-3 w-px bg-border" aria-hidden />}
-      {outSources.map(item)}
+      {outSources.map(item("out"))}
       <span className="flex items-center gap-1.5">
         <span className="h-0.5 w-3 rounded-full bg-chart-result" />
         {line}

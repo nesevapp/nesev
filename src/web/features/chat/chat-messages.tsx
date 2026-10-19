@@ -344,10 +344,10 @@ export function EmptyState({ onPick, disabled }: { onPick: (prompt: { text: stri
   return (
     <div className="flex h-full flex-col justify-end gap-4 pb-2">
       <div className="space-y-1">
-        <p className="text-sm font-medium">Frag deine Buchhaltung</p>
+        <p className="text-sm font-medium">Fragen Sie Ihre Buchhaltung</p>
         <p className="text-xs text-muted-foreground">
-          Läuft lokal auf deinem Rechner. Liest Belege, Ausgaben und Auswertungen und legt Entwürfe an; alles, was Belege
-          verändert, musst du bestätigen.
+          Läuft lokal auf Ihrem Rechner. Liest Belege, Ausgaben und Auswertungen und legt Entwürfe an; alles, was Belege
+          verändert, bestätigen Sie selbst.
         </p>
       </div>
       <div className="flex flex-wrap gap-1.5">

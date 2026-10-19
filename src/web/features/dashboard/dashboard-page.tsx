@@ -584,7 +584,7 @@ function Onboarding({ setup }: { setup: Dashboard["setup"] }) {
       done: setup.hasClients,
       icon: Users,
       title: "Ersten Kunden anlegen",
-      text: "Kunden aus Österreich, der EU oder der Schweiz.",
+      text: "Kunden aus Österreich, der EU oder einem Drittland.",
       action: <Link to="/clients/new">Kunde anlegen</Link>,
     },
     {
