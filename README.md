@@ -289,6 +289,7 @@ Desktop: [src/mcp/README.md](src/mcp/README.md).
 - [docs/architecture.md](docs/architecture.md): how each feature works, for contributors.
 - [docs/assistant.md](docs/assistant.md): the assistant, voice input and the MCP server in detail.
 - [docs/tax-notes.md](docs/tax-notes.md): simplifications and open tax questions.
+- [docs/releasing.md](docs/releasing.md): cutting a release and how the single-file binary works.
 - [ROADMAP.md](ROADMAP.md): what's next. [CHANGELOG.md](CHANGELOG.md): what changed.
 - [CONTRIBUTING.md](CONTRIBUTING.md): setup, tests and the rules for changes. [CONVENTIONS.md](CONVENTIONS.md): code
   layout, API and form patterns. [CLAUDE.md](CLAUDE.md): invariants and gotchas (written for coding agents, useful for
