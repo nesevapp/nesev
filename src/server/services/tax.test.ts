@@ -18,6 +18,7 @@ import { createAsset } from "./assets";
 import { createCreditNote, createDocument, finalizeDocument, getDocument } from "./documents";
 import { updateSettings } from "./settings";
 import { computeEar, computeUva, computeZm, earCsv, revenueEvents, uvaCsv, uvaValues } from "./tax";
+import { uvaXmlErrors } from "./tax-xml";
 
 const Q1 = parsePeriod("2026-Q1")!;
 const Q2 = parsePeriod("2026-Q2")!;
@@ -142,6 +143,35 @@ describe("UVA Kennzahlen", () => {
     expect(r.warnings.some((w) => w.includes("KZ 022"))).toBe(true);
   });
 
+  test("negative rate KZ next to a positive one: 0 entered, KZ 000 adjusted so the U30 sums still match", () => {
+    const { db, doc, expense } = setup();
+    doc([{ net: 50000 }]); // 20 %
+    const old = doc([{ net: 30000, rate: 1000 }], { issueDate: "2025-11-01" });
+    doc([{ net: 20000, rate: 1000 }], { type: "credit_note", number: "GS-1", parentId: old.id }); // 10 %, Q1
+    const r = computeUva(db, Q1);
+    const vals = uvaValues(r);
+    expect(vals["000"]!.amount).toBe(50000);
+    expect(vals["022"]).toEqual({ amount: 50000, tax: 10000 });
+    expect(vals["029"]).toBeUndefined();
+    expect(vals["090"]!.amount).toBe(-2000);
+    expect(r.resultCents).toBe(8000);
+    expect(r.warnings.some((w) => w.includes("KZ 029") && w.includes("KZ 000"))).toBe(true);
+    const FASTNR = { ok: true as const, fastnr: "123456789" };
+    expect(uvaXmlErrors(r, FASTNR, "2026-10-19")).toEqual([]);
+
+    // ig. acquisitions: a supplier credit (negative 10 % line) moves out of KZ 070 as well
+    expense("ig_acquisition", [{ net: 40000 }], { supplierCountry: "DE" });
+    expense("ig_acquisition", [{ net: -10000, rate: 1000 }], { supplierCountry: "DE" });
+    const r2 = computeUva(db, Q1);
+    const v2 = uvaValues(r2);
+    expect(v2["070"]!.amount).toBe(40000);
+    expect(v2["072"]).toEqual({ amount: 40000, tax: 8000 });
+    expect(v2["073"]).toBeUndefined();
+    expect(v2["090"]!.amount).toBe(-2000 - 1000);
+    expect(v2["065"]!.amount).toBe(8000 - 1000); // Vorsteuer nets within the KZ
+    expect(uvaXmlErrors(r2, FASTNR, "2026-10-19")).toEqual([]);
+  });
+
   test("EU reverse charge and Swiss invoices are not taxable in AT (info only, ZM for EU)", () => {
     const { db, doc, de, ch } = setup();
     doc([{ net: 500000 }], { clientId: de.id, taxMode: "EU_REVERSE_CHARGE" });
@@ -193,6 +223,39 @@ describe("UVA Kennzahlen", () => {
     const r = v(db);
     expect(r["022"]).toEqual({ amount: 80000, tax: 16000 });
     expect(r["029"]).toEqual({ amount: 50000, tax: 5000 });
+  });
+
+  test("cash basis: a credit note dated after the hand-marked payment is not absorbed into it", () => {
+    const { db, doc, pay } = setup({ vatBasis: "cash" });
+    const inv = doc([{ net: 100000 }], { issueDate: "2026-02-10", status: "paid", paidAt: "2026-03-10" });
+    const cn = doc([{ net: 20000 }], { type: "credit_note", number: "GS-1", parentId: inv.id, issueDate: "2026-06-05" });
+    const march = parsePeriod("2026-03")!;
+    const june = parsePeriod("2026-06")!;
+    expect(v(db, march)["022"]).toEqual({ amount: 100000, tax: 20000 });
+    expect(v(db, march)["000"]!.amount).toBe(100000);
+    // June: the credit note on its own (base 0, tax corrected via 090)
+    expect(v(db, june)["090"]!.amount).toBe(-4000);
+    expect(computeUva(db, june).resultCents).toBe(-4000);
+
+    // with a refund booked on the bank, it counts at the refund date instead
+    pay({ documentId: cn.id }, "2026-07-02", 24000);
+    expect(v(db, june)["090"]).toBeUndefined();
+    expect(v(db, parsePeriod("2026-07")!)["090"]!.amount).toBe(-4000);
+    expect(v(db, march)["022"]!.amount).toBe(100000);
+
+    // a credit note dated up to the payment is still absorbed by it (the payment was smaller)
+    const inv2 = doc([{ net: 50000 }], { issueDate: "2026-02-10", status: "paid", paidAt: "2026-03-20" });
+    doc([{ net: 10000 }], { type: "credit_note", number: "GS-2", parentId: inv2.id, issueDate: "2026-03-20" });
+    expect(v(db, march)["022"]!.amount).toBe(100000 + 40000);
+  });
+
+  test("EAR: a credit note in the next year doesn't reduce this year's hand-marked payment", () => {
+    const { db, doc } = setup();
+    const inv = doc([{ net: 100000 }], { issueDate: "2026-11-10", status: "paid", paidAt: "2026-12-10" });
+    doc([{ net: 20000 }], { type: "credit_note", number: "GS-1", parentId: inv.id, issueDate: "2027-01-15" });
+    expect(computeEar(db, 2026).incomeCents).toBe(100000);
+    expect(computeEar(db, 2026).unpaid).toEqual([]);
+    expect(computeEar(db, 2027).incomeCents).toBe(-20000);
   });
 
   test("cash basis: an invoice settled by a full credit note is no cash receipt", () => {

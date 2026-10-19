@@ -38,8 +38,9 @@ import { getSettings } from "./settings";
 // - Revenue, cash basis (Istbesteuerung) and the EAR: payment events. An invoice's events are its bank_matches
 //   (booking date, amount); when it is marked paid, the rest of (gross − matched − its credit notes) counts at
 //   paidAt. Each event takes the invoice's tax groups pro rata (gross share), so partial payments split
-//   cleanly. Credit notes on an invoice are realized through the smaller payment ("absorbed"); only what the
-//   payment did not absorb counts on its own (refund matches, otherwise the credit note date). Credit notes
+//   cleanly. Credit notes on an invoice dated up to its paidAt are realized through the smaller payment
+//   ("absorbed"); only what the payment did not absorb counts on its own (refund matches, otherwise the credit
+//   note date). A credit note dated after paidAt never reduces that payment (§ 16 UStG). Credit notes
 //   of unpaid invoices wait until that invoice is paid. Credit notes without an invoice count at their
 //   matches, otherwise their issue date.
 // - Expenses: domestic Vorsteuer follows the basis (cash: § 12 Abs. 1 Z 1 lit. a, deductible once paid);
@@ -220,12 +221,16 @@ export function revenueEvents(db: DbOrTx, basis: VatBasis, docs = loadDocs(db)):
     const payments = capPayments(d.payments, gross);
     const matched = payments.reduce((s, p) => s + p.amountCents, 0);
     const cns = (creditNotesOf.get(d.ref.id) ?? []).sort((a, b) => a.ref.issueDate.localeCompare(b.ref.issueDate) || a.ref.id - b.ref.id);
-    const cnTotal = cns.reduce((s, c) => s + c.totals.grossCents, 0);
     if (d.status === "paid") {
+      // Only credit notes granted by the payment date can have reduced it. A later one is a correction of its
+      // own period (§ 16 UStG): it counts at its refund match, else its issue date (second loop below).
+      const paidAt = d.paidAt;
+      const prior = paidAt ? cns.filter((c) => c.ref.issueDate <= paidAt) : cns;
+      const cnTotal = prior.reduce((s, c) => s + c.totals.grossCents, 0);
       const rest = Math.max(0, gross - matched - cnTotal);
-      if (rest > 0 && d.paidAt) payments.push({ date: d.paidAt, amountCents: rest, note: matched ? "Restzahlung" : "Zahlung" });
+      if (rest > 0 && paidAt) payments.push({ date: paidAt, amountCents: rest, note: matched ? "Restzahlung" : "Zahlung" });
       let toAbsorb = Math.min(cnTotal, gross - matched);
-      for (const cn of cns) {
+      for (const cn of prior) {
         const a = Math.min(cn.totals.grossCents, toAbsorb);
         absorbed.set(cn.ref.id, a);
         toAbsorb -= a;
@@ -580,25 +585,37 @@ export function computeUva(db: DbOrTx, period: TaxPeriod, options: UvaOptions = 
     a.tax = roundHalfAwayFromZero((a.amount * rate) / BP_SCALE);
   }
 
-  // Negative bases (credit notes exceeding revenue): enter 0, correct the tax via 090 / Vorsteuer via 067.
-  for (const meta of UVA_KZ) {
+  // Negative bases (credit notes exceeding revenue of a rate): the U30 schema allows negative amounts only in
+  // KZ 063/067/090 (services/tax-xml.ts), and FinanzOnline checks 022+029+006+037 = 000 − 021 − tax-exempt and
+  // 072+073+008+088 = 070 − 071. So such a KZ is entered as 0, its tax is corrected via KZ 090 (Vorsteuer via
+  // 067), and its (negative) base is taken out of the total KZ 000 / 070 as well, so the sums still match.
+  const PARENT_KZ: Record<string, string> = { "021": "000", "011": "000", "017": "000", "016": "000", "071": "070" };
+  for (const k of Object.values(REVENUE_RATE_KZ)) PARENT_KZ[k] = "000";
+  for (const k of Object.values(ACQUISITION_RATE_KZ)) PARENT_KZ[k] = "070";
+  const zeroNegative = (meta: (typeof UVA_KZ)[number]) => {
     const a = kz(meta.kz);
-    if (meta.section === "berichtigung" || meta.section === "ergebnis") continue; // signed by nature
+    if (meta.section === "berichtigung" || meta.section === "ergebnis") return; // signed by nature
     if (meta.section === "vorsteuer") {
       if (a.amount < 0) {
         kz("067").amount += a.amount;
         warnings.push(`KZ ${meta.kz} wäre negativ — als Berichtigung in KZ 067 erfasst.`);
         a.amount = 0;
       }
-      continue;
+      return;
     }
     if (KZ_TAX_ONLY.has(meta.kz) ? a.tax < 0 : a.amount < 0) {
       if (KZ_TAX_COLUMN.has(meta.kz) && a.tax < 0) kz("090").amount += a.tax;
-      warnings.push(`KZ ${meta.kz} wäre negativ (Gutschriften > Umsätze) — 0 eingetragen${KZ_TAX_COLUMN.has(meta.kz) ? ", Steuer in KZ 090 berichtigt" : ""}.`);
+      const parent = PARENT_KZ[meta.kz];
+      if (parent) kz(parent).amount -= a.amount;
+      const parts = [KZ_TAX_COLUMN.has(meta.kz) ? "Steuer in KZ 090 berichtigt" : "", parent ? `KZ ${parent} entsprechend angepasst` : ""].filter(Boolean);
+      warnings.push(`KZ ${meta.kz} wäre negativ (Gutschriften > Umsätze) — 0 eingetragen${parts.length ? `, ${parts.join(", ")}` : ""}.`);
       a.amount = 0;
       a.tax = 0;
     }
-  }
+  };
+  // parts first, then the totals they belong to (000 / 070 can only stay negative through unassigned parts)
+  for (const meta of UVA_KZ) if (PARENT_KZ[meta.kz]) zeroNegative(meta);
+  for (const meta of UVA_KZ) if (!PARENT_KZ[meta.kz]) zeroNegative(meta);
 
   const sumTax = (ks: string[]) => ks.reduce((t, k) => t + kz(k).tax, 0);
   const vatCents = sumTax(["022", "029", "006", "037", "056", "057", "072", "073", "008", "088"]) + kz("090").amount;
