@@ -101,7 +101,7 @@ the Apple Vision helper precompiled; from source, OCR and receipt cropping need 
 
 ## Requirements
 
-- Nothing for the release binary. From source: [Bun](https://bun.sh) 1.3.13 or newer (no Node.js needed).
+- Nothing for the release binary. From source: [Bun](https://bun.sh) 1.4.4 or newer (no Node.js needed).
 - Optional, for the assistant and receipt recognition: [llama.cpp](https://github.com/ggml-org/llama.cpp)
   (`llama-server`) and a GGUF model, e.g. run `llama-server -hf unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL` once to download
   it. nesev starts and stops `llama-server` itself and never downloads anything.
@@ -185,7 +185,7 @@ folder is. If you want everything gone, delete that folder yourself, after you'v
 
 ### From source
 
-For development, or on platforms without a release binary. Requires [Bun](https://bun.sh) 1.3.13 or newer.
+For development, or on platforms without a release binary. Requires [Bun](https://bun.sh) 1.4.4 or newer.
 
 ```bash
 git clone https://github.com/nesevapp/nesev.git && cd nesev

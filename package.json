@@ -1,6 +1,6 @@
 {
   "name": "nesev",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Local-first invoicing and bookkeeping for Austrian sole traders",
   "homepage": "https://github.com/nesevapp/nesev#readme",
@@ -14,7 +14,7 @@
   "author": "Lukas Mascha <lukas@mazingbits.ai>",
   "license": "AGPL-3.0-only",
   "engines": {
-    "bun": ">=1.3.13"
+    "bun": ">=1.4.4"
   },
   "type": "module",
   "scripts": {
