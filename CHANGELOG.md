@@ -7,6 +7,20 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
+## [0.1.2] – 2026-10-24
+
+Security release: please update.
+
+### Security
+
+- The binaries are built with Bun 1.4.4 (was 1.3.13). It fixes an out-of-bounds write in the bundled brotli decoder
+  (CVE-2026-111497, reachable through `fetch`, e.g. the update check) and removes compromised eMudhra (emSign)
+  intermediate CAs from the bundled root certificates. Running from source now needs Bun 1.4.4 or newer.
+
+### Changed
+
+- Dependencies: MCP SDK 2.4.0, pdfme 6.2.8, Vite 8.3.5, TanStack Query/Router, react-hook-form, lucide-react.
+
 ## [0.1.1] – 2026-10-19
 
 ### Added
@@ -78,6 +92,7 @@ user interface is German.
   security headers and a Content Security Policy for the web app; uploaded files typed by content. See
   [SECURITY.md](SECURITY.md).
 
-[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/nesevapp/nesev/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/nesevapp/nesev/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nesevapp/nesev/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nesevapp/nesev/releases/tag/v0.1.0
