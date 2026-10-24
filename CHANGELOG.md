@@ -7,6 +7,10 @@ they are called out here, and database migrations always run automatically on st
 
 ## [Unreleased]
 
+### Changed
+
+- Dependencies: MCP SDK 2.4.0, pdfme 6.2.8, Vite 8.3.5, TanStack Query/Router, react-hook-form, lucide-react.
+
 ## [0.1.1] – 2026-10-19
 
 ### Added
